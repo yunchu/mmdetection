@@ -9,11 +9,19 @@ from ..utils import ConvModule
 
 
 class DepthwiseSeparableConv(nn.Module):
-    def __init__(self, input_channels, output_channels):
+    def __init__(self,
+                 in_channels,
+                 out_channels,
+                 conv_cfg=None,
+                 norm_cfg=None,
+                 activation='relu'):
         super().__init__()
-        self.depthwise = nn.Conv2d(input_channels, input_channels, kernel_size=3, padding=1,
-                                   groups=input_channels)
-        self.pointwise = nn.Conv2d(input_channels, output_channels, kernel_size=1)
+        self.depthwise = ConvModule(in_channels, in_channels, kernel_size=3, stride=1,
+                                    padding=1, dilation=1, groups=in_channels, conv_cfg=conv_cfg,
+                                    norm_cfg=norm_cfg, activation=None, inplace=True)
+        self.pointwise = ConvModule(in_channels, out_channels, kernel_size=1, stride=1,
+                                    padding=0, dilation=1, groups=1, conv_cfg=conv_cfg,
+                                    norm_cfg=norm_cfg, activation=activation, inplace=False)
 
     def forward(self, x):
         out = self.depthwise(x)
@@ -43,6 +51,7 @@ class BiFPNBlock(nn.Module):
         self.top_down_w = nn.ParameterList()
         self.bottom_up_w = nn.ParameterList()
         self.shortcuts_w = nn.ParameterList()
+
         for i in range(self.num_outs - 1):
             self.top_down_w.append(nn.Parameter(torch.ones(1)))
             self.bottom_up_w.append(nn.Parameter(torch.ones(1)))
@@ -50,32 +59,44 @@ class BiFPNBlock(nn.Module):
                 self.shortcuts_w.append(nn.Parameter(torch.ones(1)))
 
         for _ in range(self.num_outs - 1):
-            conv = ConvModule(
-                channels,
-                channels,
-                1,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                activation=self.activation,
-                inplace=False)
-            self.lc_from_input.append(conv)
+            self.lc_from_input.append(
+                DepthwiseSeparableConv(
+                    channels,
+                    channels,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    activation=self.activation)
+            )
             self.lc_from_input_w.append(nn.Parameter(torch.ones(1)))
 
         for _ in range(self.num_outs - 1):
-            conv = ConvModule(
-                channels,
-                channels,
-                1,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                activation=self.activation,
-                inplace=False)
-            self.lc_from_top_down.append(conv)
+            self.lc_from_top_down.append(
+                DepthwiseSeparableConv(
+                    channels,
+                    channels,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    activation=self.activation)
+            )
             self.lc_from_top_down_w.append(nn.Parameter(torch.ones(1)))
 
         for _ in range(self.num_outs - 1):
-            self.fc_top_down.append(DepthwiseSeparableConv(channels, channels))
-            self.fc_bottom_up.append(DepthwiseSeparableConv(channels, channels))
+            self.fc_top_down.append(
+                DepthwiseSeparableConv(
+                    channels,
+                    channels,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    activation=self.activation)
+            )
+            self.fc_bottom_up.append(
+                DepthwiseSeparableConv(
+                    channels,
+                    channels,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    activation=self.activation)
+            )
 
     def forward(self, inputs):
 
@@ -150,11 +171,16 @@ class BiFPN(nn.Module):
         self.num_outs = num_outs
         self.activation = activation
 
-        self.channel_equlizers = nn.ModuleList()
+        self.channel_equalizers = nn.ModuleList()
         for input_channels in in_channels:
-            conv = DepthwiseSeparableConv(input_channels, out_channels)
-            # TODO(ikrylov): bn, actication?
-            self.channel_equlizers.append(conv)
+            self.channel_equalizers.append(
+                DepthwiseSeparableConv(
+                    input_channels,
+                    out_channels,
+                    conv_cfg=conv_cfg,
+                    norm_cfg=norm_cfg,
+                    activation=self.activation)
+            )
 
         self.extra_convs = nn.ModuleList()
         for i in range(self.num_outs - len(self.in_channels)):
@@ -198,7 +224,7 @@ class BiFPN(nn.Module):
             else:
                 extra_inputs.append(self.extra_convs[i](extra_inputs[-1]))
 
-        outputs = [self.channel_equlizers[i](input) for i, input in enumerate(inputs)]
+        outputs = [self.channel_equalizers[i](input) for i, input in enumerate(inputs)]
         outputs.extend(extra_inputs)
 
         for layer in self.layers:
