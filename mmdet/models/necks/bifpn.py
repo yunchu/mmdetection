@@ -5,98 +5,80 @@ from mmcv.cnn import xavier_init
 from mmdet.core import auto_fp16
 
 from ..registry import NECKS
-from ..utils import ConvModule
 
 
-class DepthwiseSeparableConv(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 conv_cfg=None,
-                 norm_cfg=None,
-                 activation='relu'):
+class PointwiseConvBn(nn.Module):
+    def __init__(self, in_channels, out_channels):
         super().__init__()
-        self.depthwise = ConvModule(in_channels, in_channels, kernel_size=3, stride=1,
-                                    padding=1, dilation=1, groups=in_channels, conv_cfg=conv_cfg,
-                                    norm_cfg=norm_cfg, activation=None, inplace=True)
-        self.pointwise = ConvModule(in_channels, out_channels, kernel_size=1, stride=1,
-                                    padding=0, dilation=1, groups=1, conv_cfg=conv_cfg,
-                                    norm_cfg=norm_cfg, activation=activation, inplace=False)
+        self.point_wise = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1,
+                                          padding=0, dilation=1, groups=1)
+        self.bn = torch.nn.BatchNorm2d(out_channels)
 
     def forward(self, x):
-        out = self.depthwise(x)
-        out = self.pointwise(out)
+        out = self.point_wise(x)
+        out = self.bn(out)
+
+        return out
+
+
+class DepthwiseSeparableConv3x3Bn(nn.Module):
+    def __init__(self,
+                 in_channels,
+                 out_channels):
+        super().__init__()
+        self.depth_wise = torch.nn.Conv2d(in_channels, in_channels, kernel_size=3, stride=1,
+                                          padding=1, dilation=1, groups=in_channels)
+        self.point_wise = torch.nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1,
+                                          padding=0, dilation=1, groups=1)
+        self.bn = torch.nn.BatchNorm2d(out_channels)
+
+    def forward(self, x):
+        out = self.depth_wise(x)
+        out = self.point_wise(out)
+        out = self.bn(out)
         return out
 
 
 class BiFPNBlock(nn.Module):
 
-    def __init__(self, num_outs, channels, conv_cfg, norm_cfg, activation):
+    def __init__(self, input_channels, num_backbone_features, num_outs, channels):
         super().__init__()
         self.epsilon = 0.0001
 
         self.channels = channels
         self.num_outs = num_outs
-        self.activation = activation
+        self.num_backbone_features = num_backbone_features
 
         assert self.num_outs >= 3
 
-        self.lc_from_input = nn.ModuleList()
-        self.lc_from_top_down = nn.ModuleList()
-        self.fc_top_down = nn.ModuleList()
-        self.fc_bottom_up = nn.ModuleList()
+        self.input_to_td_convs = nn.ModuleList()
+        self.input_to_output_convs = nn.ModuleList()
+        self.top_down_fusion_convs = nn.ModuleList()
+        self.bottom_up_fusion_convs = nn.ModuleList()
 
-        self.lc_from_input_w = nn.ParameterList()
-        self.lc_from_top_down_w = nn.ParameterList()
-        self.top_down_w = nn.ParameterList()
-        self.bottom_up_w = nn.ParameterList()
-        self.shortcuts_w = nn.ParameterList()
+        self.input_to_td_convs_w = nn.ParameterList()
+        self.input_to_output_convs_w = nn.ParameterList()
+        self.top_down_upsample_w = nn.ParameterList()
+        self.bottom_up_downsample_w = nn.ParameterList()
+        self.td_to_output_identities_w = nn.ParameterList()
 
         for i in range(self.num_outs - 1):
-            self.top_down_w.append(nn.Parameter(torch.ones(1)))
-            self.bottom_up_w.append(nn.Parameter(torch.ones(1)))
-            if i > 0:
-                self.shortcuts_w.append(nn.Parameter(torch.ones(1)))
+            self.top_down_upsample_w.append(nn.Parameter(torch.ones(1)))
+            self.bottom_up_downsample_w.append(nn.Parameter(torch.ones(1)))
+            self.td_to_output_identities_w.append(nn.Parameter(torch.ones(1)))
+
+        for i in range(self.num_outs - 1):
+            self.input_to_td_convs.append(PointwiseConvBn(input_channels[i], channels))
+            self.input_to_td_convs_w.append(nn.Parameter(torch.ones(1)))
+
+        for i in range(self.num_backbone_features - 1):
+            self.input_to_output_convs.append(PointwiseConvBn(input_channels[i + 1], channels))
+        for _ in range(self.num_outs - 2):
+            self.input_to_output_convs_w.append(nn.Parameter(torch.ones(1)))
 
         for _ in range(self.num_outs - 1):
-            self.lc_from_input.append(
-                DepthwiseSeparableConv(
-                    channels,
-                    channels,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    activation=self.activation)
-            )
-            self.lc_from_input_w.append(nn.Parameter(torch.ones(1)))
-
-        for _ in range(self.num_outs - 1):
-            self.lc_from_top_down.append(
-                DepthwiseSeparableConv(
-                    channels,
-                    channels,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    activation=self.activation)
-            )
-            self.lc_from_top_down_w.append(nn.Parameter(torch.ones(1)))
-
-        for _ in range(self.num_outs - 1):
-            self.fc_top_down.append(
-                DepthwiseSeparableConv(
-                    channels,
-                    channels,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    activation=self.activation)
-            )
-            self.fc_bottom_up.append(
-                DepthwiseSeparableConv(
-                    channels,
-                    channels,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    activation=self.activation)
-            )
+            self.top_down_fusion_convs.append(DepthwiseSeparableConv3x3Bn(channels, channels))
+            self.bottom_up_fusion_convs.append(DepthwiseSeparableConv3x3Bn(channels, channels))
 
     def forward(self, inputs):
 
@@ -105,48 +87,42 @@ class BiFPNBlock(nn.Module):
 
         # Compute lateral convolutions on input
         for i in range(self.num_outs - 1):
-            w = F.relu(self.lc_from_input_w[i])
-            top_down.append(w * self.lc_from_input[i](inputs[i]))
+            w = F.relu(self.input_to_td_convs_w[i])
+            top_down.append(w * self.input_to_td_convs[i](inputs[i]))
             top_down_weights_sum.append(w)
         top_down.append(inputs[-1])
 
         # Compute top-down path
         for i in range(len(top_down) - 1, 0, -1):
-            w = F.relu(self.top_down_w[i - 1])
-            top_down[i - 1] = top_down[i - 1] + w * F.interpolate(top_down[i], scale_factor=2,
-                                                                  mode='nearest')
+            w = F.relu(self.top_down_upsample_w[i - 1])
+            top_down[i - 1] = top_down[i - 1] + w * F.interpolate(top_down[i], scale_factor=2, mode='nearest')
             top_down_weights_sum[i - 1] = top_down_weights_sum[i - 1] + w
-
-        # Fuse lateral and top-down
-        for i in range(self.num_outs - 1):
-            top_down[i] = self.fc_top_down[i](
-                top_down[i] / (top_down_weights_sum[i] + self.epsilon))
+            top_down[i - 1] = self.top_down_fusion_convs[i - 1](
+                top_down[i - 1] / (top_down_weights_sum[i - 1] + self.epsilon))
 
         bottom_up = [top_down[0], ]
         bottom_up_weights_sum = [None, ]
         # Compute lateral convolutions on top-down
         for i in range(1, self.num_outs):
-            w = F.relu(self.lc_from_top_down_w[i - 1])
-            bottom_up.append(w * self.lc_from_top_down[i - 1](top_down[i]))
+            w = F.relu(self.td_to_output_identities_w[i - 1])
+            bottom_up.append(w * top_down[i])
             bottom_up_weights_sum.append(w)
 
         # Compute bottom-up path
-        for i in range(1, len(bottom_up)):
-            w = F.relu(self.bottom_up_w[i - 1])
-            bottom_up[i] = bottom_up[i] + w * F.interpolate(bottom_up[i - 1], scale_factor=0.5,
-                                                            mode='nearest')
+        for i in range(1, self.num_outs):
+            w = F.relu(self.bottom_up_downsample_w[i - 1])
+            bottom_up[i] = bottom_up[i] + w * F.max_pool2d(bottom_up[i - 1], kernel_size=3, stride=2, padding=1)
             bottom_up_weights_sum[i] = bottom_up_weights_sum[i] + w
 
-        # Add shortcuts
-        for i in range(1, len(bottom_up) - 1):
-            w = F.relu(self.shortcuts_w[i - 1])
-            bottom_up[i] = bottom_up[i] + w * inputs[i]
-            bottom_up_weights_sum[i] = bottom_up_weights_sum[i] + w
+            if i < self.num_outs - 1:
+                w = F.relu(self.input_to_output_convs_w[i - 1])
+                if i < self.num_backbone_features:
+                    bottom_up[i] = bottom_up[i] + w * self.input_to_output_convs[i - 1](inputs[i])
+                else:
+                    bottom_up[i] = bottom_up[i] + w * inputs[i]
+                bottom_up_weights_sum[i] = bottom_up_weights_sum[i] + w
 
-        # Fuse
-        for i in range(1, len(bottom_up)):
-            bottom_up[i] = self.fc_bottom_up[i - 1](
-                bottom_up[i] / (bottom_up_weights_sum[i] + self.epsilon))
+            bottom_up[i] = self.bottom_up_fusion_convs[i - 1](bottom_up[i] / (bottom_up_weights_sum[i] + self.epsilon))
 
         return tuple(bottom_up)
 
@@ -158,54 +134,42 @@ class BiFPN(nn.Module):
                  in_channels,
                  out_channels,
                  num_layers,
-                 num_outs,
-                 conv_cfg=None,
-                 norm_cfg=None,
-                 activation=None):
+                 num_outs):
         super(BiFPN, self).__init__()
         assert isinstance(in_channels, list)
-        assert num_outs >= 3
-        assert num_outs >= len(in_channels)
+        self.num_backbone_features = len(in_channels)
+
+        assert self.num_backbone_features >= 2
+        assert num_outs - self.num_backbone_features >= 2
 
         self.in_channels = in_channels
         self.num_outs = num_outs
-        self.activation = activation
-
-        self.channel_equalizers = nn.ModuleList()
-        for input_channels in in_channels:
-            self.channel_equalizers.append(
-                DepthwiseSeparableConv(
-                    input_channels,
-                    out_channels,
-                    conv_cfg=conv_cfg,
-                    norm_cfg=norm_cfg,
-                    activation=self.activation)
-            )
 
         self.extra_convs = nn.ModuleList()
-        for i in range(self.num_outs - len(self.in_channels)):
+        for i in range(self.num_outs - self.num_backbone_features):
             if i == 0:
                 input_channels = in_channels[-1]
             else:
                 input_channels = out_channels
-            extra_fpn_conv = ConvModule(
-                input_channels,
-                out_channels,
-                3,
-                stride=2,
-                padding=1,
-                conv_cfg=conv_cfg,
-                norm_cfg=norm_cfg,
-                activation=self.activation,
-                inplace=False)
-            self.extra_convs.append(extra_fpn_conv)
+            if input_channels != out_channels:
+                self.extra_convs.append(
+                    torch.nn.Sequential(
+                        PointwiseConvBn(input_channels, out_channels),
+                        torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1)
+                    )
+                )
+            else:
+                self.extra_convs.append(torch.nn.MaxPool2d(kernel_size=3, stride=2, padding=1))
 
         self.layers = nn.ModuleList()
         for i in range(num_layers):
+            if i == 0:
+                input_channels = in_channels + [out_channels, ] * (self.num_outs - self.num_backbone_features)
+            else:
+                input_channels = [out_channels, ] * self.num_outs
             self.layers.append(
-                BiFPNBlock(num_outs, out_channels, conv_cfg, norm_cfg, self.activation)
+                BiFPNBlock(input_channels, self.num_backbone_features, self.num_outs, out_channels)
             )
-            in_channels = [out_channels, ] * len(self.in_channels)
 
     # default init_weights for conv(msra) and norm in ConvModule
     def init_weights(self):
@@ -224,9 +188,7 @@ class BiFPN(nn.Module):
             else:
                 extra_inputs.append(self.extra_convs[i](extra_inputs[-1]))
 
-        outputs = [self.channel_equalizers[i](input) for i, input in enumerate(inputs)]
-        outputs.extend(extra_inputs)
-
+        outputs = inputs + extra_inputs
         for layer in self.layers:
             outputs = layer(outputs)
 
