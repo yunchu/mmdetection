@@ -39,6 +39,8 @@ class AnchorHead(nn.Module):
                  anchor_ratios=[0.5, 1.0, 2.0],
                  anchor_strides=[4, 8, 16, 32, 64],
                  anchor_base_sizes=None,
+                 anchor_widths=None,
+                 anchor_heights=None,
                  target_means=(.0, .0, .0, .0),
                  target_stds=(1.0, 1.0, 1.0, 1.0),
                  loss_cls=dict(
@@ -74,11 +76,17 @@ class AnchorHead(nn.Module):
         self.fp16_enabled = False
 
         self.anchor_generators = []
-        for anchor_base in self.anchor_base_sizes:
-            self.anchor_generators.append(
-                AnchorGenerator(anchor_base, anchor_scales, anchor_ratios))
+        if anchor_heights is not None and anchor_widths is not None:
+            for widths, heights in zip(anchor_widths, anchor_heights):
+                self.anchor_generators.append(
+                    AnchorGenerator(1, 1, 1, widths=widths, heights=heights))
+            self.num_anchors = self.anchor_generators[0].num_base_anchors
+        else:
+            for anchor_base in self.anchor_base_sizes:
+                self.anchor_generators.append(
+                    AnchorGenerator(anchor_base, anchor_scales, anchor_ratios))
 
-        self.num_anchors = len(self.anchor_ratios) * len(self.anchor_scales)
+            self.num_anchors = len(self.anchor_ratios) * len(self.anchor_scales)
         self._init_layers()
 
     def _init_layers(self):
