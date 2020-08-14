@@ -1,4 +1,5 @@
 from .mobilenetv2 import SSDMobilenetV2
+from .mobilenetv2_pt import PTMobilenetV2Wrapper
 from .hourglass import HourglassNet
 from .hrnet import HRNet
 from .regnet import RegNet
@@ -10,5 +11,5 @@ from .imgclsmob import *
 
 __all__ = [
     'RegNet', 'ResNet', 'ResNetV1d', 'ResNeXt', 'SSDVGG', 'HRNet', 'Res2Net',
-    'HourglassNet', 'SSDMobilenetV2'
+    'HourglassNet', 'SSDMobilenetV2', 'PTMobilenetV2Wrapper'
 ]
