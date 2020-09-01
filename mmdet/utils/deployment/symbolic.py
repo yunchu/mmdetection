@@ -59,7 +59,6 @@ def py_exportable(op_name=None, namespace='mmdet_custom'):
             default_symbolic = func.symbolic
 
         def symbolic(g, *args, **kwargs):
-            print(len(args))
             name = op_name if op_name is not None else func.__name__
             opset = sym_help._export_onnx_opset_version
             if is_registered_op(name, namespace, opset):
