@@ -25,13 +25,16 @@ class SingleRoIExtractor(nn.Module):
                  roi_layer,
                  out_channels,
                  featmap_strides,
-                 finest_scale=56):
+                 finest_scale=56,
+                 mode='openvino'):
         super(SingleRoIExtractor, self).__init__()
         self.roi_layers = self.build_roi_layers(roi_layer, featmap_strides)
         self.out_channels = out_channels
         self.featmap_strides = featmap_strides
         self.finest_scale = finest_scale
         self.fp16_enabled = False
+        assert mode in {'pytorch', 'onnx', 'openvino'}
+        self.mode = mode
 
     @property
     def num_inputs(self):
@@ -87,6 +90,66 @@ class SingleRoIExtractor(nn.Module):
 
     @force_fp32(apply_to=('feats', ), out_fp16=True)
     def forward(self, feats, rois, roi_scale_factor=None):
+        if self.mode == 'pytorch':
+            output = self.forward_pytorch(feats, rois, roi_scale_factor)
+        elif self.mode == 'onnx':
+            output = self.forward_onnx(feats, rois, roi_scale_factor)
+        else:
+            output = self.forward_openvino(feats, rois, roi_scale_factor)
+        return output
+
+    def forward_pytorch(self, feats, rois, roi_scale_factor=None):
+        out_size = self.roi_layers[0].out_size
+        num_levels = len(feats)
+        roi_feats = feats[0].new_zeros(
+            rois.size(0), self.out_channels, *out_size)
+        # TODO: remove this when parrots supports
+        if torch.__version__ == 'parrots':
+            roi_feats.requires_grad = True
+
+        if num_levels == 1:
+            if len(rois) == 0:
+                return roi_feats
+            return self.roi_layers[0](feats[0], rois)
+
+        target_lvls = self.map_roi_levels(rois, num_levels)
+        if roi_scale_factor is not None:
+            rois = self.roi_rescale(rois, roi_scale_factor)
+        for i in range(num_levels):
+            inds = target_lvls == i
+            if inds.any():
+                rois_ = rois[inds, :]
+                roi_feats_t = self.roi_layers[i](feats[i], rois_)
+                roi_feats[inds] = roi_feats_t
+            else:
+                roi_feats += sum(x.view(-1)[0] for x in self.parameters()) * 0.
+        return roi_feats
+
+    def forward_openvino(self, feats, rois, roi_scale_factor=None):
+        if len(feats) == 1:
+            return self.roi_layers[0](feats[0], rois)
+
+        num_levels = len(feats)
+        target_lvls = self.map_roi_levels(rois, num_levels)
+        if roi_scale_factor is not None:
+            rois = self.roi_rescale(rois, roi_scale_factor)
+
+        roi_feats = None
+        for level, (feat, extractor) in enumerate(zip(feats, self.roi_layers)):
+            mask = target_lvls == level
+            # Set all ROIs from other levels to nought.
+            # This could enable optimizations at ROIs' features extractor level.
+            level_rois = rois * mask.type_as(rois).unsqueeze(-1)
+            level_feats = extractor(feat, level_rois)
+            # Zero out features from out of level ROIs.
+            level_feats = level_feats * mask.type_as(level_feats).view(-1, 1, 1, 1)
+            if roi_feats is None:
+                roi_feats = level_feats
+            else:
+                roi_feats += level_feats
+        return roi_feats
+
+    def forward_onnx(self, feats, rois, roi_scale_factor=None):
         from torch.onnx import operators
 
         if len(feats) == 1:

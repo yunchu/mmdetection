@@ -149,11 +149,11 @@ def delta2bbox(rois,
     dw = dw.clamp(min=-max_ratio, max=max_ratio)
     dh = dh.clamp(min=-max_ratio, max=max_ratio)
     # Compute center of each roi
-    px = ((rois[:, 0] + rois[:, 2]) * 0.5).unsqueeze(1).expand_as(dx)
-    py = ((rois[:, 1] + rois[:, 3]) * 0.5).unsqueeze(1).expand_as(dy)
+    px = ((rois[:, 0] + rois[:, 2]) * 0.5).unsqueeze(1)
+    py = ((rois[:, 1] + rois[:, 3]) * 0.5).unsqueeze(1)
     # Compute width/height of each roi
-    pw = (rois[:, 2] - rois[:, 0]).unsqueeze(1).expand_as(dw)
-    ph = (rois[:, 3] - rois[:, 1]).unsqueeze(1).expand_as(dh)
+    pw = (rois[:, 2] - rois[:, 0]).unsqueeze(1)
+    ph = (rois[:, 3] - rois[:, 1]).unsqueeze(1)
     # Use exp(network energy) to enlarge/shrink each roi
     gw = pw * dw.exp()
     gh = ph * dh.exp()

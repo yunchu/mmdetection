@@ -211,8 +211,16 @@ def main(args):
 
     if args.target == 'openvino' and not args.alt_ssd_export:
         if hasattr(model, 'roi_head'):
-            stub_roi_feature_extractor(model.roi_head, 'bbox_roi_extractor')
-            stub_roi_feature_extractor(model.roi_head, 'mask_roi_extractor')
+            if hasattr(model.roi_head, 'bbox_roi_extractor') and isinstance(model.roi_head.bbox_roi_extractor, SingleRoIExtractor):
+                model.roi_head.bbox_roi_extractor.mode = 'openvino'
+            if hasattr(model.roi_head, 'mask_roi_extractor') and isinstance(model.roi_head.mask_roi_extractor, SingleRoIExtractor):
+                model.roi_head.mask_roi_extractor.mode = 'openvino'
+    elif args.target == 'onnx':
+        if hasattr(model, 'roi_head'):
+            if hasattr(model.roi_head, 'bbox_roi_extractor') and isinstance(model.roi_head.bbox_roi_extractor, SingleRoIExtractor):
+                model.roi_head.bbox_roi_extractor.mode = 'onnx'
+            if hasattr(model.roi_head, 'mask_roi_extractor') and isinstance(model.roi_head.mask_roi_extractor, SingleRoIExtractor):
+                model.roi_head.mask_roi_extractor.mode = 'onnx'
 
     mmcv.mkdir_or_exist(osp.abspath(args.output_dir))
     onnx_model_path = osp.join(args.output_dir,

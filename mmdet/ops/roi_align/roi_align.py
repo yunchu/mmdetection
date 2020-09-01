@@ -100,6 +100,20 @@ class RoIAlignFunction(Function):
             sampling_ratio_i=sample_num,
             spatial_scale_f=spatial_scale)
 
+        # roi_feats, _ = g.op('ExperimentalDetectronROIFeatureExtractor',
+        #     bboxes,
+        #     features,
+        #     output_size_i=out_h,
+        #     pyramid_scales_i=[int(1 / spatial_scale)],
+        #     sampling_ratio_i=sample_num,
+        #     image_id_i=0,
+        #     distribute_rois_between_levels_i=0,
+        #     preserve_rois_order_i=0,
+        #     aligned_i=0,
+        #     outputs=2
+        #     )
+        # return roi_feats
+
 
 roi_align = RoIAlignFunction.apply
 
