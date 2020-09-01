@@ -13,6 +13,7 @@
 # and limitations under the License.
 
 from functools import wraps
+from inspect import isclass
 
 import torch
 import torch.onnx.symbolic_helper as sym_help
@@ -44,6 +45,33 @@ def py_symbolic(op_name=None, namespace='mmdet_custom'):
             else:
                 return func(*args)
         return wrapped_function
+    return decorator
+
+
+def py_exportable(op_name=None, namespace='mmdet_custom'):
+    def decorator(func):
+        
+        assert isclass(func) and issubclass(func, torch.autograd.Function)
+
+        default_symbolic = None
+
+        if hasattr(func, 'symbolic'):
+            default_symbolic = func.symbolic
+
+        def symbolic(g, *args, **kwargs):
+            print(len(args))
+            name = op_name if op_name is not None else func.__name__
+            opset = sym_help._export_onnx_opset_version
+            if is_registered_op(name, namespace, opset):
+                symb = get_registered_op(name, namespace, opset)
+                return symb(g, *args, **kwargs)
+            elif default_symbolic is not None:
+                return default_symbolic(g, *args, **kwargs)
+            else:
+                raise NotImplementedError(f'No symbolic for {namespace}::{name}')
+
+        func.symbolic = staticmethod(symbolic)
+        return func
     return decorator
 
 
@@ -255,6 +283,39 @@ def multiclass_nms_core_symbolic(g, multi_bboxes, multi_scores, score_thr, nms_c
     out_combined_bboxes = g.op('Gather', out_combined_bboxes, top_indices, axis_i=0)
 
     return out_combined_bboxes
+
+
+def roi_align_symbolic(g, features, rois, out_size, spatial_scale, sample_num=0, aligned=True):
+    from torch.onnx.symbolic_opset9 import reshape, sub
+    from torch.onnx.symbolic_opset10 import _slice
+    from torch.nn.modules.utils import _pair
+
+    batch_indices = reshape(
+        g,
+        g.op(
+            'Cast',
+            _slice(g, rois, axes=[1], starts=[0], ends=[1]),
+            to_i=sym_help.cast_pytorch_to_onnx['Long']), [-1])
+    bboxes = _slice(g, rois, axes=[1], starts=[1], ends=[5])
+    if aligned:
+        scale = sym_help._maybe_get_scalar(spatial_scale)
+        offset = g.op("Constant", value_t=torch.tensor(0.5 / scale, dtype=torch.float32))
+        bboxes = sub(g, bboxes, offset)
+    out_h, out_w = _pair(out_size)
+
+    roi_feats, _ = g.op('ExperimentalDetectronROIFeatureExtractor',
+        bboxes,
+        features,
+        output_size_i=out_h,
+        pyramid_scales_i=[int(1 / spatial_scale)],
+        sampling_ratio_i=sample_num,
+        image_id_i=0,
+        distribute_rois_between_levels_i=0,
+        preserve_rois_order_i=0,
+        aligned_i=0,
+        outputs=2
+        )
+    return roi_feats
 
 
 def register_extra_symbolics(opset=10):

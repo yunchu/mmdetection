@@ -23,6 +23,7 @@ import onnx
 import torch
 from onnx.optimizer import optimize
 from torch.onnx.symbolic_helper import _onnx_stable_opsets as available_opsets
+from torch.onnx.symbolic_registry import register_op
 
 from mmcv.parallel import collate, scatter
 from mmdet.apis import init_detector
@@ -32,8 +33,7 @@ from mmdet.models import detectors
 from mmdet.models.dense_heads.anchor_head import AnchorHead
 from mmdet.models.roi_heads import SingleRoIExtractor
 from mmdet.utils.deployment.ssd_export_helpers import *
-from mmdet.utils.deployment.symbolic import register_extra_symbolics
-from mmdet.utils.deployment.tracer_stubs import ROIFeatureExtractorStub
+from mmdet.utils.deployment.symbolic import register_extra_symbolics, roi_align_symbolic
 
 
 def export_to_onnx(model,
@@ -158,17 +158,6 @@ def export_to_openvino(cfg, onnx_model_path, output_dir_path, input_shape=None, 
     run(command_line, shell=True, check=True)
 
 
-def stub_roi_feature_extractor(model, extractor_name):
-    if hasattr(model, extractor_name):
-        extractor = getattr(model, extractor_name)
-        if isinstance(extractor, SingleRoIExtractor):
-            setattr(model, extractor_name, ROIFeatureExtractorStub(extractor))
-        elif isinstance(extractor, torch.nn.ModuleList):
-            for i in range(len(extractor)):
-                if isinstance(extractor[i], SingleRoIExtractor):
-                    extractor[i] = ROIFeatureExtractorStub(extractor[i])
-
-
 def get_fake_input(cfg, orig_img_shape=(128, 128, 3), device='cuda'):
     test_pipeline = [LoadImage()] + cfg.data.test.pipeline[1:]
     test_pipeline = Compose(test_pipeline)
@@ -210,6 +199,7 @@ def main(args):
     fake_data = get_fake_input(cfg, device=device)
 
     if args.target == 'openvino' and not args.alt_ssd_export:
+        register_op('roi_align', roi_align_symbolic, 'mmdet_custom', args.opset)
         if hasattr(model, 'roi_head'):
             if hasattr(model.roi_head, 'bbox_roi_extractor') and isinstance(model.roi_head.bbox_roi_extractor, SingleRoIExtractor):
                 model.roi_head.bbox_roi_extractor.mode = 'openvino'

@@ -8,8 +8,10 @@ from torch.onnx.symbolic_opset9 import reshape, sub
 from torch.onnx.symbolic_opset10 import _slice
 
 from . import roi_align_ext
+from mmdet.utils.deployment.symbolic import py_exportable
 
 
+@py_exportable(op_name='roi_align')
 class RoIAlignFunction(Function):
 
     @staticmethod
@@ -99,20 +101,6 @@ class RoIAlignFunction(Function):
             output_width_i=out_w,
             sampling_ratio_i=sample_num,
             spatial_scale_f=spatial_scale)
-
-        # roi_feats, _ = g.op('ExperimentalDetectronROIFeatureExtractor',
-        #     bboxes,
-        #     features,
-        #     output_size_i=out_h,
-        #     pyramid_scales_i=[int(1 / spatial_scale)],
-        #     sampling_ratio_i=sample_num,
-        #     image_id_i=0,
-        #     distribute_rois_between_levels_i=0,
-        #     preserve_rois_order_i=0,
-        #     aligned_i=0,
-        #     outputs=2
-        #     )
-        # return roi_feats
 
 
 roi_align = RoIAlignFunction.apply
