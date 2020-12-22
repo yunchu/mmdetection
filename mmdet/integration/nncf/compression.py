@@ -72,6 +72,10 @@ def get_nncf_config_from_meta(path):
     logger = get_root_logger()
     checkpoint = torch.load(path, map_location='cpu')
     meta = checkpoint.get('meta', {})
+    if True:
+        from pprint import pformat
+        import logging
+        logging.error(pformat({'meta': meta}))
 
     nncf_enable_compression = meta.get('nncf_enable_compression', False)
     assert nncf_enable_compression, \
