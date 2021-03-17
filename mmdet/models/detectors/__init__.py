@@ -30,7 +30,7 @@ from .yolact import YOLACT
 from .yolo import YOLOV3
 
 # Replace custom ops
-import mmdet.ops.nms
+#import mmdet.ops.nms
 #import mmdet.ops.roi_align
 
 

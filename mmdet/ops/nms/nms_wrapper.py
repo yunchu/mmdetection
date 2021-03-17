@@ -5,7 +5,7 @@ from torch.onnx import is_in_onnx_export
 
 from mmdet.integration.nncf import no_nncf_trace
 from mmdet.utils.deployment.symbolic import py_symbolic
-from . import nms_ext
+#from . import nms_ext
 
 
 def nms(dets, iou_threshold, score_thr=0.0, max_num=-1, device_id=None):

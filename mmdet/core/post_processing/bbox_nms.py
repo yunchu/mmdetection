@@ -2,7 +2,7 @@ import sys
 import torch
 from torch.onnx import is_in_onnx_export
 
-import mmdet.ops.nms  # Replace mmcv.ops.nms by one from mmdet.ops.nms
+#import mmdet.ops.nms  # Replace mmcv.ops.nms by one from mmdet.ops.nms
 from mmdet.integration.nncf import no_nncf_trace
 from mmcv.ops import batched_nms
 from ...utils.deployment.symbolic import py_symbolic
@@ -86,6 +86,9 @@ def multiclass_nms_core(multi_bboxes, multi_scores, score_thr, nms_cfg, max_num=
         return dets, None
 
     # TODO: add size check before feed into batched_nms
+    for key in ['score_thr', 'max_num', 'type']:  # Remain only 'iou_threshold'
+        if key in nms_cfg.keys():
+            nms_cfg.pop(key)
     dets, keep = batched_nms(bboxes, scores, labels, nms_cfg)
 
     labels = labels[keep]
