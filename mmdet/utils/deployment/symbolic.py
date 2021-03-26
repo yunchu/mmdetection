@@ -275,6 +275,15 @@ def roi_feature_extractor_symbolics(g, rois, *feats, output_size=1, featmap_stri
     return roi_feats
 
 
+def patch_nms():
+    from mmcv.ops.nms import NMSop
+    original_forward = NMSop.forward
+    def forward(ctx, bboxes, scores, iou_threshold, score_threshold, offset):
+        with torch.jit._disable_tracing():
+            inds = original_forward(ctx, bboxes, scores, iou_threshold, score_threshold, offset)
+        return inds
+    NMSop.forward = staticmethod(forward)
+
 
 def register_extra_symbolics(opset=10):
     assert opset >= 10
@@ -282,6 +291,7 @@ def register_extra_symbolics(opset=10):
     register_op('topk', topk_symbolic, '', opset)
     register_op('nms_core', nms_core_symbolic, 'mmdet_custom', opset)
     # register_op('multiclass_nms_core', multiclass_nms_core_symbolic, 'mmdet_custom', opset)
+    patch_nms()
 
 
 def register_extra_symbolics_for_openvino(opset=10):
