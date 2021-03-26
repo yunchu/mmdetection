@@ -275,14 +275,90 @@ def roi_feature_extractor_symbolics(g, rois, *feats, output_size=1, featmap_stri
     return roi_feats
 
 
+# This patch fixes the following bug:
+# RuntimeError: 0 INTERNAL ASSERT FAILED at /pytorch/torch/csrc/jit/ir/alias_analysis.cpp:318, please report a bug to PyTorch. We don't have an op for aten::to but it isn't a special case.  Argument types: Tensor, None, int, Device, bool, bool, bool, None,
+# In PyTorch version >= 1.7.1 it should be fixed.
 def patch_nms():
+    from packaging import version
+    if version.parse(torch.__version__) < version.parse('1.7.1')
+        from mmcv.ops.nms import NMSop
+        original_forward = NMSop.forward
+        def forward(ctx, bboxes, scores, iou_threshold, offset):
+            with torch.jit._disable_tracing():
+                inds = original_forward(ctx, bboxes, scores, iou_threshold, offset)
+            return inds
+        NMSop.forward = staticmethod(forward)
+
+
+# This function adds 'score_threshold' to ONNX::NonMaxSuppression.
+# It should be removed after adding support for 'score_threshold' in MMCV.
+def nms_symbolic_with_score_thr(g, bboxes, scores, iou_threshold, offset, score_threshold):
+    from sys import maxsize
+    from mmcv.onnx import is_custom_op_loaded
+    has_custom_op = is_custom_op_loaded()
+    if has_custom_op:
+        return g.op(
+            'mmcv::NonMaxSuppression',
+            bboxes,
+            scores,
+            iou_threshold_f=float(iou_threshold),
+            offset_i=int(offset))
+    else:
+        from torch.onnx.symbolic_opset9 import select, squeeze, unsqueeze
+        boxes = unsqueeze(g, bboxes, 0)
+        scores = unsqueeze(g, unsqueeze(g, scores, 0), 0)
+        max_output_per_class = g.op(
+            'Constant',
+            value_t=torch.tensor([maxsize], dtype=torch.long))
+        iou_threshold = g.op(
+            'Constant',
+            value_t=torch.tensor([iou_threshold], dtype=torch.float))
+        score_threshold = g.op(
+            'Constant',
+            value_t=torch.tensor([score_threshold], dtype=torch.float))
+        nms_out = g.op('NonMaxSuppression', boxes, scores,
+                       max_output_per_class, iou_threshold, score_threshold)
+        return squeeze(
+            g,
+            select(
+                g, nms_out, 1,
+                g.op(
+                    'Constant',
+                    value_t=torch.tensor([2], dtype=torch.long))), 1)
+
+
+# This function adds 'score_threshold' to NMSop from MMCV.
+# It should be removed after adding support for 'score_threshold' in MMCV.
+def set_score_threshold_for_NMSop(score_thr=0):
     from mmcv.ops.nms import NMSop
+
     original_forward = NMSop.forward
-    def forward(ctx, bboxes, scores, iou_threshold, score_threshold, offset):
+    def forward(ctx, bboxes, scores, iou_threshold, offset, score_threshold=score_thr):
         with torch.jit._disable_tracing():
-            inds = original_forward(ctx, bboxes, scores, iou_threshold, score_threshold, offset)
+            valid_mask = scores > score_threshold
+            bboxes, scores = bboxes[valid_mask], scores[valid_mask]
+            inds = original_forward(ctx, bboxes, scores, iou_threshold, offset)
         return inds
     NMSop.forward = staticmethod(forward)
+
+    def symbolic(g, bboxes, scores, iou_threshold, offset, score_threshold=score_thr):
+        return nms_symbolic_with_score_thr(g, bboxes, scores, iou_threshold, offset, score_threshold)
+    NMSop.symbolic = staticmethod(symbolic)
+
+
+# This decorator adds 'score_threshold' to the NMSop from the MMCV.
+# It should be removed after adding support for 'score_threshold' in MMCV.
+def add_score_thr(score_thr=0):
+    def decorator(func):
+        @wraps(func)
+        def wrapped_function(*args, **kwargs):
+            return func(*args, **kwargs)
+        
+        from torch.onnx import is_in_onnx_export
+        if is_in_onnx_export():
+            set_score_threshold_for_NMSop(score_thr)
+        return wrapped_function
+    return decorator
 
 
 def register_extra_symbolics(opset=10):

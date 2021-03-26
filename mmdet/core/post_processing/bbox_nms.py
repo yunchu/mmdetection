@@ -63,7 +63,6 @@ def multiclass_nms_core(multi_bboxes, multi_scores, score_thr, nms_cfg, max_num=
         bboxes = multi_bboxes[:, None].expand(multi_scores.size(0), num_classes, 4)
     scores = multi_scores
     
-    nms_cfg['score_thr'] = score_thr
     if is_in_onnx_export():
         labels = torch.arange(num_classes, dtype=torch.long, device=scores.device) \
                       .unsqueeze(0) \
@@ -74,6 +73,7 @@ def multiclass_nms_core(multi_bboxes, multi_scores, score_thr, nms_cfg, max_num=
 
         assert nms_cfg['type'] == 'nms', 'Only vanilla NMS is compatible with ONNX export'
         nms_cfg['max_num'] = max_num if max_num > 0 else sys.maxsize
+        nms_cfg['score_thr'] = score_thr
     else:
         with no_nncf_trace():
             valid_mask = scores > score_thr
@@ -86,9 +86,13 @@ def multiclass_nms_core(multi_bboxes, multi_scores, score_thr, nms_cfg, max_num=
         return dets, None
 
     # TODO: add size check before feed into batched_nms
-    for key in ['max_num', 'type']:  # Remain only 'iou_threshold' //'score_thr'
+    for key in ['max_num', 'type', 'score_thr']:  # Remain only 'iou_threshold'
         if key in nms_cfg.keys():
             nms_cfg.pop(key)
+
+    from mmcv.ops import batched_nms
+    from ...utils.deployment.symbolic import add_score_thr
+    batched_nms = add_score_thr(score_thr)(batched_nms)
     dets, keep = batched_nms(bboxes, scores, labels, nms_cfg)
 
     labels = labels[keep]
