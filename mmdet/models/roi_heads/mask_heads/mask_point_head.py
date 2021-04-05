@@ -154,7 +154,7 @@ class MaskPointHead(nn.Module):
                     0, pos_assigned_gt_inds))
             gt_masks_th = gt_masks_th.unsqueeze(1)
             rel_img_points = rel_roi_point_to_rel_img_point(
-                rois, rel_roi_points, gt_masks_th.shape[2:])
+                rois, rel_roi_points, gt_masks_th)
             point_targets = point_sample(gt_masks_th,
                                          rel_img_points).squeeze(1)
         else:
