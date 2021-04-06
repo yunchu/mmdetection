@@ -3,7 +3,7 @@
 import torch
 import torch.nn as nn
 from mmcv.cnn import ConvModule, normal_init
-from mmcv.ops import point_sample, rel_roi_point_to_rel_img_point
+from mmdet.ops.point_sample import point_sample, rel_roi_point_to_rel_img_point
 
 from mmdet.models.builder import HEADS, build_loss
 

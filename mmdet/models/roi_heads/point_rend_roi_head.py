@@ -2,7 +2,7 @@
 
 import torch
 import torch.nn.functional as F
-from mmcv.ops import point_sample, rel_roi_point_to_rel_img_point
+from mmdet.ops.point_sample import point_sample, rel_roi_point_to_rel_img_point
 
 from mmdet.core import bbox2roi, bbox_mapping, merge_aug_masks
 from mmdet.core.utils.misc import dummy_pad
