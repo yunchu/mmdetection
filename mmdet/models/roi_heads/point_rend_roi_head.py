@@ -79,18 +79,25 @@ class PointRendRoIHead(StandardRoIHead):
             feats = x[idx]
             spatial_scale = 1. / float(
                 self.mask_roi_extractor.featmap_strides[idx])
-            point_feats = []
-            for batch_ind in range(num_imgs):
-                # unravel batch dim
-                feat = feats[batch_ind].unsqueeze(0)
-                inds = (rois[:, 0].long() == batch_ind)
-                if inds.any():
-                    rel_img_points = rel_roi_point_to_rel_img_point(
-                        rois[inds], rel_roi_points[inds], feat,
-                        spatial_scale).unsqueeze(0)
-                    point_feat = point_sample(feat, rel_img_points)
-                    point_feat = point_feat.squeeze(0).transpose(0, 1)
-                    point_feats.append(point_feat)
+            if torch.onnx.is_in_onnx_export():
+                feat = feats[0].unsqueeze(0)
+                rel_img_points = rel_roi_point_to_rel_img_point(
+                    rois, rel_roi_points, feat, spatial_scale).unsqueeze(0)
+                point_feat = point_sample(feat, rel_img_points)
+                point_feats = [point_feat.squeeze(0).transpose(0, 1)]
+            else:
+                point_feats = []
+                for batch_ind in range(num_imgs):
+                    # unravel batch dim
+                    feat = feats[batch_ind].unsqueeze(0)
+                    inds = (rois[:, 0].long() == batch_ind)
+                    if inds.any():
+                        rel_img_points = rel_roi_point_to_rel_img_point(
+                            rois[inds], rel_roi_points[inds], feat,
+                            spatial_scale).unsqueeze(0)
+                        point_feat = point_sample(feat, rel_img_points)
+                        point_feat = point_feat.squeeze(0).transpose(0, 1)
+                        point_feats.append(point_feat)
             fine_grained_feats.append(torch.cat(point_feats, dim=0))
         return torch.cat(fine_grained_feats, dim=1)
 
