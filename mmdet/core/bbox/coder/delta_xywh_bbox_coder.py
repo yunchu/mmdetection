@@ -120,35 +120,6 @@ def bbox2delta(proposals, gt, means=(0., 0., 0., 0.), stds=(1., 1., 1., 1.)):
     return deltas
 
 
-def clamp(x, min, max):
-    if torch.onnx.is_in_onnx_export():
-        is_min_tensor = isinstance(min, torch.Tensor)
-        is_max_tensor = isinstance(max, torch.Tensor)
-
-        if is_min_tensor and is_max_tensor:
-            y = x.clamp(min=min, max=max)
-        else:
-            device = x.device
-            dtype = x.dtype
-
-            y = x
-            d = len(y.shape)
-
-            min_val = torch.as_tensor(min, dtype=dtype, device=device)
-            y = torch.stack(
-                [y, min_val.view([1, ] * y.dim()).expand_as(y)], dim=d)
-            y = torch.max(y, dim=d, keepdim=False)[0]
-
-            max_val = torch.as_tensor(max, dtype=dtype, device=device)
-            y = torch.stack(
-                [y, max_val.view([1, ] * y.dim()).expand_as(y)], dim=d)
-            y = torch.min(y, dim=d, keepdim=False)[0]
-    else:
-        y = x.clamp(min=min, max=max)
-
-    return y
-
-
 def delta2bbox(rois,
                deltas,
                means=(0., 0., 0., 0.),
@@ -225,10 +196,9 @@ def delta2bbox(rois,
     x2 = gx + gw * 0.5
     y2 = gy + gh * 0.5
     if clip_border and max_shape is not None:
-        #max_shape = [int(v.item()) for v in max_shape]
-        x1 = clamp(x1, min=0, max=max_shape[1])
-        y1 = clamp(y1, min=0, max=max_shape[0])
-        x2 = clamp(x2, min=0, max=max_shape[1])
-        y2 = clamp(y2, min=0, max=max_shape[0])
+        x1 = x1.clamp(min=0, max=max_shape[1])
+        y1 = y1.clamp(min=0, max=max_shape[0])
+        x2 = x2.clamp(min=0, max=max_shape[1])
+        y2 = y2.clamp(min=0, max=max_shape[0])
     bboxes = torch.stack([x1, y1, x2, y2], dim=-1).view(deltas.size())
     return bboxes
