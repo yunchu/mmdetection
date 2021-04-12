@@ -181,7 +181,7 @@ def batched_nms(bboxes, scores, inds, nms_cfg, class_agnostic=False):
     dets, keep = nms_op(
         torch.cat([bboxes_for_nms, scores[:, None]], -1), **nms_cfg_)
     bboxes = bboxes[keep]
-    scores = dets[:, -1]
+    scores = dets[:, 4]
     return torch.cat([bboxes, scores[:, None]], -1), keep
 
 
