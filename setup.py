@@ -131,10 +131,11 @@ if __name__ == '__main__':
         version=get_version(),
         description='OpenVINO Training Extensions Object Detection toolbox',
         long_description=readme(),
+        long_description_content_type='text/markdown',
         author='OpenMMLab, Intel',
-        author_email='chenkaidev@gmail.com',
+        author_email='icv.algo@intel.com',
         keywords='computer vision, object detection, OpenVINO, OpenVINO training extensions, ONNX',
-        url='https://github.com/opencv/mmdetection',
+        url='https://github.com/openvinotoolkit/mmdetection',
         packages=find_packages(exclude=('configs', 'tools', 'demo')),
         classifiers=[
             'Development Status :: 5 - Production/Stable',
@@ -155,14 +156,6 @@ if __name__ == '__main__':
             'build': parse_requirements('requirements/build.txt'),
             'optional': parse_requirements('requirements/optional.txt'),
         },
-        ext_modules=[
-            make_cuda_ext(
-                name='nms_ext',
-                module='mmdet.ops.nms',
-                sources=['src/nms_ext.cpp', 'src/cpu/nms_cpu.cpp'],
-                sources_cuda=[
-                    'src/cuda/nms_cuda.cpp', 'src/cuda/nms_kernel.cu'
-                ]),
-        ],
+        ext_modules=[],
         cmdclass={'build_ext': BuildExtension},
         zip_safe=False)
