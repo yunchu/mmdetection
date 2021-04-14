@@ -130,8 +130,18 @@ def rel_roi_point_to_abs_img_point(rois, rel_roi_points):
     return abs_img_points
 
 
+def get_shape_from_feature_map(x):
+    if torch.onnx.is_in_onnx_export():
+        img_shape = shape_as_tensor(
+            x)[2:].flip(0).view(1, 1, 2).to(x.device).float()
+    else:
+        img_shape = torch.tensor(
+            x.shape[2:]).flip(0).view(1, 1, 2).to(x.device).float()
+    return img_shape
+
+
 def abs_img_point_to_rel_img_point(abs_img_points,
-                                   feature_map,
+                                   img,
                                    spatial_scale=1.):
     """Convert image based absolute point coordinates to image based relative
     coordinates for sampling.
@@ -139,24 +149,32 @@ def abs_img_point_to_rel_img_point(abs_img_points,
     Args:
         abs_img_points (Tensor): Image based absolute point coordinates,
             shape (N, P, 2)
-        feature_map (Tensor): Feature map.
+        img (tuple): (height, width) of image or feature map.
         spatial_scale (float): Scale points by this factor. Default: 1.
 
     Returns:
         Tensor: Image based relative point coordinates for sampling,
             shape (N, P, 2)
     """
-    if torch.onnx.is_in_onnx_export():
-        img_shape = shape_as_tensor(feature_map)[2:].flip(0).view(1, 1, 2).to(feature_map.device).float()
-    else:
-        img_shape = torch.tensor(feature_map.shape[2:]).flip(0).view(1, 1, 2).to(feature_map.device).float()
 
-    return abs_img_points / img_shape * spatial_scale
+    assert (isinstance(img, tuple) and len(img) == 2) or \
+           (isinstance(img, torch.Tensor) and len(img.shape) == 4)
+
+    if isinstance(img, tuple):
+        h, w = img
+        scale = torch.tensor([w, h],
+                            dtype=torch.float,
+                            device=abs_img_points.device)
+        scale = scale.view(1, 1, 2)
+    else:
+        scale = get_shape_from_feature_map(img)
+
+    return abs_img_points / scale * spatial_scale
 
 
 def rel_roi_point_to_rel_img_point(rois,
                                    rel_roi_points,
-                                   img_shape,
+                                   img,
                                    spatial_scale=1.):
     """Convert roi based relative point coordinates to image based absolute
     point coordinates.
@@ -174,7 +192,7 @@ def rel_roi_point_to_rel_img_point(rois,
     """
 
     abs_img_point = rel_roi_point_to_abs_img_point(rois, rel_roi_points)
-    rel_img_point = abs_img_point_to_rel_img_point(abs_img_point, img_shape,
+    rel_img_point = abs_img_point_to_rel_img_point(abs_img_point, img,
                                                    spatial_scale)
 
     return rel_img_point
