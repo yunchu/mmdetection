@@ -1,5 +1,5 @@
 import torch.nn as nn
-from mmcv.cnn import ConvModule, Linear, constant_init, xavier_init
+from mmcv.cnn import Conv2d, ConvModule, Linear, constant_init, xavier_init
 from mmcv.runner import auto_fp16
 
 from mmdet.models.builder import HEADS
@@ -32,7 +32,7 @@ class CoarseMaskHead(FCNMaskHead):
         super(CoarseMaskHead, self).__init__(
             *arg, num_convs=num_convs, upsample_cfg=dict(type=None), **kwarg)
         self.num_fcs = num_fcs
-        assert self.num_fcs > 0
+        #assert self.num_fcs > 0
         self.fc_out_channels = fc_out_channels
         self.downsample_factor = downsample_factor
         assert self.downsample_factor >= 1
@@ -60,19 +60,27 @@ class CoarseMaskHead(FCNMaskHead):
 
         last_layer_dim = self.conv_out_channels * self.output_area
 
-        self.fcs = nn.ModuleList()
-        for i in range(num_fcs):
-            fc_in_channels = (
-                last_layer_dim if i == 0 else self.fc_out_channels)
-            self.fcs.append(Linear(fc_in_channels, self.fc_out_channels))
-        last_layer_dim = self.fc_out_channels
+        if self.num_fcs > 0:
+            self.fcs = nn.ModuleList()
+            for i in range(num_fcs):
+                fc_in_channels = (
+                    last_layer_dim if i == 0 else self.fc_out_channels)
+                self.fcs.append(Linear(fc_in_channels, self.fc_out_channels))
+        else:
+            self.fcs = None
+
+        last_layer_dim = self.fc_out_channels if self.num_fcs > 0 else self.conv_out_channels
         output_channels = self.num_classes * self.output_area
-        self.fc_logits = Linear(last_layer_dim, output_channels)
+        if self.fcs is not None:
+            self.fc_logits = Linear(last_layer_dim, output_channels)
+        else:
+            self.fc_logits = Conv2d(last_layer_dim, self.num_classes, 1)
 
     def init_weights(self):
-        for m in self.fcs.modules():
-            if isinstance(m, nn.Linear):
-                xavier_init(m)
+        if self.fcs is not None:
+            for m in self.fcs.modules():
+                if isinstance(m, nn.Linear):
+                    xavier_init(m)
         constant_init(self.fc_logits, 0.001)
 
     @auto_fp16()
@@ -83,9 +91,12 @@ class CoarseMaskHead(FCNMaskHead):
         if self.downsample_conv is not None:
             x = self.downsample_conv(x)
 
-        x = x.flatten(1)
-        for fc in self.fcs:
-            x = self.relu(fc(x))
-        mask_pred = self.fc_logits(x).view(
-            x.size(0), self.num_classes, *self.output_size)
+        if self.fcs is not None:
+            x = x.flatten(1)
+            for fc in self.fcs:
+                x = self.relu(fc(x))
+        mask_pred = self.fc_logits(x)
+        if len(mask_pred.shape) != 4:
+            mask_pred = mask_pred.view(
+                x.size(0), self.num_classes, *self.output_size)
         return mask_pred
