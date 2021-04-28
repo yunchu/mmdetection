@@ -1352,6 +1352,12 @@ class Albu(object):
                 results['bboxes'] = np.array(
                     results['bboxes'], dtype=np.float32)
             results['bboxes'] = results['bboxes'].reshape(-1, 4)
+            '''
+            h, w = results['image'].shape[0], results['image'].shape[1]
+            results['bboxes'][:, 2] = np.clip(results['bboxes'][:, 2], 0, w - results['bboxes'][:, 0] - 1)
+            results['bboxes'][:, 3] = np.clip(results['bboxes'][:, 3], 0, h - results['bboxes'][:, 1] - 1)
+            '''
+            #print(np.sum((results['bboxes'][:, 3] + results['bboxes'][:, 1]) >= h))
 
             # filter label_fields
             if self.filter_lost_elements:
@@ -1365,13 +1371,14 @@ class Albu(object):
                     results['masks'] = ori_masks.__class__(
                         results['masks'], results['image'].shape[0],
                         results['image'].shape[1])
+                    # assert len(results['masks']) == len(results['texts'])
 
                 if 'texts' in results:
                     results['texts'] = np.array(
                         [results['texts'][i] for i in results['idx_mapper']])
 
                     assert len(results['bboxes']) == len(results['texts'])
-                    assert len(results['masks']) == len(results['texts'])
+                    # assert len(results['masks']) == len(results['texts'])
 
                 if (not len(results['idx_mapper'])
                         and self.skip_img_without_anno):
