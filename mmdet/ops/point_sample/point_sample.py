@@ -1,10 +1,13 @@
 # Modified from https://github.com/facebookresearch/detectron2/tree/master/projects/PointRend  # noqa
 
+from os import path as osp
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.nn.modules.utils import _pair
 from torch.onnx.operators import shape_as_tensor
+
+from mmcv.ops import get_onnxruntime_op_path
 
 
 def bilinear_grid_sample(im, grid, align_corners=False):
@@ -54,6 +57,11 @@ def bilinear_grid_sample(im, grid, align_corners=False):
     Id = torch.gather(im_padded, 2, x1_y1)
 
     return (Ia * wa + Ib * wb + Ic * wc + Id * wd).reshape(n, c, gh, gw)
+
+
+def is_in_onnx_export_without_custom_ops():
+    ort_custom_op_path = get_onnxruntime_op_path()
+    return torch.onnx.is_in_onnx_export() and not osp.exists(ort_custom_op_path)
 
 
 def normalize(grid):
@@ -120,10 +128,8 @@ def rel_roi_point_to_abs_img_point(rois, rel_roi_points):
         if rois.size(1) == 5:
             rois = rois[:, 1:]
         abs_img_points = rel_roi_points.clone()
-        a = abs_img_points[:, :, 0] * (
-            rois[:, None, 2] - rois[:, None, 0])
-        b = abs_img_points[:, :, 1] * (
-            rois[:, None, 3] - rois[:, None, 1])
+        a = abs_img_points[:, :, 0] * (rois[:, None, 2] - rois[:, None, 0])
+        b = abs_img_points[:, :, 1] * (rois[:, None, 3] - rois[:, None, 1])
         a += rois[:, None, 0]
         b += rois[:, None, 1]
         abs_img_points = torch.stack([a, b], dim=2)
@@ -132,24 +138,22 @@ def rel_roi_point_to_abs_img_point(rois, rel_roi_points):
 
 def get_shape_from_feature_map(x):
     if torch.onnx.is_in_onnx_export():
-        img_shape = shape_as_tensor(
-            x)[2:].flip(0).view(1, 1, 2).to(x.device).float()
+        img_shape = shape_as_tensor(x)[2:].flip(0).view(1, 1, 2).to(
+            x.device).float()
     else:
-        img_shape = torch.tensor(
-            x.shape[2:]).flip(0).view(1, 1, 2).to(x.device).float()
+        img_shape = torch.tensor(x.shape[2:]).flip(0).view(1, 1, 2).to(
+            x.device).float()
     return img_shape
 
 
-def abs_img_point_to_rel_img_point(abs_img_points,
-                                   img,
-                                   spatial_scale=1.):
+def abs_img_point_to_rel_img_point(abs_img_points, img, spatial_scale=1.):
     """Convert image based absolute point coordinates to image based relative
     coordinates for sampling.
 
     Args:
         abs_img_points (Tensor): Image based absolute point coordinates,
             shape (N, P, 2)
-        img (tuple): (height, width) of image or feature map.
+        img (tuple/Tensor): (height, width) of image or feature map.
         spatial_scale (float): Scale points by this factor. Default: 1.
 
     Returns:
@@ -163,8 +167,8 @@ def abs_img_point_to_rel_img_point(abs_img_points,
     if isinstance(img, tuple):
         h, w = img
         scale = torch.tensor([w, h],
-                            dtype=torch.float,
-                            device=abs_img_points.device)
+                             dtype=torch.float,
+                             device=abs_img_points.device)
         scale = scale.view(1, 1, 2)
     else:
         scale = get_shape_from_feature_map(img)
@@ -183,7 +187,7 @@ def rel_roi_point_to_rel_img_point(rois,
         rois (Tensor): RoIs or BBoxes, shape (N, 4) or (N, 5)
         rel_roi_points (Tensor): Point coordinates inside RoI, relative to
             RoI, location, range (0, 1), shape (N, P, 2)
-        img_shape (tuple): (height, width) of image or feature map.
+        img (tuple/Tensor): (height, width) of image or feature map.
         spatial_scale (float): Scale points by this factor. Default: 1.
 
     Returns:
@@ -218,10 +222,13 @@ def point_sample(input, points, align_corners=False, **kwargs):
     if points.dim() == 3:
         add_dim = True
         points = points.unsqueeze(2)
-    if torch.onnx.is_in_onnx_export():
-        output = bilinear_grid_sample(input, denormalize(points), align_corners=align_corners)
+    print(f'>>>>> {input.shape} >> {points.shape}')
+    if is_in_onnx_export_without_custom_ops():
+        output = bilinear_grid_sample(
+            input, denormalize(points), align_corners=align_corners)
     else:
-        output = F.grid_sample(input, denormalize(points), align_corners=align_corners, **kwargs)
+        output = F.grid_sample(
+            input, denormalize(points), align_corners=align_corners, **kwargs)
     if add_dim:
         output = output.squeeze(3)
     return output
@@ -253,11 +260,11 @@ class SimpleRoIAlign(nn.Module):
         rel_roi_points = generate_grid(
             num_rois, self.output_size, device=rois.device)
 
-        if torch.onnx.is_in_onnx_export():
-            feat = features[0].unsqueeze(0)
+        if torch.onnx.is_in_onnx_export() and num_imgs == 1:
             rel_img_points = rel_roi_point_to_rel_img_point(
-                rois, rel_roi_points, feat, self.spatial_scale).unsqueeze(0)
-            point_feat = point_sample(feat, rel_img_points, align_corners=not self.aligned)
+                rois, rel_roi_points, features, self.spatial_scale).unsqueeze(0)
+            point_feat = point_sample(
+                features, rel_img_points, align_corners=not self.aligned)
             point_feats = [point_feat.squeeze(0).transpose(0, 1)]
         else:
             point_feats = []
@@ -269,6 +276,7 @@ class SimpleRoIAlign(nn.Module):
                     rel_img_points = rel_roi_point_to_rel_img_point(
                         rois[inds], rel_roi_points[inds], feat,
                         self.spatial_scale).unsqueeze(0)
+                    print('\n----> SimpleRoIAlign ->')
                     point_feat = point_sample(
                         feat, rel_img_points, align_corners=not self.aligned)
                     point_feat = point_feat.squeeze(0).transpose(0, 1)

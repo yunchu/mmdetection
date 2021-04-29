@@ -187,7 +187,8 @@ def show_result_pyplot(model,
                        fig_size=(15, 10),
                        title='result',
                        block=True,
-                       wait_time=0):
+                       wait_time=0,
+                       output_file=None):
     """Visualize the detection results on the image.
 
     Args:
@@ -215,4 +216,5 @@ def show_result_pyplot(model,
         wait_time=wait_time,
         win_name=title,
         bbox_color=(72, 101, 241),
-        text_color=(72, 101, 241))
+        text_color=(72, 101, 241),
+        out_file=output_file)

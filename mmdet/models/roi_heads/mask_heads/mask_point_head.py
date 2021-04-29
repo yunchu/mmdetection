@@ -206,7 +206,7 @@ class MaskPointHead(nn.Module):
             gt_class_logits = mask_pred.clone()
         else:
             inds = torch.arange(mask_pred.shape[0], device=mask_pred.device)
-            gt_class_logits = mask_pred[inds, labels].unsqueeze(1)
+            gt_class_logits = mask_pred[inds, labels.long()].unsqueeze(1)
         return -torch.abs(gt_class_logits)
 
     def get_roi_rel_points_train(self, mask_pred, labels, cfg):
