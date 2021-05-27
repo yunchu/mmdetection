@@ -6,10 +6,8 @@ system and pass it through an OpenVINO model for inference. Finally the frame wi
 shapes. Press Q to quit the program.
 """
 
-import colorsys
-import random
-import os.path as osp
 import json
+import os.path as osp
 from argparse import ArgumentParser
 from typing import Any, Dict, List, Tuple
 
@@ -23,18 +21,18 @@ except ImportError:
     # https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_pip.html
     import os
     import sys
-    if 'win' in sys.platform:
+    if "win" in sys.platform:
         try:
-            library_dir = os.path.dirname(sys.executable) + '\..\Library\\bin'
-            current_path = os.environ.get('PATH', '')
-            os.environ['PATH'] = f'{library_dir};{current_path}'
+            library_dir = os.path.dirname(sys.executable) + "\..\Library\\bin"
+            current_path = os.environ.get("PATH", "")
+            os.environ["PATH"] = f"{library_dir};{current_path}"
             from openvino.inference_engine.ie_api import IECore
         except ImportError:
             raise ImportError(
-                'Please add the library dir to the system PATH. See https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_pip.html')
+                "Please add the library dir to the system PATH. See https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_pip.html")
     else:
         raise ImportError(
-            'Please add the library dir to the system PATH. See https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_pip.html')
+            "Please add the library dir to the system PATH. See https://docs.openvinotoolkit.org/latest/openvino_docs_install_guides_installing_openvino_pip.html")
 
 
 __author__ = "OTE Development Team"
@@ -47,50 +45,6 @@ __status__ = "Alpha"
 __updated__ = "05.27.2021"
 
 
-# FIXME. Just to debug.
-class ColorPalette:
-    def __init__(self, n, rng=None):
-        assert n > 0
-
-        if rng is None:
-            rng = random.Random(0xACE)
-
-        candidates_num = 100
-        hsv_colors = [(1.0, 1.0, 1.0)]
-        for _ in range(1, n):
-            colors_candidates = [(rng.random(), rng.uniform(0.8, 1.0), rng.uniform(0.5, 1.0))
-                                 for _ in range(candidates_num)]
-            min_distances = [self.min_distance(hsv_colors, c) for c in colors_candidates]
-            arg_max = np.argmax(min_distances)
-            hsv_colors.append(colors_candidates[arg_max])
-
-        self.palette = [self.hsv2rgb(*hsv) for hsv in hsv_colors]
-
-    @staticmethod
-    def dist(c1, c2):
-        dh = min(abs(c1[0] - c2[0]), 1 - abs(c1[0] - c2[0])) * 2
-        ds = abs(c1[1] - c2[1])
-        dv = abs(c1[2] - c2[2])
-        return dh * dh + ds * ds + dv * dv
-
-    @classmethod
-    def min_distance(cls, colors_set, color_candidate):
-        distances = [cls.dist(o, color_candidate) for o in colors_set]
-        return np.min(distances)
-
-    @staticmethod
-    def hsv2rgb(h, s, v):
-        return tuple(round(c * 255) for c in colorsys.hsv_to_rgb(h, s, v))
-
-    def __getitem__(self, n):
-        return self.palette[n % len(self.palette)]
-
-    def __len__(self):
-        return len(self.palette)
-
-
-default_palette = ColorPalette(100)
-
 def create_label_colour_map(labels: List[Dict[str, Any]]) -> Dict[int, Tuple]:
     """
     Maps the labels in a dictionary with its color values
@@ -101,10 +55,7 @@ def create_label_colour_map(labels: List[Dict[str, Any]]) -> Dict[int, Tuple]:
     """
     label_map = {}
     for index, label in enumerate(labels):
-        if "color" in label:
-            label_map[index] = tuple(label["color"].values())
-        else:
-            label_map[index] = default_palette[index]
+        label_map[index] = tuple(label["color"].values())
     return label_map
 
 
@@ -144,9 +95,9 @@ class Streamer:
 
 
 class Model:
-    def __init__(self, model_path, ie=None, device='CPU', classes=None):
+    def __init__(self, model_path, ie=None, device="CPU", classes=None):
         self.ie = IECore() if ie is None else ie
-        bin_path = osp.splitext(model_path)[0] + '.bin'
+        bin_path = osp.splitext(model_path)[0] + ".bin"
         self.net = self.ie.read_network(model_path, bin_path)
 
         self.device = None
@@ -177,7 +128,7 @@ class Model:
                 reshape_needed = True
                 break
         if reshape_needed:
-            print(f'reshape net to {input_shapes}')
+            print(f"reshape net to {input_shapes}")
             self.net.reshape(input_shapes)
             self.exec_net = self.ie.load_network(network=self.net, device_name=self.device, num_requests=1)
 
@@ -205,40 +156,37 @@ class Model:
         outputs = self.postprocess(outputs)
         return outputs
 
-    def show(self, data, result, dataset=None, score_thr=0.3, wait_time=0):
-        pass
-
 
 class Detector(Model):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        batch_size = self.net.input_info['image'].input_data.shape[0]
-        assert batch_size == 1, 'Only batch 1 is supported.'
+        batch_size = self.net.input_info["image"].input_data.shape[0]
+        assert batch_size == 1, "Only batch 1 is supported."
 
     def __call__(self, inputs):
         inputs = self.unify_inputs(inputs)
         output = super().__call__(inputs)
 
-        if 'detection_out' in output:
-            detection_out = output['detection_out']
-            output['labels'] = detection_out[0, 0, :, 1].astype(np.int32)
-            output['boxes'] = detection_out[0, 0, :, 3:] * np.tile(inputs['image'].shape[:1:-1], 2)
-            output['boxes'] = np.concatenate((output['boxes'], detection_out[0, 0, :, 2:3]), axis=1)
-            del output['detection_out']
+        if "detection_out" in output:
+            detection_out = output["detection_out"]
+            output["labels"] = detection_out[0, 0, :, 1].astype(np.int32)
+            output["boxes"] = detection_out[0, 0, :, 3:] * np.tile(inputs["image"].shape[:1:-1], 2)
+            output["boxes"] = np.concatenate((output["boxes"], detection_out[0, 0, :, 2:3]), axis=1)
+            del output["detection_out"]
             return output
 
         outs = output
         output = {}
         output = {
-            'labels': self.get(outs, 'labels'),
-            'boxes': self.get(outs, 'boxes')
+            "labels": self.get(outs, "labels"),
+            "boxes": self.get(outs, "boxes")
         }
-        valid_detections_mask = output['labels'] >= 0
-        output['labels'] = output['labels'][valid_detections_mask]
-        output['boxes'] = output['boxes'][valid_detections_mask]
+        valid_detections_mask = output["labels"] >= 0
+        output["labels"] = output["labels"][valid_detections_mask]
+        output["boxes"] = output["boxes"][valid_detections_mask]
         try:
-            output['masks'] = self.get(outs, 'masks')
-            output['masks'] = output['masks'][valid_detections_mask]
+            output["masks"] = self.get(outs, "masks")
+            output["masks"] = output["masks"][valid_detections_mask]
         except RuntimeError:
             pass
 
@@ -258,26 +206,26 @@ def resize_image(image, size, keep_aspect_ratio=False):
 def preprocess(image, target_size=(800, 800), keep_aspect_ratio_resize=False):
     orig_w, orig_h = target_size
     resized_image = resize_image(image, (orig_w, orig_h), keep_aspect_ratio_resize)
-    meta = {'original_shape': image.shape,
-            'target_size': target_size,
-            'resized_shape': resized_image.shape}
+    meta = {"original_shape": image.shape,
+            "target_size": target_size,
+            "resized_shape": resized_image.shape}
 
     h, w = resized_image.shape[:2]
     if h != orig_h or w != orig_w:
         resized_image = np.pad(resized_image, ((0, orig_h - h), (0, orig_w - w), (0, 0)),
-                               mode='constant', constant_values=0)
+                               mode="constant", constant_values=0)
     resized_image = resized_image.transpose((2, 0, 1))  # Change data layout from HWC to CHW
     resized_image = resized_image.reshape((1, 3, orig_h, orig_w))
     return resized_image, meta
 
 
 def postprocess(outputs, meta):
-    orginal_image_shape = meta['original_shape']
-    resized_image_shape = meta['resized_shape']
-    w, h = meta['target_size']
+    orginal_image_shape = meta["original_shape"]
+    resized_image_shape = meta["resized_shape"]
+    w, h = meta["target_size"]
     scale_x = orginal_image_shape[1] / resized_image_shape[1]
     scale_y = orginal_image_shape[0] / resized_image_shape[0]
-    for detection in outputs['boxes']:
+    for detection in outputs["boxes"]:
         detection[0] *= scale_x
         detection[2] *= scale_x
         detection[1] *= scale_y
@@ -287,8 +235,8 @@ def postprocess(outputs, meta):
 
 def draw_detections(frame, detections, palette, label_names, threshold):
     size = frame.shape[:2]
-    bboxes = detections['boxes']
-    labels = detections['labels']
+    bboxes = detections["boxes"]
+    labels = detections["labels"]
     for bbox, label in zip(bboxes, labels):
         score = bbox[4]
         if score > threshold:
@@ -297,11 +245,10 @@ def draw_detections(frame, detections, palette, label_names, threshold):
             xmax = min(int(bbox[2]), size[1])
             ymax = min(int(bbox[3]), size[0])
             class_id = int(label)
-            # FIXME.
-            color = default_palette[class_id]
-            det_label = label_names[class_id] if len(label_names) > class_id else f'#{class_id}'
+            color = palette[class_id]
+            det_label = label_names[class_id] if len(label_names) > class_id else f"#{class_id}"
             cv2.rectangle(frame, (xmin, ymin), (xmax, ymax), color, 2)
-            cv2.putText(frame, '{} {:.1%}'.format(det_label, score),
+            cv2.putText(frame, "{} {:.1%}".format(det_label, score),
                         (xmin, ymin - 7), cv2.FONT_HERSHEY_COMPLEX, 0.6, color, 1)
     return frame
 
@@ -321,21 +268,15 @@ def run(streamer: Streamer):
     with open(labelfname, "r") as labelfile:
         label_data = json.load(labelfile)
     label_colour_map = create_label_colour_map(label_data)
-    labels = list(next(iter(x)) for x in label_data)
+    labels = list(x["name"] for x in label_data)
 
     with open(configparamfname, "r") as configfile:
         config = json.load(configfile)
 
-    # postprocessingparams = config.get("postprocessing", {})
-    # blur_strength = postprocessingparams.get("blur_strength", {}).get("value", 5)
-    # unetparams = config.get("learning_parameters", {}).get("unet_parameters", {})
-    # grayscale = unetparams.get("grayscale_image", {}).get("value", False)
-    # architecture = config.get("learning_architecture", {}).get("model_architecture", {}).get("value", "unet")
-    thr = config.get('threshold', 0.3)
-    n_classes = len(label_data) + 1  # include background class
+    # Get parameters that affect inference.
+    thr = config.get("postprocessing", {}).get("confidence_threshold", {}).get("value", 0.3)
 
-    detector = Detector(modelfname)
-    detector.to('CPU')
+    detector = Detector(modelfname, device="CPU")
 
     # While a next frame is available do inference
     while streamer.check_frame_available():
@@ -345,13 +286,12 @@ def run(streamer: Streamer):
         results = postprocess(output, meta)
         frame = draw_detections(frame, results, palette=label_colour_map, label_names=labels, threshold=thr)
         cv2.imshow("Results", frame)
-        # cv2.imwrite('/tmp/out.jpg', frame)
         if ord("q") == cv2.waitKey(1):
             break
 
 
 def main():
-    print("Press Q to quit the segmenter.")
+    print("Press Q to quit the sample.")
     arguments_parser = ArgumentParser()
     arguments_parser.add_argument(
         "--file",
@@ -366,4 +306,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-

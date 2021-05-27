@@ -58,6 +58,8 @@ logger = logger_factory.get_logger("Sample")
 def parse_args():
     parser = argparse.ArgumentParser(description='')
     parser.add_argument('template_file_path', help='path to template file')
+    parser.add_argument('--export_zip_file_path', type=str, default='',
+                        help='path to zip file to save optimized model')
     args = parser.parse_args()
     return args
 
@@ -304,7 +306,15 @@ def main(args):
     print(resultset.performance)
 
     optimized_model = task.optimize_loaded_model()[0]
-    OptimizedModelExporter.export_optimized_model(project, optimized_model)
+
+    if args.export_zip_file_path:
+        with ZipFile(args.export_zip_file_path, "w") as zip_file:
+            for file_entry in OptimizedModelExporter.export_optimized_model(project, optimized_model):
+                file_entry.write_to_zip_file(zip_file)
+            file_entry = ZippedFileEntry(f"optimized models/{optimized_model.precision.name}/configurable_parameters.json",
+                                        json.dumps(task.get_configurable_parameters(environment).serialize()))
+            file_entry.write_to_zip_file(zip_file)
+
 
 
 if __name__ == '__main__':
