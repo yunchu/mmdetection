@@ -27,6 +27,7 @@ from sc_sdk.utils.project_factory import ProjectFactory
 
 from mmdet.apis.ote.apis.detection import MMObjectDetectionTask, MMDetectionParameters, configurable_parameters
 
+from e2e_test_system import CollsysManager
 from e2e_test_system import e2e_pytest
 
 
@@ -124,24 +125,43 @@ class TestOTEAPI(unittest.TestCase):
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='train_thread')
 
-        # Test stopping after some time
-        start_time = time.time()
-        train_future = executor.submit(detection_task.train, dataset)
-        time.sleep(10)  # give train_thread some time to initialize the model
-        detection_task.cancel_training()
+        setup = {
+            "project": "ote",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-256x256"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr as cl:
+            # Test stopping after some time
+            start_time = time.time()
+            train_future = executor.submit(detection_task.train, dataset)
+            time.sleep(10)  # give train_thread some time to initialize the model
+            detection_task.cancel_training()
 
-        # stopping process has to happen in less than 35 seconds
-        self.assertLess(time.time() - start_time, 35, 'Expected to stop within 35 seconds [flaky].')
-        train_future.result()
+            duration_1 = time.time() - start_time
+            threshhold_1 = 35
+            cl.log_final_metric("duration_1", duration_1)
+            cl.log_final_metric("threshhold_1", threshhold_1)
+            
+            # stopping process has to happen in less than 35 seconds
+            info_1 = f"Expected to stop within {threshhold_1} seconds [flaky]."
+            self.assertLess(duration_1, threshhold_1, info_1)
+            train_future.result()
 
-        # Test stopping immediately
-        start_time = time.time()
-        train_future = executor.submit(detection_task.train, dataset)
-        time.sleep(1.0)
-        detection_task.cancel_training()
+            # Test stopping immediately
+            start_time = time.time()
+            train_future = executor.submit(detection_task.train, dataset)
+            time.sleep(1.0)
+            detection_task.cancel_training()
 
-        self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
-        train_future.result()
+            duration_2 = time.time() - start_time
+            threshhold_2 = 25
+            cl.log_final_metric("duration_2", duration_2)
+            cl.log_final_metric("threshhold_2", threshhold_2)
+            
+            info_2 = f"Expected to stop within {threshhold_2} seconds [flaky]."
+            self.assertLess(duration_2, threshhold_2, info_2)
+            train_future.result()
 
     @staticmethod
     def eval(task, environment, dataset):
@@ -221,15 +241,36 @@ class TestOTEAPI(unittest.TestCase):
     @e2e_pytest
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
+        setup = {
+            "project": "ote",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-256x256"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr as cl:
+            self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
 
     @e2e_pytest
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_384(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
+        setup = {
+            "project": "ote",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-384x384"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr as cl:
+            self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
 
     @e2e_pytest
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_512(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
+        setup = {
+            "project": "ote",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-512x512"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr as cl:
+            self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
 
