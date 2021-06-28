@@ -112,7 +112,8 @@ class CollsysManager:
         metadata["system_user"] = getpass.getuser()
         metadata["client_hostname"] = socket.gethostname()
         metadata["execution_date"] = datetime.datetime.now()
-        metadata["build_name_seed"] = os.environ.get("BUILD_NAME_SEED", "no-value")
-        metadata["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-value")
-        metadata["test_type"] = os.environ.get("TT_TEST_TYPE", "no-value")
+        metadata["build_name_seed"] = os.environ.get("BUILD_NAME_SEED", "no-env")
+        metadata["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
+        metadata["mmdetection_branch"] = os.environ.get("MMDETECTION_BRANCH_EXECUTION", "no-env")
+        metadata["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")        
         return metadata
