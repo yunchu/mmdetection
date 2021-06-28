@@ -18,6 +18,7 @@ import socket
 import datetime
 import functools
 import pytest
+import traceback
 import getpass
 import time
 
@@ -58,6 +59,16 @@ def _generate_e2e_pytest_decorator():
 
 e2e_pytest = _generate_e2e_pytest_decorator()
 
+def select_configurable_parameters(json_configurable_parameters):
+    selected = {}
+    try:
+        lparam = json_configurable_parameters["learning_parameters"]
+        num_epochs = lparam["num_epochs"]
+        num_epochs_val = num_epochs["value"]
+        selected["num_epochs"] = num_epochs_val
+    except KeyError: pass
+    return selected
+
 
 class CollsysManager:
     logger = get_logger("CollsysMgr")
@@ -77,24 +88,30 @@ class CollsysManager:
         self.collmanager.register_collector(collector)
     def register_exporter(self, exporter):
         self.collmanager.register_exporter(exporter)
+    def log_final_metric(self, key, val):
+        self.manual_collector.log_final_metric(key, val)
+    def log_internal_metric(self, key, val, flush=False, timestamp=None, offset=None):
+        self.manual_collector.log_final_metric(key, val, flush, timestamp, offset)
+    def update_metadata(self, key, value):
+        self.cs_mongoexp.update_metadata(key, value)
 
     def __enter__(self):
         self.logger.info("start")
         self.collmanager.start()
         self.start_ts = time.time()
-        return self.manual_collector
+        return self
 
-    def __exit__(self, type, value, traceback):
+    def __exit__(self, typerr, value, tback):
         duration = time.time() - self.start_ts
         self.manual_collector.log_final_metric("mgr_duration", duration)
         
         self.logger.info("stop")
-        if traceback is not None:
-            self.logger.error(f"{type} -> {value}:")
-            self.logger.error(f"Line number: {traceback.tb_lineno}")
-            self.logger.error(f"Last instruction: {traceback.tb_lasti}")
         self.collmanager.flush()
         self.collmanager.stop()
+
+        if typerr is not None:
+            traceback.format_tb(tback)        
+            raise typerr(value)
         return True
 
     def set_mongo_exporter(self, setup):
@@ -104,8 +121,8 @@ class CollsysManager:
             return
 
         metadata = self.make_metadata(setup)
-        cs_mongoexp = MongoExporter(db_url=database_url, metadata=metadata)
-        self.collmanager.register_exporter(cs_mongoexp)    
+        self.cs_mongoexp = MongoExporter(db_url=database_url, metadata=metadata)
+        self.collmanager.register_exporter(self.cs_mongoexp)    
 
     def make_metadata(self, setup):
         metadata = copy.deepcopy(setup)
