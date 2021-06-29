@@ -61,26 +61,31 @@ e2e_pytest = _generate_e2e_pytest_decorator()
 
 def select_configurable_parameters(json_configurable_parameters):
     selected = {}
-    try:
-        lparam = json_configurable_parameters["learning_parameters"]
-        num_epochs = lparam["num_epochs"]
-        num_epochs_val = num_epochs["value"]
-        selected["num_epochs"] = num_epochs_val
-    except KeyError: pass
+    getv = lambda c, n: c[n]["value"]
+    for section, container in json_configurable_parameters.items():
+        for param, values in container.items():
+            try:
+                selected[f"{section}_{param}"] = getv(container, param)
+            except TypeError: print("######## TypeError:", section, param)
+            except KeyError: print("######## KeyError:", section, param)
     return selected
 
 
 class CollsysManager:
     logger = get_logger("CollsysMgr")
+    metacoll_name = "metadata"
 
     def __init__(self, name, setup):
         self.logger.info("init")
         self.collmanager = CollectionManager()
         self.manual_collector = Collector(name=name)
         self.collmanager.register_collector(self.manual_collector)
+        self.meta_collector = Collector(name=self.metacoll_name)
+        self.collmanager.register_collector(self.meta_collector)
+        
         cs_logger = LoggerExporter("logger", accept="final")
         self.collmanager.register_exporter(cs_logger)
-        self.set_mongo_exporter(setup)
+        self._set_mongo_exporter(setup)
 
     def flush(self):
         self.collmanager.flush()
@@ -91,15 +96,9 @@ class CollsysManager:
     def log_final_metric(self, key, val):
         self.manual_collector.log_final_metric(key, val)
     def log_internal_metric(self, key, val, flush=False, timestamp=None, offset=None):
-        self.manual_collector.log_final_metric(key, val, flush, timestamp, offset)
+        self.manual_collector.log_internal_metric(key, val, flush, timestamp, offset)
     def update_metadata(self, key, value):
-        print("------------------------------------------------------------------------------------------------------------------------------------------------------------------")
-        print(self.cs_mongoexp)
-        print(self.cs_mongoexp._MongoExporter__collection)
-        
-        self.manual_collector.log_final_metric("be", 1)
-        self.cs_mongoexp.update_metadata(key, value)
-        self.manual_collector.log_final_metric("af", 1)
+        self.meta_collector.log_final_metric(key, value)
 
     def __enter__(self):
         self.logger.info("start")
@@ -120,17 +119,17 @@ class CollsysManager:
             raise typerr(value)
         return True
 
-    def set_mongo_exporter(self, setup):
+    def _set_mongo_exporter(self, setup):
         database_url = os.environ.get("TT_DATABASE_URL")
         if database_url is None:
             self.logger.warning("DB not configured! skiped...")
             return
 
-        metadata = self.make_metadata(setup)
-        self.cs_mongoexp = MongoExporter(db_url=database_url, metadata=metadata)
+        metadata = self._make_metadata(setup)
+        self.cs_mongoexp = MongoExporter(db_url=database_url, metadata=metadata, metacoll=self.metacoll_name)
         self.collmanager.register_exporter(self.cs_mongoexp)    
 
-    def make_metadata(self, setup):
+    def _make_metadata(self, setup):
         metadata = copy.deepcopy(setup)
         metadata["system_user"] = getpass.getuser()
         metadata["client_hostname"] = socket.gethostname()

@@ -31,7 +31,6 @@ from e2e_test_system import select_configurable_parameters
 from e2e_test_system import CollsysManager
 from e2e_test_system import e2e_pytest
 
-
 class TestOTEAPI(unittest.TestCase):
     """
     Collection of tests for OTE API and OTE Model Templates
@@ -134,6 +133,8 @@ class TestOTEAPI(unittest.TestCase):
 
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
+            collsys_mgr.log_internal_metric("checkpoint", "0", flush=True)
+
             # Test stopping after some time
             start_time = time.time()
             train_future = executor.submit(detection_task.train, dataset)
@@ -144,6 +145,7 @@ class TestOTEAPI(unittest.TestCase):
             threshhold_1 = 35
             collsys_mgr.log_final_metric("duration_1", duration_1)
             collsys_mgr.log_final_metric("threshhold_1", threshhold_1)
+            collsys_mgr.log_internal_metric("checkpoint", "1", flush=True)
             
             # stopping process has to happen in less than 35 seconds
             info_1 = f"Expected to stop within {threshhold_1} seconds [flaky]."
@@ -160,10 +162,12 @@ class TestOTEAPI(unittest.TestCase):
             threshhold_2 = 25
             collsys_mgr.log_final_metric("duration_2", duration_2)
             collsys_mgr.log_final_metric("threshhold_2", threshhold_2)
+            collsys_mgr.log_internal_metric("checkpoint", "2", flush=True)
             
             info_2 = f"Expected to stop within {threshhold_2} seconds [flaky]."
             self.assertLess(duration_2, threshhold_2, info_2)
             train_future.result()
+            collsys_mgr.log_internal_metric("checkpoint", "3", flush=True)
 
     @staticmethod
     def eval(task, environment, dataset):
@@ -260,38 +264,35 @@ class TestOTEAPI(unittest.TestCase):
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
-            print(collsys_mgr)
             for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
 
-#     @e2e_pytest
-#     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-#     def test_training_custom_mobilenetssd_384(self):
-#         setup = {
-#             "project": "ote",
-#             "scenario": "api_training",
-#             "subject": "custom-object-detection",
-#             "model": "mobilenet_v2-2s_ssd-384x384"
-#         }
-#         collsys_mgr = CollsysManager("main", setup)
-#         with collsys_mgr:
-#             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-#             for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
-#         print(collsys_mgr)
-#         for key, value in params.items(): collsys_mgr.update_metadata(key, value)
-# 
-#     @e2e_pytest
-#     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-#     def test_training_custom_mobilenetssd_512(self):
-#         setup = {
-#             "project": "ote",
-#             "scenario": "api_training",
-#             "subject": "custom-object-detection",
-#             "model": "mobilenet_v2-2s_ssd-512x512"
-#         }
-#         collsys_mgr = CollsysManager("main", setup)
-#         with collsys_mgr:
-#             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-#             for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
-#         print(collsys_mgr)
-#         for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+    @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
+    def test_training_custom_mobilenetssd_384(self):
+        setup = {
+            "project": "ote",
+            "scenario": "api_training",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-384x384"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+
+    @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
+    def test_training_custom_mobilenetssd_512(self):
+        setup = {
+            "project": "ote",
+            "scenario": "api_training",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-512x512"
+        }
+        collsys_mgr = CollsysManager("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
