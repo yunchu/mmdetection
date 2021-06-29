@@ -93,7 +93,13 @@ class CollsysManager:
     def log_internal_metric(self, key, val, flush=False, timestamp=None, offset=None):
         self.manual_collector.log_final_metric(key, val, flush, timestamp, offset)
     def update_metadata(self, key, value):
+        print("------------------------------------------------------------------------------------------------------------------------------------------------------------------")
+        print(self.cs_mongoexp)
+        print(self.cs_mongoexp._MongoExporter__collection)
+        
+        self.manual_collector.log_final_metric("be", 1)
         self.cs_mongoexp.update_metadata(key, value)
+        self.manual_collector.log_final_metric("af", 1)
 
     def __enter__(self):
         self.logger.info("start")

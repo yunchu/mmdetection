@@ -241,14 +241,13 @@ class TestOTEAPI(unittest.TestCase):
         print(f'Performance delta after reloading: {performance_delta:.6f}')
 
         json_configurable_parameters = configurable_parameters.to_json()
-        return json_configurable_parameters, {
+        return select_configurable_parameters(json_configurable_parameters), {
             "score_threshold": score_threshold,
             "score_tolerance": perf_delta_tolerance,
             "score_before_reload": validation_performance.score.value,
             "score_after_reload": performance_after_reloading.score.value
         }
         
-
     @e2e_pytest
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
@@ -261,35 +260,38 @@ class TestOTEAPI(unittest.TestCase):
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-            # for key, value in params.items(): collsys_mgr.update_metadata(key, value)
             for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+            print(collsys_mgr)
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
 
-    @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-    def test_training_custom_mobilenetssd_384(self):
-        setup = {
-            "project": "ote",
-            "scenario": "api_training",
-            "subject": "custom-object-detection",
-            "model": "mobilenet_v2-2s_ssd-384x384"
-        }
-        collsys_mgr = CollsysManager("main", setup)
-        with collsys_mgr:
-            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-            # for key, value in params.items(): collsys_mgr.update_metadata(key, value)
-            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
-
-    @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-    def test_training_custom_mobilenetssd_512(self):
-        setup = {
-            "project": "ote",
-            "scenario": "api_training",
-            "subject": "custom-object-detection",
-            "model": "mobilenet_v2-2s_ssd-512x512"
-        }
-        collsys_mgr = CollsysManager("main", setup)
-        with collsys_mgr:
-            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
-            # for key, value in params.items(): collsys_mgr.update_metadata(key, value)
-            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+#     @e2e_pytest
+#     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
+#     def test_training_custom_mobilenetssd_384(self):
+#         setup = {
+#             "project": "ote",
+#             "scenario": "api_training",
+#             "subject": "custom-object-detection",
+#             "model": "mobilenet_v2-2s_ssd-384x384"
+#         }
+#         collsys_mgr = CollsysManager("main", setup)
+#         with collsys_mgr:
+#             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+#             for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+#         print(collsys_mgr)
+#         for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+# 
+#     @e2e_pytest
+#     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
+#     def test_training_custom_mobilenetssd_512(self):
+#         setup = {
+#             "project": "ote",
+#             "scenario": "api_training",
+#             "subject": "custom-object-detection",
+#             "model": "mobilenet_v2-2s_ssd-512x512"
+#         }
+#         collsys_mgr = CollsysManager("main", setup)
+#         with collsys_mgr:
+#             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+#             for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+#         print(collsys_mgr)
+#         for key, value in params.items(): collsys_mgr.update_metadata(key, value)
