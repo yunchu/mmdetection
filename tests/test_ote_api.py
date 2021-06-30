@@ -31,6 +31,7 @@ from e2e_test_system import select_configurable_parameters
 from e2e_test_system import CollsysManager
 from e2e_test_system import e2e_pytest
 
+
 class TestOTEAPI(unittest.TestCase):
     """
     Collection of tests for OTE API and OTE Model Templates
