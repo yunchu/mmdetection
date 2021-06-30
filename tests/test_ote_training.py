@@ -14,6 +14,8 @@ from sc_sdk.utils.project_factory import ProjectFactory
 
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
+from e2e_test_system import select_configurable_parameters
+from e2e_test_system import CollsysManager
 from e2e_test_system import e2e_pytest
 
 logger = logger_factory.get_logger('Sample')
@@ -106,6 +108,7 @@ def run_ote_training(params: TrainingParameters):
     logger.info('Start model training... [ROUND 0]')
     model = task.train(dataset=dataset)
     logger.info('Model training finished [ROUND 0]')
+    return select_configurable_parameters(params.to_json())
 
 
 def _get_training_params_from_dataset_definitions(dataset_definitions, dataset_name):
@@ -125,7 +128,18 @@ def _get_training_params_from_dataset_definitions(dataset_definitions, dataset_n
 @pytest.mark.parametrize('dataset_name',
                          ['coco_shortened_500',
                           'vitens_tiled_shortened_500',
-			  'vitens_tiled_shortened_500_A'])
+                          'vitens_tiled_shortened_500_A'])
 def test_ote_training(dataset_name, dataset_definitions_fx):
-    training_params = _get_training_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
-    run_ote_training(training_params)
+    setup = {
+        "project": "ote",
+        "scenario": "api_training",
+        "subject": "custom-object-detection",
+        "model": "mobilenet_v2-2s_ssd-512x512",
+        "dataset": dataset_name
+    }
+    collsys_mgr = CollsysManager("main", setup)
+    with collsys_mgr:
+        training_params = _get_training_params_from_dataset_definitions(dataset_definitions_fx, setup['dataset'])
+        params = run_ote_training(training_params)
+        for key, value in params.items(): 
+            collsys_mgr.update_metadata(key, value)
