@@ -15,3 +15,5 @@ def pytest_addoption(parser):
         _e2e_pytest_addoption(parser)
     parser.addoption('--dataset-definitions', action='store', default=None,
                      help='Path to the dataset_definitions.yml file for tests that require datasets.')
+    parser.addoption('--template-paths', action='store', default=None,
+                     help='Path to the template_paths.yml file for tests that require templates.')

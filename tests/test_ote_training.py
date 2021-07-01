@@ -34,6 +34,7 @@ import sys
 import yaml
 
 from collections import namedtuple
+from pprint import pformat
 
 from sc_sdk.entities.analyse_parameters import AnalyseParameters
 from sc_sdk.entities.datasets import Subset
@@ -49,19 +50,32 @@ from e2e_test_system import e2e_pytest
 
 logger = logger_factory.get_logger('Sample')
 
-def TRAINING_PARAMETERS_FIELDS():
+def DATASET_PARAMETERS_FIELDS():
     return ['annotations_train',
             'images_train_dir',
             'annotations_val',
             'images_val_dir',
             'annotations_test',
             'images_test_dir',
-            'template_file_path',
             ]
-TrainingParameters = namedtuple('TrainingParameters', TRAINING_PARAMETERS_FIELDS())
+DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
 
 @pytest.fixture
 def dataset_definitions_fx(request):
+    """
+    Return dataset definitions read from a YAML file passed as the parameter --dataset-definitions.
+    Note that the dataset definitions should store the following structure:
+    {
+        <dataset_name>: {
+            'annotations_train': <annotation_file_path1>
+            'images_train_dir': <images_folder_path1>
+            'annotations_val': <annotation_file_path2>
+            'images_val_dir': <images_folder_path2>
+            'annotations_test': <annotation_file_path3>
+            'images_test_dir':  <images_folder_path3>
+        }
+    }
+    """
     path = request.config.getoption('--dataset-definitions')
     assert path is not None, (f'The command line parameter "--dataset-definitions" is not set, '
                              f'whereas it is required for the test {request.node.originalname or request.node.name}')
@@ -69,53 +83,47 @@ def dataset_definitions_fx(request):
         data = yaml.safe_load(f)
     return data
 
-def load_template(path):
+@pytest.fixture
+def template_paths_fx(request):
+    """
+    Return mapping model names to template paths, read from YAML file passed as the parameter --template-paths
+    Note that the file should store the following structure:
+    {
+        <model_name>: <template_path>
+    }
+    """
+    path = request.config.getoption('--template-paths')
+    assert path is not None, (f'The command line parameter "--template-paths" is not set, '
+                             f'whereas it is required for the test {request.node.originalname or request.node.name}')
+    with open(path) as f:
+        data = yaml.safe_load(f)
+    return data
+
+def _load_template(path):
     with open(path) as f:
         template = yaml.full_load(f)
     # Save path to template file, to resolve relative paths later.
     template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
     return template
 
-def get_task_class(path):
+def _get_task_class(path):
     module_name, class_name = path.rsplit('.', 1)
     module = importlib.import_module(module_name)
     return getattr(module, class_name)
 
 
-def run_ote_training(params: TrainingParameters):
-    # check consistency
-    print(f'Using for train annotation file {params.annotations_train}')
-    print(f'Using for val annotation file {params.annotations_val}')
-    train_ann_file = params.annotations_train
-    train_data_root = params.images_train_dir
-    val_ann_file = params.annotations_val
-    val_data_root = params.images_val_dir
-    test_ann_file = params.annotations_test
-    test_data_root = params.images_test_dir
-
-    dataset = MMDatasetAdapter(
-        train_ann_file=train_ann_file,
-        train_data_root=train_data_root,
-        val_ann_file=val_ann_file,
-        val_data_root=val_data_root,
-        test_ann_file=test_ann_file,
-        test_data_root=test_data_root)
-
-    template = load_template(params.template_file_path)
-    task_impl_path = template['task']['impl']
-    task_cls = get_task_class(task_impl_path)
-
-
+def _create_project_and_connect_to_dataset(dataset):
     project = ProjectFactory().create_project_single_task(
         name='otedet-sample-project',
         description='otedet-sample-project',
         label_names=dataset.get_labels(),
         task_name='otedet-task')
-
     dataset.set_project_labels(project.get_labels())
+    return project
 
-    print(f'train dataset: {len(dataset.get_subset(Subset.TRAINING))} items')
-    print(f'validation dataset: {len(dataset.get_subset(Subset.VALIDATION))} items')
+def _create_environment_and_task(project, template):
+    task_impl_path = template['task']['impl']
+    task_cls = _get_task_class(task_impl_path)
 
     environment = TaskEnvironment(project=project, task_node=project.tasks[-1])
     params = task_cls.get_configurable_parameters(environment)
@@ -123,9 +131,35 @@ def run_ote_training(params: TrainingParameters):
     environment.set_configurable_parameters(params)
 
     task = task_cls(task_environment=environment)
+    return environment, task
+
+def run_ote_training(dataset_params: DatasetParameters, template_file_path: str):
+    # check consistency
+    print(f'template_file_path = {template_file_path}')
+    print(f'Using for train annotation file {dataset_params.annotations_train}')
+    print(f'Using for val annotation file {dataset_params.annotations_val}')
+
+    dataset = MMDatasetAdapter(
+        train_ann_file=dataset_params.annotations_train,
+        train_data_root=dataset_params.images_train_dir,
+        val_ann_file=dataset_params.annotations_val,
+        val_data_root=dataset_params.images_val_dir,
+        test_ann_file=dataset_params.annotations_test,
+        test_data_root=dataset_params.images_test_dir,
+        )
+    print(f'train dataset: {len(dataset.get_subset(Subset.TRAINING))} items')
+    print(f'validation dataset: {len(dataset.get_subset(Subset.VALIDATION))} items')
+
+    template = _load_template(template_file_path)
+
+    project = _create_project_and_connect_to_dataset(dataset)
+    environment, task = _create_environment_and_task(project, template)
+
 
     # Tweak parameters.
     params = task.get_configurable_parameters(environment)
+    if True: # DEBUG prints
+        print(f'params before training=\n{pformat(params.serialize(), width=140)}')
     params.learning_parameters.nncf_quantization.value = False
     # params.learning_parameters.learning_rate_warmup_iters.value = 0
     params.learning_parameters.batch_size.value = 32
@@ -138,25 +172,31 @@ def run_ote_training(params: TrainingParameters):
     logger.info('Start model training... [ROUND 0]')
     model = task.train(dataset=dataset)
     logger.info('Model training finished [ROUND 0]')
+    logger.info(f'RES={model}')
 
 
-def _get_training_params_from_dataset_definitions(dataset_definitions, dataset_name):
+def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name):
     cur_dataset_definition = dataset_definitions[dataset_name]
     training_parameters_fields = {k: v for k, v in cur_dataset_definition.items()
-                                  if k in TRAINING_PARAMETERS_FIELDS()}
+                                  if k in DATASET_PARAMETERS_FIELDS()}
 
-    assert set(TRAINING_PARAMETERS_FIELDS()) == set(training_parameters_fields.keys()), \
+    assert set(DATASET_PARAMETERS_FIELDS()) == set(training_parameters_fields.keys()), \
             f'ERROR: dataset definitions for name={dataset_name} does not contain all required fields'
     assert all(training_parameters_fields.values()), \
             f'ERROR: dataset definitions for name={dataset_name} contains empty values for some required fields'
 
-    params = TrainingParameters(**training_parameters_fields)
+    params = DatasetParameters(**training_parameters_fields)
     return params
 
 @e2e_pytest
+@pytest.mark.parametrize('model_name', ['mobilenet_v2_2s_ssd_256x256'])
 @pytest.mark.parametrize('dataset_name',
-                         ['coco_shortened_500',
-                          'vitens_tiled_shortened_500'])
-def test_ote_training(dataset_name, dataset_definitions_fx):
-    training_params = _get_training_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
-    run_ote_training(training_params)
+                         [
+#                             'coco_shortened_500',
+#                             'vitens_tiled_shortened_500',
+                             'vitens_tiled_shortened_500_A'
+                         ])
+def test_ote_training(dataset_name, model_name, dataset_definitions_fx, template_paths_fx):
+    dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
+    template_path = template_paths_fx[model_name]
+    run_ote_training(dataset_params, template_path)
