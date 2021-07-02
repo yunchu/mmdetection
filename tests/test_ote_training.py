@@ -14,6 +14,7 @@ from sc_sdk.utils.project_factory import ProjectFactory
 
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
+from e2e.collection_system.systems import Collector
 from e2e_test_system import select_configurable_parameters
 from e2e_test_system import CollsysManager
 from e2e_test_system import e2e_pytest

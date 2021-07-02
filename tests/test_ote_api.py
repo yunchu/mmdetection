@@ -3,7 +3,7 @@ import numpy as np
 import os.path as osp
 import pytest
 import random
-import time
+import time, os
 import unittest
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -28,7 +28,7 @@ from sc_sdk.utils.project_factory import ProjectFactory
 from mmdet.apis.ote.apis.detection import MMObjectDetectionTask, MMDetectionParameters, configurable_parameters
 
 from e2e_test_system import select_configurable_parameters
-from e2e_test_system import CollsysManager
+from e2e.collection_system.systems import TinySystem
 from e2e_test_system import e2e_pytest
 
 
@@ -126,7 +126,9 @@ class TestOTEAPI(unittest.TestCase):
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='train_thread')
 
         json_configurable_parameters = configurable_parameters.to_json()
-        setup = select_configurable_parameters(json_configurable_parameters)        
+        setup = select_configurable_parameters(json_configurable_parameters)
+        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
+        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")        
         setup["scenario"] = "api"
         setup["test"] = "test_cancel_training_detection"
         setup["subject"] = "custom-object-detection"
@@ -134,7 +136,7 @@ class TestOTEAPI(unittest.TestCase):
         setup["project"] = "ote"
         setup["dataset"] = "dummy"
 
-        collsys_mgr = CollsysManager("main", setup)
+        collsys_mgr = TinySystem("main", setup)
         with collsys_mgr:
             collsys_mgr.log_internal_metric("checkpoint", "0", flush=True)
 
@@ -259,6 +261,8 @@ class TestOTEAPI(unittest.TestCase):
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
         setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
             "project": "ote",
             "scenario": "api",
             "test": "test_training_custom_mobilenetssd_256",
@@ -266,7 +270,7 @@ class TestOTEAPI(unittest.TestCase):
             "model": "mobilenet_v2-2s_ssd-256x256",
             "dataset": "dummy"
         }
-        collsys_mgr = CollsysManager("main", setup)
+        collsys_mgr = TinySystem("main", setup)
         with collsys_mgr:
             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
             for key, value in params.items(): collsys_mgr.update_metadata(key, value)
@@ -276,6 +280,8 @@ class TestOTEAPI(unittest.TestCase):
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_384(self):
         setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
             "project": "ote",
             "scenario": "api",
             "test": "test_training_custom_mobilenetssd_384",
@@ -283,7 +289,7 @@ class TestOTEAPI(unittest.TestCase):
             "model": "mobilenet_v2-2s_ssd-384x384",
             "dataset": "dummy"
         }
-        collsys_mgr = CollsysManager("main", setup)
+        collsys_mgr = TinySystem("main", setup)
         with collsys_mgr:
             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
             for key, value in params.items(): collsys_mgr.update_metadata(key, value)
@@ -293,6 +299,8 @@ class TestOTEAPI(unittest.TestCase):
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_512(self):
         setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
             "project": "ote",
             "scenario": "api",
             "test": "test_training_custom_mobilenetssd_512",
@@ -300,7 +308,7 @@ class TestOTEAPI(unittest.TestCase):
             "model": "mobilenet_v2-2s_ssd-512x512",
             "dataset": "dummy"
         }
-        collsys_mgr = CollsysManager("main", setup)
+        collsys_mgr = TinySystem("main", setup)
         with collsys_mgr:
             params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
             for key, value in params.items(): collsys_mgr.update_metadata(key, value)
