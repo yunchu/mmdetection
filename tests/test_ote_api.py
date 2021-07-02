@@ -128,7 +128,7 @@ class TestOTEAPI(unittest.TestCase):
         json_configurable_parameters = configurable_parameters.to_json()
         setup = select_configurable_parameters(json_configurable_parameters)        
         setup["scenario"] = "api"
-        setp["test"] = "test_cancel_training_detection"
+        setup["test"] = "test_cancel_training_detection"
         setup["subject"] = "custom-object-detection"
         setup["model"] = "mobilenet_v2-2s_ssd-256x256"
         setup["project"] = "ote"
