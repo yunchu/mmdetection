@@ -127,10 +127,11 @@ class TestOTEAPI(unittest.TestCase):
 
         json_configurable_parameters = configurable_parameters.to_json()
         setup = select_configurable_parameters(json_configurable_parameters)        
-        setup["scenario"] = "api_cancel_training_detection"
+        setup["scenario"] = "api_test_cancel_training_detection"
         setup["subject"] = "custom-object-detection"
         setup["model"] = "mobilenet_v2-2s_ssd-256x256"
         setup["project"] = "ote"
+        setup["dataset"] = "dummy"
 
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
@@ -250,7 +251,8 @@ class TestOTEAPI(unittest.TestCase):
             "score_threshold": score_threshold,
             "score_tolerance": perf_delta_tolerance,
             "score_before_reload": validation_performance.score.value,
-            "score_after_reload": performance_after_reloading.score.value
+            "score_after_reload": performance_after_reloading.score.value,
+            "dataset": "dummy"
         }
         
     @e2e_pytest
@@ -258,9 +260,10 @@ class TestOTEAPI(unittest.TestCase):
     def test_training_custom_mobilenetssd_256(self):
         setup = {
             "project": "ote",
-            "scenario": "api_training",
+            "scenario": "api_test_training_custom_mobilenetssd_256",
             "subject": "custom-object-detection",
-            "model": "mobilenet_v2-2s_ssd-256x256"
+            "model": "mobilenet_v2-2s_ssd-256x256",
+            "dataset": "dummy"
         }
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
@@ -273,9 +276,10 @@ class TestOTEAPI(unittest.TestCase):
     def test_training_custom_mobilenetssd_384(self):
         setup = {
             "project": "ote",
-            "scenario": "api_training",
+            "scenario": "api_test_training_custom_mobilenetssd_384",
             "subject": "custom-object-detection",
-            "model": "mobilenet_v2-2s_ssd-384x384"
+            "model": "mobilenet_v2-2s_ssd-384x384",
+            "dataset": "dummy"
         }
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:
@@ -288,9 +292,10 @@ class TestOTEAPI(unittest.TestCase):
     def test_training_custom_mobilenetssd_512(self):
         setup = {
             "project": "ote",
-            "scenario": "api_training",
+            "scenario": "api_test_training_custom_mobilenetssd_512",
             "subject": "custom-object-detection",
-            "model": "mobilenet_v2-2s_ssd-512x512"
+            "model": "mobilenet_v2-2s_ssd-512x512",
+            "dataset": "dummy"
         }
         collsys_mgr = CollsysManager("main", setup)
         with collsys_mgr:

@@ -132,7 +132,7 @@ def _get_training_params_from_dataset_definitions(dataset_definitions, dataset_n
 def test_ote_training(dataset_name, dataset_definitions_fx):
     setup = {
         "project": "ote",
-        "scenario": "api_training",
+        "scenario": "training_test_ote_training",
         "subject": "custom-object-detection",
         "model": "mobilenet_v2-2s_ssd-512x512",
         "dataset": dataset_name
