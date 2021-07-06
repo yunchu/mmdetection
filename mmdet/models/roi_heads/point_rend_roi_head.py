@@ -95,7 +95,7 @@ class PointRendRoIHead(StandardRoIHead):
                         rel_img_points = rel_roi_point_to_rel_img_point(
                             rois[inds], rel_roi_points[inds], feat,
                             spatial_scale).unsqueeze(0)
-                        print('\n---> _get_fine_grained_point_feats ->')
+                        #print('\n---> _get_fine_grained_point_feats ->')
                         point_feat = point_sample(feat, rel_img_points)
                         point_feat = point_feat.squeeze(0).transpose(0, 1)
                         point_feats.append(point_feat)
@@ -117,19 +117,19 @@ class PointRendRoIHead(StandardRoIHead):
             # resolution of the next step, then we can skip this step
             num_rois, channels, mask_height, mask_width = \
                 refined_mask_pred.shape
-            print(f'{mask_height}x{mask_width} >> continue')
+            #print(f'{mask_height}x{mask_width} >> continue')
             if (self.test_cfg.subdivision_num_points >=
                     self.test_cfg.scale_factor**2 * mask_height * mask_width
                     and
                     subdivision_step < self.test_cfg.subdivision_steps - 1):
                 continue
-            print(f'>> Process {mask_height}x{mask_width}')
+            #print(f'>> Process {mask_height}x{mask_width}')
             point_indices, rel_roi_points = \
                 self.point_head.get_roi_rel_points_test(
                     refined_mask_pred, label_pred, cfg=self.test_cfg)
             fine_grained_point_feats = self._get_fine_grained_point_feats(
                 x, rois, rel_roi_points, img_metas)
-            print('\n---> _mask_point_forward_test ->')
+            #print('\n---> _mask_point_forward_test ->')
             coarse_point_feats = point_sample(mask_pred, rel_roi_points)
             mask_point_pred = self.point_head(fine_grained_point_feats,
                                               coarse_point_feats)

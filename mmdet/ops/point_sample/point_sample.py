@@ -222,7 +222,7 @@ def point_sample(input, points, align_corners=False, **kwargs):
     if points.dim() == 3:
         add_dim = True
         points = points.unsqueeze(2)
-    print(f'>>>>> {input.shape} >> {points.shape}')
+    #print(f'>>>>> {input.shape} >> {points.shape}')
     if is_in_onnx_export_without_custom_ops():
         output = bilinear_grid_sample(
             input, denormalize(points), align_corners=align_corners)
@@ -276,7 +276,7 @@ class SimpleRoIAlign(nn.Module):
                     rel_img_points = rel_roi_point_to_rel_img_point(
                         rois[inds], rel_roi_points[inds], feat,
                         self.spatial_scale).unsqueeze(0)
-                    print('\n----> SimpleRoIAlign ->')
+                    #print('\n----> SimpleRoIAlign ->')
                     point_feat = point_sample(
                         feat, rel_img_points, align_corners=not self.aligned)
                     point_feat = point_feat.squeeze(0).transpose(0, 1)
