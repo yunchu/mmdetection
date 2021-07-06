@@ -130,5 +130,5 @@ class CopyPaste:
         self.concatenate_labels(results)
         self.filter_empty(results)
         self.cast(results, bbox_type, mask_type, label_type)
-        self.visualize(results)
+        #self.visualize(results)
         return results
