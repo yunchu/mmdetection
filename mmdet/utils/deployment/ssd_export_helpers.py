@@ -139,9 +139,12 @@ class DetectionOutput(torch.autograd.Function):
     def symbolic(g, cls_scores, bbox_preds, img_metas, cfg,
                  rescale, priors, cls_out_channels, use_sigmoid_cls,
                  target_means, target_stds):
+        if cfg.get('nms_pre', -1) != -1:
+            raise RuntimeError("Handling of nms_pre is implemented differently in DetectionOutput (IE).")
+
         return g.op(add_domain("DetectionOutput"), bbox_preds, cls_scores, priors,
                     num_classes_i=cls_out_channels, background_label_id_i=cls_out_channels - 1,
-                    top_k_i=-1,
+                    top_k_i=cfg.get('nms_pre', -1),
                     keep_top_k_i=cfg['max_per_img'],
                     confidence_threshold_f=cfg['score_thr'],
                     nms_threshold_f=cfg['nms']['iou_threshold'],
