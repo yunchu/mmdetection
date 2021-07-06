@@ -1,8 +1,6 @@
-import os
 import cv2
 import random
 import numpy as np
-import albumentations as A
 from copy import deepcopy
 from skimage.filters import gaussian
 
@@ -16,26 +14,21 @@ colors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170
 class CopyPaste:
     def __init__(
         self,
-        blend=True,
+        blend=False,
         sigma=3,
-        pct_objects_paste=0.1,
-        max_paste_objects=None,
         p=0.5,
         always_apply=False
     ):
         self.blend = blend
         self.sigma = sigma
-        self.pct_objects_paste = pct_objects_paste
-        self.max_paste_objects = max_paste_objects
         self.p = p
         self.always_apply = always_apply
         self.resize = None
 
-    @staticmethod
-    def image_copy_paste(results, alpha, blend=False, sigma=1):
+    def image_copy_paste(self, results, alpha):
         if alpha is not None:
-            if blend:
-                alpha = gaussian(alpha, sigma=sigma, preserve_range=True)
+            if self.blend:
+                alpha = gaussian(alpha, sigma=self.sigma, preserve_range=True)
             img_dtype = results['img'].dtype
             alpha = alpha[..., None]
             results['img'] = results['copy_paste']['img'] * alpha + results['img'] * (1 - alpha)
@@ -117,6 +110,9 @@ class CopyPaste:
         return results
 
     def __call__(self, results):
+        p = random.uniform(0, 1)
+        if p > self.p:
+            return results
         bbox_type = results['gt_bboxes'].dtype
         mask_type = results['gt_masks'].masks.dtype
         label_type = results['gt_labels'].dtype
