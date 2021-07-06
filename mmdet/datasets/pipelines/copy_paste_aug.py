@@ -56,6 +56,12 @@ class CopyPaste:
         results['gt_masks'].masks = results['gt_masks'].masks[inds]
         results['gt_bboxes'] = results['gt_bboxes'][inds]
         results['gt_labels'] = results['gt_labels'][inds]
+        if len(results['gt_masks'].masks.shape) == 2:
+            results['gt_masks'].masks = np.expand_dims(results['gt_masks'].masks, axis=0)
+        if len(results['gt_bboxes'].shape) == 1:
+            results['gt_bboxes'] = np.expand_dims(results['gt_bboxes'], axis=0)
+        if len(results['gt_labels'].shape) == 0:
+            results['gt_labels'] = np.expand_dims(results['gt_labels'], axis=0)
 
     @staticmethod
     def cast(results, bbox_type, mask_type, label_type):
@@ -68,8 +74,8 @@ class CopyPaste:
         masks = results['gt_masks'].masks
         bboxes = []
         for mask in masks:
-            xindices = np.where(np.any(mask, axis=0))[0]
-            yindices = np.where(np.any(mask, axis=1))[0]
+            yindices = np.where(np.any(mask, axis=0))[0]
+            xindices = np.where(np.any(mask, axis=1))[0]
             if yindices.shape[0]:
                 y1, y2 = yindices[[0, -1]]
                 x1, x2 = xindices[[0, -1]]
