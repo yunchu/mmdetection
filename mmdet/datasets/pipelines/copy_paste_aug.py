@@ -51,8 +51,7 @@ class CopyPaste:
         results['gt_bboxes_ignore'] = np.concatenate((results['gt_bboxes_ignore'], results['copy_paste']['gt_bboxes_ignore']), axis=0)
 
     @staticmethod
-    def filter_empty(results):
-        inds = np.argwhere(results['gt_masks'].areas > 0).squeeze()
+    def _filter(results, inds):
         results['gt_masks'].masks = results['gt_masks'].masks[inds]
         results['gt_bboxes'] = results['gt_bboxes'][inds]
         results['gt_labels'] = results['gt_labels'][inds]
@@ -63,6 +62,14 @@ class CopyPaste:
         if len(results['gt_labels'].shape) == 0:
             results['gt_labels'] = np.expand_dims(results['gt_labels'], axis=0)
 
+    def filter_empty(self, results):
+        dw = results['gt_bboxes'][:, 2] - results['gt_bboxes'][:, 0]
+        dh = results['gt_bboxes'][:, 3] - results['gt_bboxes'][:, 1]
+        inds = np.argwhere((dw > 2.) & (dh > 2.)).squeeze()
+        self._filter(results, inds)
+        inds = np.argwhere(results['gt_masks'].areas > 0).squeeze()
+        self._filter(results, inds)
+
     @staticmethod
     def cast(results, bbox_type, mask_type, label_type):
         results['gt_masks'].masks = results['gt_masks'].masks.astype(mask_type)
@@ -71,14 +78,13 @@ class CopyPaste:
 
     @staticmethod
     def extract_bboxes(results):
-        masks = results['gt_masks'].masks
         bboxes = []
-        for mask in masks:
+        for mask in results['gt_masks'].masks:
             yindices = np.where(np.any(mask, axis=0))[0]
             xindices = np.where(np.any(mask, axis=1))[0]
             if yindices.shape[0]:
-                y1, y2 = yindices[[0, -1]]
-                x1, x2 = xindices[[0, -1]]
+                x1, x2 = yindices[[0, -1]]
+                y1, y2 = xindices[[0, -1]]
             else:
                 x1, y1, x2, y2 = 0, 0, 0, 0
             bboxes.append((x1, y1, x2, y2))
@@ -122,11 +128,14 @@ class CopyPaste:
         bbox_type = results['gt_bboxes'].dtype
         mask_type = results['gt_masks'].masks.dtype
         label_type = results['gt_labels'].dtype
+
         h, w = results['img'].shape[:-1]
         self.rescale_paste_target(results['copy_paste'], (h, w))
+
         compose_paste_mask = np.zeros((h, w), dtype=np.uint8)
         for mask in results['copy_paste']['gt_masks'].masks:
             compose_paste_mask = np.logical_or(compose_paste_mask, mask)
+
         self.image_copy_paste(results, alpha=compose_paste_mask)
         self.masks_copy_paste(results, alpha=compose_paste_mask)
         self.concatenate_labels(results)
