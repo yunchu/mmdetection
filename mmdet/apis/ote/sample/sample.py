@@ -16,9 +16,11 @@ import argparse
 import importlib
 import os.path as osp
 import sys
+
 import yaml
 
 from sc_sdk.entities.analyse_parameters import AnalyseParameters
+from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
@@ -85,7 +87,8 @@ def main(args):
         val_ann_file=val_ann_file,
         val_data_root=val_data_root,
         test_ann_file=test_ann_file,
-        test_data_root=test_data_root)
+        test_data_root=test_data_root,
+        dataset_storage=NullDatasetStorage)
 
     template = load_template(args.template_file_path)
     task_impl_path = template['task']['impl']
@@ -113,11 +116,7 @@ def main(args):
     # Tweak parameters.
     params = task.get_configurable_parameters(environment)
     params.learning_parameters.nncf_quantization.value = False
-    # params.learning_parameters.learning_rate_warmup_iters.value = 0
-    params.learning_parameters.batch_size.value = 32
-    params.learning_parameters.num_epochs.value = 1
-    params.postprocessing.result_based_confidence_threshold.value = False
-    params.postprocessing.confidence_threshold.value = 0.025
+    params.learning_parameters.num_iters.value = 1000
     environment.set_configurable_parameters(params)
     task.update_configurable_parameters(environment)
 

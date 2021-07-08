@@ -1,20 +1,21 @@
-import functools
 import numpy as np
 import os.path as osp
-import pytest
 import random
 import time
 import unittest
 import warnings
 from concurrent.futures import ThreadPoolExecutor
 
-from flaky import flaky
 from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind
 from sc_sdk.entities.dataset_item import DatasetItem
-from sc_sdk.entities.datasets import Dataset, Subset
+from sc_sdk.entities.datasets import Dataset, Subset, NullDatasetStorage
 from sc_sdk.entities.image import Image
 from sc_sdk.entities.media_identifier import ImageIdentifier
 from sc_sdk.entities.model import NullModel
+
+# This one breaks cyclic imports chain.
+from sc_sdk.usecases.repos import BinaryRepo
+
 from sc_sdk.entities.optimized_model import OptimizedModel
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.shapes.box import Box
@@ -88,22 +89,32 @@ class TestOTEAPI(unittest.TestCase):
                 subset = Subset.TRAINING
             items[i].subset = subset
 
-        dataset = Dataset(items)
+        dataset = Dataset(NullDatasetStorage(), items)
         task_node = project.tasks[-1]
         environment = TaskEnvironment(project=project, task_node=task_node)
         return project, environment, dataset
 
     @staticmethod
-    def setup_configurable_parameters(template_dir, num_epochs=10):
+    def load_template(path):
+        import yaml
+        with open(path) as f:
+            template = yaml.full_load(f)
+        # Save path to template file, to resolve relative paths later.
+        template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
+        return template
+
+    @staticmethod
+    def setup_configurable_parameters(template_dir, num_iters=250):
+        template = TestOTEAPI.load_template(osp.join(template_dir, 'template.yaml'))
         configurable_parameters = MMDetectionParameters()
-        configurable_parameters.algo_backend.template.value = osp.join(template_dir, 'template.yaml')
+        MMObjectDetectionTask.apply_template_configurable_parameters(configurable_parameters, template)
+        # configurable_parameters.algo_backend.template.value = osp.join(template_dir, 'template.yaml')
         configurable_parameters.algo_backend.model.value = 'model.py'
         configurable_parameters.algo_backend.model_name.value = 'some_detection_model'
-        configurable_parameters.learning_parameters.num_epochs.value = num_epochs
+        configurable_parameters.learning_parameters.num_iters.value = num_iters
         return configurable_parameters
 
     @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_cancel_training_detection(self):
         """
         Tests starting and cancelling training.
@@ -117,10 +128,11 @@ class TestOTEAPI(unittest.TestCase):
 
         This test should be finished in under one minute on a workstation.
         """
-        template_dir = osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256')
-        configurable_parameters = self.setup_configurable_parameters(template_dir, num_epochs=100)
+        template_dir = osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS')
+        configurable_parameters = self.setup_configurable_parameters(template_dir, num_iters=10000)
         _, detection_environment, dataset = self.init_environment(configurable_parameters, 250)
         detection_task = MMObjectDetectionTask(task_environment=detection_environment)
+        detection_task.update_configurable_parameters(detection_environment)
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='train_thread')
 
@@ -157,7 +169,6 @@ class TestOTEAPI(unittest.TestCase):
         performance = task.compute_performance(result_set)
         return performance
 
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def train_and_eval(self, template_dir):
         """
         Run training, analysis, evaluation and model optimization
@@ -171,9 +182,10 @@ class TestOTEAPI(unittest.TestCase):
             difference between the original and the reloaded model is smaller than 1e-4. Ideally there should be no
             difference at all.
         """
-        configurable_parameters = self.setup_configurable_parameters(template_dir, num_epochs=5)
+        configurable_parameters = self.setup_configurable_parameters(template_dir, num_iters=150)
         _, detection_environment, dataset = self.init_environment(configurable_parameters, 250)
         task = MMObjectDetectionTask(task_environment=detection_environment)
+        task.update_configurable_parameters(detection_environment)
         self.addCleanup(task._delete_scratch_space)
 
         print('Task initialized, model training starts.')
@@ -219,17 +231,25 @@ class TestOTEAPI(unittest.TestCase):
         print(f'Performance delta after reloading: {performance_delta:.6f}')
 
     @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
 
     @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_384(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
 
     @e2e_pytest
-    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_512(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
 
+    @e2e_pytest
+    def test_training_custom_mobilenet_atss(self):
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS'))
+
+    @e2e_pytest
+    def test_training_custom_mobilenet_ssd(self):
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_SSD'))
+
+    @e2e_pytest
+    def test_training_custom_mobilenet_vfnet(self):
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'resnet50_VFNet'))

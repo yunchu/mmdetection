@@ -1,7 +1,7 @@
 # Description.
-name: Custom Object Detection 512x512
+name: Custom Object Detection Gen2 SSD
 domain: Object Detection
-summary: Fast and lightweight object detector (based on MobileNet SSD).
+summary: Custom Object Detection Model S Gen 2
 
 # Algo backend.
 # Would be better to have something more precise and self-contained, e.g.:  docker image or path to Python venv activation script?
@@ -28,10 +28,10 @@ hyper_parameters:
   # - Hidden/internal: non-editable by the user. Used to pass some parameters to the Task at its initilization.
   params:
     learning_parameters:
-      batch_size: 24
+      batch_size: 10
       learning_rate_schedule: custom
-      learning_rate: 0.05
-      learning_rate_warmup_iters: 100
+      learning_rate: 0.01
+      learning_rate_warmup_iters: 1200
     algo_backend:
       model: model.py
       data_pipeline: ote_data_pipeline.py
@@ -72,8 +72,10 @@ metrics:
   - display_name: Size​
     key: size​
     unit: Mp​
+    # FIXME
     value: 1.99
   - display_name: Complexity​
     key: complexity​
     unit: GFLOPs​
+    # FIXME
     value: 3.42
