@@ -14,6 +14,7 @@
 
 import copy
 import io
+import math
 import os
 import shutil
 import tempfile
@@ -348,8 +349,8 @@ class MMObjectDetectionTask(ImageDeepLearningTask, IConfigurableParameters, IMod
         # This way those are defined in percentage of total training iterations, which is better, but still not perfect.
         # It might be even better to control it in terms of training time, but not clear how.
         # FIXME. It'd make sense to make number of evaluations/checkpoints configurable at least.
-        config.evaluation.interval = total_iterations // 10
-        config.checkpoint_config.interval = total_iterations // 10
+        config.evaluation.interval = math.ceil(total_iterations / 10)
+        config.checkpoint_config.interval = math.ceil(total_iterations / 10)
 
         # Train the model. Training modifies mmdet config in place, so make a deepcopy
         self.is_training = True
