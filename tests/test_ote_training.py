@@ -49,7 +49,8 @@ from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 from e2e_test_system import e2e_pytest
 
 
-logger = logger_factory.get_logger('Sample')
+logger_name = osp.splitext(osp.basename(__file__))[0]
+logger = logger_factory.get_logger(logger_name)
 
 def DATASET_PARAMETERS_FIELDS():
     return ['annotations_train',
@@ -137,28 +138,13 @@ def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_na
     params = DatasetParameters(**training_parameters_fields)
     return params
 
-@pytest.mark.parametrize('model_name', ['mobilenet_v2_2s_ssd_256x256'])
-@pytest.mark.parametrize('dataset_name',
-                         [
-#                             'coco_shortened_500',
-#                             'vitens_tiled_shortened_500',
-                             'vitens_tiled_shortened_500_A'
-                         ])
-class TestOTETraining:
+class OTETrainingImpl:
+    def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
+        self.dataset_params = dataset_params
+        self.template_file_path = template_file_path
 
-    def _run_evaluation(self):
-        if self.was_training_run and self.stored_exception:
-            raise self.stored_exception
-        if self.was_training_run:
-            return
-        try:
-            model = run_ote_training(self.dataset_params, self.template_path)
-        except Exception as e:
-            self.stored_exception = e
-            self.was_training_run = True
-            raise e
-        self.was_training_run = True
-        self.model = model
+        self.was_training_run = False
+        self.stored_exception = None
 
     @staticmethod
     def _create_environment_and_task(project, template):
@@ -173,24 +159,23 @@ class TestOTETraining:
         task = task_cls(task_environment=environment)
         return environment, task
 
-    def _run_ote_training(self, dataset_params: DatasetParameters, template_file_path: str):
-        # check consistency
-        print(f'template_file_path = {template_file_path}')
-        print(f'Using for train annotation file {dataset_params.annotations_train}')
-        print(f'Using for val annotation file {dataset_params.annotations_val}')
+    def _run_ote_training(self):
+        print(f'self.template_file_path = {self.template_file_path}')
+        print(f'Using for train annotation file {self.dataset_params.annotations_train}')
+        print(f'Using for val annotation file {self.dataset_params.annotations_val}')
 
         self.dataset = MMDatasetAdapter(
-            train_ann_file=dataset_params.annotations_train,
-            train_data_root=dataset_params.images_train_dir,
-            val_ann_file=dataset_params.annotations_val,
-            val_data_root=dataset_params.images_val_dir,
-            test_ann_file=dataset_params.annotations_test,
-            test_data_root=dataset_params.images_test_dir,
+            train_ann_file=self.dataset_params.annotations_train,
+            train_data_root=self.dataset_params.images_train_dir,
+            val_ann_file=self.dataset_params.annotations_val,
+            val_data_root=self.dataset_params.images_val_dir,
+            test_ann_file=self.dataset_params.annotations_test,
+            test_data_root=self.dataset_params.images_test_dir,
             dataset_storage=NullDatasetStorage)
         print(f'train dataset: {len(self.dataset.get_subset(Subset.TRAINING))} items')
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
-        self.template = _load_template(template_file_path)
+        self.template = _load_template(self.template_file_path)
 
         self.project = _create_project_and_connect_to_dataset(self.dataset)
         self.environment, self.task = self._create_environment_and_task(self.project, self.template)
@@ -212,50 +197,116 @@ class TestOTETraining:
         logger.info('Model training finished [ROUND 0]')
         logger.info(f'RES={self.model}')
 
-    def _run_ote_training_once(self, dataset_params: DatasetParameters, template_file_path: str):
-        was_training_run = getattr(self, 'was_training_run', False)
-        stored_exception = getattr(self, 'stored_exception', None)
-        print(f':::DEBUG::: _run_ote_training_once: self={self}, id(self)={id(self)}')
-        if was_training_run and stored_exception:
-            raise stored_exception
-        if was_training_run:
+    def run_ote_training_once(self):
+        if self.was_training_run and self.stored_exception:
+            logger.warn('In function run_ote_training_once: found that previous call of the function '
+                        'caused exception -- re-raising it')
+            raise self.stored_exception
+        if self.was_training_run:
+            logger.info('In function run_ote_training_once: found that previous call of the function '
+                        'finished successfully -- skipping training')
             return
         try:
-            self._run_ote_training(dataset_params, template_file_path)
+            self._run_ote_training()
         except Exception as e:
             self.stored_exception = e
             self.was_training_run = True
             raise e
         self.was_training_run = True
 
-    @e2e_pytest
-    def test_ote_training(self, dataset_name, model_name, dataset_definitions_fx, template_paths_fx):
-        dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
-        template_path = template_paths_fx[model_name]
-        self._run_ote_training_once(dataset_params, template_path)
+    def run_ote_evaluation(self, subset=Subset.VALIDATION):
+        validation_dataset = self.dataset.get_subset(subset)
+        self.predicted_validation_dataset = self.task.analyse(
+            validation_dataset.with_empty_annotations(),
+            AnalyseParameters(is_evaluation=True))
+        self.resultset = ResultSet(
+            model=self.model,
+            ground_truth_dataset=validation_dataset,
+            prediction_dataset=self.predicted_validation_dataset,
+        )
+        self.performance = self.task.compute_performance(self.resultset)
+        logger.info(f'performance={self.performance}')
+
+# pytest magic
+def pytest_generate_tests(metafunc):
+    if metafunc.cls is None:
+        return
+    if not issubclass(metafunc.cls, TestOTETraining):
+        return
+    metafunc.parametrize('model_name', metafunc.cls.parameters['model_name'], scope='class')
+    metafunc.parametrize('dataset_name', metafunc.cls.parameters['dataset_name'], scope='class')
+
+class TestOTETraining:
+    parameters = {
+            'model_name': [
+                'mobilenet_v2_2s_ssd_256x256',
+                #'model_1'
+             ],
+            'dataset_name': [
+                'vitens_tiled_shortened_500_A',
+#               'coco_shortened_500',
+#               'vitens_tiled_shortened_500',
+               #'dataset_2',
+            ]
+    }
+
+    @pytest.fixture(scope='class')
+    def cached_from_prev_test_fx(self):
+        """
+        This fixture is intended for storying the impl class OTETrainingImpl.
+        This object should be persistent between tests while the tests use the same parameters
+        -- see the method _clean_cache_if_parameters_changed below that is used to clean
+        the impl if the parameters are changed.
+        """
+        return dict()
+
+    @staticmethod
+    def _clean_cache_if_parameters_changed(cache, **kwargs):
+        is_ok = True
+        for k, v in kwargs.items():
+            is_ok = is_ok and (cache.get(k) == v)
+        if is_ok:
+            return
+
+        for k in list(cache.keys()):
+            del cache[k]
+        for k, v in kwargs.items():
+            cache[k] = v
+
+    @staticmethod
+    def _update_impl_in_cache(cache,
+                              dataset_name, model_name,
+                              dataset_definitions, template_paths):
+        TestOTETraining._clean_cache_if_parameters_changed(cache,
+                                                           dataset_name=dataset_name,
+                                                           model_name=model_name)
+        if 'impl' not in cache:
+            dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
+            template_path = template_paths[model_name]
+            cache['impl'] = OTETrainingImpl(dataset_params, template_path)
+
+        return cache['impl']
+
 
     @e2e_pytest
-    def test_ote_training2(self, dataset_name, model_name, dataset_definitions_fx, template_paths_fx):
-        dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
-        template_path = template_paths_fx[model_name]
-        self._run_ote_training_once(dataset_params, template_path)
-#    def test_training(self):
-#        self._run_training_once()
-#
-#    def test_evaluation(self):
-#        self._run_training_once()
-#        self._run_evaluation_once()
+    def test_ote_01_training(self, dataset_name, model_name,
+                             dataset_definitions_fx, template_paths_fx,
+                             cached_from_prev_test_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
 
+        impl.run_ote_training_once()
 
-#@e2e_pytest
-#@pytest.mark.parametrize('model_name', ['mobilenet_v2_2s_ssd_256x256'])
-#@pytest.mark.parametrize('dataset_name',
-#                         [
-##                             'coco_shortened_500',
-##                             'vitens_tiled_shortened_500',
-#                             'vitens_tiled_shortened_500_A'
-#                         ])
-#def test_ote_training(dataset_name, model_name, dataset_definitions_fx, template_paths_fx):
-#    dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions_fx, dataset_name)
-#    template_path = template_paths_fx[model_name]
-#    run_ote_training(dataset_params, template_path)
+    @e2e_pytest
+    def test_ote_02_evaluation(self, dataset_name, model_name,
+                               dataset_definitions_fx, template_paths_fx,
+                               cached_from_prev_test_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
+
+        impl.run_ote_training_once()
+        impl.run_ote_evaluation()
