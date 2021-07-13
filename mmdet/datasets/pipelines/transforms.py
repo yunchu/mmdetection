@@ -167,7 +167,7 @@ class Resize(object):
         scale = int(img_scale[0] * ratio), int(img_scale[1] * ratio)
         return scale, None
 
-    def _random_scale(self, results):
+    def _random_scale(self, results, target_size=None):
         """Randomly sample an img_scale according to ``ratio_range`` and
         ``multiscale_mode``.
 
@@ -193,7 +193,10 @@ class Resize(object):
         elif self.multiscale_mode == 'range':
             scale, scale_idx = self.random_sample(self.img_scale)
         elif self.multiscale_mode == 'value':
-            scale, scale_idx = self.random_select(self.img_scale)
+            if target_size is not None:
+                scale, scale_idx = self.random_select([target_size])
+            else:
+                scale, scale_idx = self.random_select(self.img_scale)
         else:
             raise NotImplementedError
 
@@ -268,7 +271,7 @@ class Resize(object):
                     backend=self.backend)
             results['gt_semantic_seg'] = gt_seg
 
-    def __call__(self, results):
+    def __call__(self, results, target_size=None):
         """Call function to resize images, bounding boxes, masks, semantic
         segmentation map.
 
@@ -290,20 +293,20 @@ class Resize(object):
             else:
                 self._random_scale(results)
         else:
-            if not self.override:
+            if not self.override and target_size is None:
                 assert 'scale_factor' not in results, (
                     'scale and scale_factor cannot be both set.')
             else:
                 results.pop('scale')
                 if 'scale_factor' in results:
                     results.pop('scale_factor')
-                self._random_scale(results)
+                self._random_scale(results, target_size)
 
         self._resize_img(results)
         self._resize_bboxes(results)
         self._resize_masks(results)
         self._resize_seg(results)
-        if 'copy_paste' in results:
+        if 'copy_paste' in results and target_size is None:
             self.__call__(results['copy_paste'])
         return results
 

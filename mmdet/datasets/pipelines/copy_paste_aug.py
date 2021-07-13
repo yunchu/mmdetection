@@ -4,7 +4,8 @@ import numpy as np
 from copy import deepcopy
 from skimage.filters import gaussian
 
-from .transforms import Resize
+from .auto_augment import Rotate
+from .transforms import Resize, RandomFlip
 from ..builder import PIPELINES
 
 colors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 240, 250]
@@ -16,14 +17,14 @@ class CopyPaste:
         self,
         blend=False,
         sigma=3,
-        p=0.5,
-        always_apply=False
+        horizontal_flip_ratio=0.5,
+        rotate=30
     ):
         self.blend = blend
         self.sigma = sigma
-        self.p = p
-        self.always_apply = always_apply
         self.resize = None
+        self.flip = RandomFlip(flip_ratio=horizontal_flip_ratio)
+        self.rotate = Rotate(level=9, prob=0.9, max_rotate_angle=rotate)
 
     def image_copy_paste(self, results, alpha):
         if alpha is not None:
@@ -34,20 +35,30 @@ class CopyPaste:
             results['img'] = results['copy_paste']['img'] * alpha + results['img'] * (1 - alpha)
             results['img'] = results['img'].astype(img_dtype)
 
-    def masks_copy_paste(self, results, alpha):
+    def masks_copy_paste(self, results, paste_objects, alpha):
         if alpha is not None:
             results['gt_masks'].masks = np.array([
                 np.where(alpha == 1, 0, mask).astype(np.uint8) for mask in results['gt_masks'].masks
             ])
             self.extract_bboxes(results)
-            results['gt_masks'].masks = np.concatenate(
-                (results['gt_masks'].masks, results['copy_paste']['gt_masks'].masks), axis=0)
-            results['gt_bboxes'] = np.concatenate(
-                (results['gt_bboxes'], results['copy_paste']['gt_bboxes']), axis=0)
+            if paste_objects is not None:
+                results['gt_masks'].masks = np.concatenate(
+                    (results['gt_masks'].masks, results['copy_paste']['gt_masks'].masks[paste_objects]), axis=0)
+                results['gt_bboxes'] = np.concatenate(
+                    (results['gt_bboxes'], results['copy_paste']['gt_bboxes'][paste_objects]), axis=0)
+            else:
+                results['gt_masks'].masks = np.concatenate(
+                    (results['gt_masks'].masks, results['copy_paste']['gt_masks'].masks), axis=0)
+                results['gt_bboxes'] = np.concatenate(
+                    (results['gt_bboxes'], results['copy_paste']['gt_bboxes']), axis=0)
 
     @staticmethod
-    def concatenate_labels(results):
-        results['gt_labels'] = np.concatenate((results['gt_labels'], results['copy_paste']['gt_labels']), axis=0)
+    def concatenate_labels(results, paste_objects=None):
+        if paste_objects is not None:
+            results['gt_labels'] = np.concatenate((results['gt_labels'], results['copy_paste']['gt_labels'][paste_objects]), axis=0)
+        else:
+            results['gt_labels'] = np.concatenate(
+                (results['gt_labels'], results['copy_paste']['gt_labels']), axis=0)
         results['gt_bboxes_ignore'] = np.concatenate((results['gt_bboxes_ignore'], results['copy_paste']['gt_bboxes_ignore']), axis=0)
 
     @staticmethod
@@ -63,9 +74,9 @@ class CopyPaste:
             results['gt_labels'] = np.expand_dims(results['gt_labels'], axis=0)
 
     def filter_empty(self, results):
-        dw = results['gt_bboxes'][:, 2] - results['gt_bboxes'][:, 0]
-        dh = results['gt_bboxes'][:, 3] - results['gt_bboxes'][:, 1]
-        inds = np.argwhere((dw > 2.) & (dh > 2.)).squeeze()
+        w = results['gt_bboxes'][:, 2] - results['gt_bboxes'][:, 0]
+        h = results['gt_bboxes'][:, 3] - results['gt_bboxes'][:, 1]
+        inds = np.argwhere((w > 2.) & (h > 2.)).squeeze()
         self._filter(results, inds)
         inds = np.argwhere(results['gt_masks'].areas > 0).squeeze()
         self._filter(results, inds)
@@ -122,23 +133,33 @@ class CopyPaste:
         return results
 
     def __call__(self, results):
-        p = random.uniform(0, 1)
-        if p > self.p:
-            return results
         bbox_type = results['gt_bboxes'].dtype
         mask_type = results['gt_masks'].masks.dtype
         label_type = results['gt_labels'].dtype
 
         h, w = results['img'].shape[:-1]
         self.rescale_paste_target(results['copy_paste'], (h, w))
+        results['copy_paste'] = self.flip(results['copy_paste'])
+        results['copy_paste'] = self.rotate(results['copy_paste'])
+
+        objects_num = results['copy_paste']['gt_labels'].shape[0]
+        random_num = min(random.randint(0, int(1.1 * objects_num)), objects_num)
+        all_nums = [x for x in range(objects_num)]
+        paste_objects = random.sample(all_nums, random_num)
+
+        if not len(paste_objects):
+            return results
+
+        paste_objects = np.array(paste_objects)
 
         compose_paste_mask = np.zeros((h, w), dtype=np.uint8)
-        for mask in results['copy_paste']['gt_masks'].masks:
-            compose_paste_mask = np.logical_or(compose_paste_mask, mask)
+        for i, mask in enumerate(results['copy_paste']['gt_masks'].masks):
+            if paste_objects is None or i in paste_objects:
+                compose_paste_mask = np.logical_or(compose_paste_mask, mask)
 
         self.image_copy_paste(results, alpha=compose_paste_mask)
-        self.masks_copy_paste(results, alpha=compose_paste_mask)
-        self.concatenate_labels(results)
+        self.masks_copy_paste(results, paste_objects, alpha=compose_paste_mask)
+        self.concatenate_labels(results, paste_objects)
         self.filter_empty(results)
         self.cast(results, bbox_type, mask_type, label_type)
         #self.visualize(results)
