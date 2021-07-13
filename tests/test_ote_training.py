@@ -16,7 +16,7 @@ from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
 from e2e.collection_system.systems import Collector
 from e2e_test_system import select_configurable_parameters
-from e2e_test_system import CollsysManager
+from e2e.collection_system.systems import TinySystem
 from e2e_test_system import e2e_pytest
 
 logger = logger_factory.get_logger('Sample')
@@ -139,7 +139,7 @@ def test_ote_training(dataset_name, dataset_definitions_fx):
         "model": "mobilenet_v2-2s_ssd-512x512",
         "dataset": dataset_name
     }
-    collsys_mgr = CollsysManager("main", setup)
+    collsys_mgr = TinySystem("main", setup)
     with collsys_mgr:
         training_params = _get_training_params_from_dataset_definitions(dataset_definitions_fx, setup['dataset'])
         params = run_ote_training(training_params)
