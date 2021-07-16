@@ -8,8 +8,6 @@ from .auto_augment import Rotate
 from .transforms import Resize, RandomFlip
 from ..builder import PIPELINES
 
-colors = [20, 30, 40, 50, 60, 70, 80, 90, 100, 110, 120, 130, 140, 150, 160, 170, 180, 190, 200, 210, 220, 240, 250]
-
 
 @PIPELINES.register_module()
 class CopyPaste:
@@ -24,7 +22,16 @@ class CopyPaste:
         self.sigma = sigma
         self.resize = None
         self.flip = RandomFlip(flip_ratio=horizontal_flip_ratio)
-        self.rotate = Rotate(level=9, prob=0.9, max_rotate_angle=rotate)
+        if rotate > 0:
+            self.rotate = Rotate(level=2, prob=0.5, max_rotate_angle=rotate)
+        else:
+            self.rotate = None
+        self.colors = []
+        for i in range(20):
+            c0 = random.randint(0, 255)
+            c1 = random.randint(0, 255)
+            c2 = random.randint(0, 255)
+            self.colors.append(np.array([c0, c1, c2], dtype=np.uint8))
 
     def image_copy_paste(self, results, alpha):
         if alpha is not None:
@@ -73,10 +80,10 @@ class CopyPaste:
         if len(results['gt_labels'].shape) == 0:
             results['gt_labels'] = np.expand_dims(results['gt_labels'], axis=0)
 
-    def filter_empty(self, results):
+    def filter_empty(self, results, min_size=5):
         w = results['gt_bboxes'][:, 2] - results['gt_bboxes'][:, 0]
         h = results['gt_bboxes'][:, 3] - results['gt_bboxes'][:, 1]
-        inds = np.argwhere((w > 2.) & (h > 2.)).squeeze()
+        inds = np.argwhere((w > min_size) & (h > min_size)).squeeze()
         self._filter(results, inds)
         inds = np.argwhere(results['gt_masks'].areas > 0).squeeze()
         self._filter(results, inds)
@@ -113,8 +120,9 @@ class CopyPaste:
                 x0, y0, x1, y1 = bbox
                 cv2.rectangle(img, (x0, y0), (x1, y1), (0, 0, 255), 2)
             if mask is not None:
-                m = np.stack([mask, mask, mask], axis=-1)
-                img = np.where(m == 1, img * 0.5 + 0.5 * colors[i % len(colors)], img).astype(np.uint8)
+                color = self.colors[i % len(self.colors)]
+                colored_mask = np.stack([mask, mask, mask], axis=-1) * color
+                img = cv2.addWeighted(img, 1.0, colored_mask, 0.5, 0.0)
         cv2.imshow(name, img)
         cv2.waitKey(0)
 
@@ -132,35 +140,40 @@ class CopyPaste:
             results = self.resize(results)
         return results
 
+    def get_composed_mask(self, results, h, w, inds=None):
+        compose_mask = np.zeros((h, w), dtype=np.uint8)
+        for i, mask in enumerate(results['copy_paste']['gt_masks'].masks):
+            if inds is None or i in inds:
+                compose_mask = np.logical_or(compose_mask, mask)
+        return compose_mask
+
     def __call__(self, results):
+        # Get types of modified objects
         bbox_type = results['gt_bboxes'].dtype
         mask_type = results['gt_masks'].masks.dtype
         label_type = results['gt_labels'].dtype
-
+        # Apply augmentations to an image that will share masks
         h, w = results['img'].shape[:-1]
         self.rescale_paste_target(results['copy_paste'], (h, w))
         results['copy_paste'] = self.flip(results['copy_paste'])
-        results['copy_paste'] = self.rotate(results['copy_paste'])
-
+        if self.rotate is not None:
+            results['copy_paste'] = self.rotate(results['copy_paste'])
+        # Get random objects from the image
         objects_num = results['copy_paste']['gt_labels'].shape[0]
         random_num = min(random.randint(0, int(1.1 * objects_num)), objects_num)
         all_nums = [x for x in range(objects_num)]
         paste_objects = random.sample(all_nums, random_num)
-
+        paste_objects = np.array(paste_objects)
+        # If list of randomly selected objects is empty do nothing
         if not len(paste_objects):
             return results
-
-        paste_objects = np.array(paste_objects)
-
-        compose_paste_mask = np.zeros((h, w), dtype=np.uint8)
-        for i, mask in enumerate(results['copy_paste']['gt_masks'].masks):
-            if paste_objects is None or i in paste_objects:
-                compose_paste_mask = np.logical_or(compose_paste_mask, mask)
-
+        # Get composed mask from all masks on the image
+        compose_paste_mask = self.get_composed_mask(results, h, w, paste_objects)
+        # Copypaste objects to source image
         self.image_copy_paste(results, alpha=compose_paste_mask)
         self.masks_copy_paste(results, paste_objects, alpha=compose_paste_mask)
         self.concatenate_labels(results, paste_objects)
         self.filter_empty(results)
         self.cast(results, bbox_type, mask_type, label_type)
-        #self.visualize(results)
+        #self.visualize(results, 'CopyPaste_result')
         return results

@@ -1,3 +1,5 @@
+import cv2
+from copy import deepcopy
 import random
 import numpy as np
 
@@ -12,6 +14,12 @@ class LargeScaleJittering:
         self.max = max
         self.resize = None
         self.crop = None
+        self.colors = []
+        for i in range(20):
+            c0 = random.randint(0, 255)
+            c1 = random.randint(0, 255)
+            c2 = random.randint(0, 255)
+            self.colors.append(np.array([c0, c1, c2], dtype=np.uint8))
 
     def _resize(self, results, new_w, new_h):
         if self.resize is None:
@@ -76,4 +84,22 @@ class LargeScaleJittering:
         elif scale > 1.0:
             results = self._crop(results, w, h)
         return results
+
+    def visualize(self, results, name=''):
+        img = deepcopy(results['img'])
+        n = max(results['gt_bboxes'].shape[0], results['gt_masks'].masks.shape[0])
+        for i in range(n):
+            bbox = results['gt_bboxes'][i] if i < results['gt_bboxes'].shape[0] else None
+            mask = results['gt_masks'].masks[i] if i < results['gt_masks'].masks.shape[0] else None
+            if bbox is not None:
+                bbox = [int(x) for x in bbox]
+                x0, y0, x1, y1 = bbox
+                cv2.rectangle(img, (x0, y0), (x1, y1), (0, 0, 255), 2)
+            if mask is not None:
+                m = np.stack([mask, mask, mask], axis=-1)
+                c = self.colors[i % len(self.colors)]
+                m *= c
+                img = cv2.addWeighted(img, 1.0, m, 0.5, 0.0)
+        cv2.imshow(name, img)
+        cv2.waitKey(0)
 
