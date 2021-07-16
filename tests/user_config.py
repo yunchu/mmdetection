@@ -8,6 +8,6 @@ os.environ["TT_GUI_SMOKE_TESTS"] = "True"
 os.environ["TT_GUI_REGRESSION_TESTS"] = "True"
 os.environ["TT_GUI_OTHER_TESTS"] = "True"
 os.environ["TT_GUI_LONG_TESTS"] = "True"
-os.environ["TT_DATABASE_URL"] = "mongodb://localhost/impt_develop_test_results"
-#os.environ["TT_DATABASE_URL"] = ""
+if "TT_DATABASE_URL" not in os.environ or os.environ["TT_DATABASE_URL"] == "":
+    os.environ["TT_DATABASE_URL"] = "mongodb://localhost/impt_develop_test_results"
 os.environ["TT_ENVIRONMENT_NAME"] = "lbeynens"
