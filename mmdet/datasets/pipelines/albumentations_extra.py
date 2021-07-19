@@ -13,7 +13,8 @@ class RandomRotate(albumentations.Rotate):
 
     def __call__(self, **results):
         res = super().__call__(**results)
-        res['texts'] = res['texts'].tolist()
+        if not isinstance(res['texts'], list):
+            res['texts'] = res['texts'].tolist()
         for i, bbox in enumerate(res['bboxes']):
             xmin, ymin, xmax, ymax, _ = bbox
             if xmin < 0 or ymin < 0 or xmax > 1.0 or ymax > 1.0:
