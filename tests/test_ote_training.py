@@ -1,32 +1,3 @@
-#import functools
-#import numpy as np
-#import os.path as osp
-#import pytest
-#import random
-#import time
-#import warnings
-#from concurrent.futures import ThreadPoolExecutor
-#
-#from flaky import flaky
-#from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind
-#from sc_sdk.entities.dataset_item import DatasetItem
-#from sc_sdk.entities.datasets import Dataset, Subset
-#from sc_sdk.entities.image import Image
-#from sc_sdk.entities.media_identifier import ImageIdentifier
-#from sc_sdk.entities.model import NullModel
-#from sc_sdk.entities.optimized_model import OptimizedModel
-#from sc_sdk.entities.resultset import ResultSet
-#from sc_sdk.entities.shapes.box import Box
-#from sc_sdk.entities.shapes.ellipse import Ellipse
-#from sc_sdk.entities.shapes.polygon import Polygon
-#from sc_sdk.entities.task_environment import TaskEnvironment
-#from sc_sdk.tests.test_helpers import generate_random_annotated_image, rerun_on_flaky_assert
-#from sc_sdk.usecases.tasks.interfaces.model_optimizer import IModelOptimizer
-#from sc_sdk.utils.project_factory import ProjectFactory
-#
-#from mmdet.apis.ote.apis.detection import MMObjectDetectionTask, MMDetectionParameters, configurable_parameters
-
-#######
 import importlib
 import os.path as osp
 import pytest
@@ -383,17 +354,3 @@ class TestOTETraining:
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
-
-
-# Simple test to debug DataCollector
-#@e2e_pytest
-#def test_simple1():
-#    from e2e.collection_system.systems import TinySystem
-#    data_collector =  TinySystem(name='AAB',
-#                                    setup={'a': 1})
-#    with data_collector:
-#        data_collector.log_final_metric("metricname", 1.5)
-#        val = {'x': 5, 'y': {'z': {'f': 1}, 'p': 'q'}}
-#        data_collector.log_final_metric("metric/na-me", val)
-#        data_collector.log_internal_metric("checkpoint/na-me", "last", flush=True)
-#        data_collector.update_metadata("additional_id/en-tification", {'x': 'y'})
