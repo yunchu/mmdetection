@@ -1,5 +1,9 @@
+from .psp_layer import PSPModule
+from .asymmetric_position_attention import AsymmetricPositionAttentionModule
 from .builder import build_positional_encoding, build_transformer
+from .channel_shuffle import channel_shuffle
 from .gaussian_target import gaussian_radius, gen_gaussian_target
+from .local_attention import LocalAttentionModule
 from .positional_encoding import (LearnedPositionalEncoding,
                                   SinePositionalEncoding)
 from .res_layer import ResLayer, SimplifiedBasicBlock
@@ -12,5 +16,6 @@ __all__ = [
     'FFN', 'TransformerEncoderLayer', 'TransformerEncoder',
     'TransformerDecoderLayer', 'TransformerDecoder', 'Transformer',
     'build_transformer', 'build_positional_encoding', 'SinePositionalEncoding',
-    'LearnedPositionalEncoding', 'DynamicConv', 'SimplifiedBasicBlock'
+    'LearnedPositionalEncoding', 'DynamicConv', 'SimplifiedBasicBlock',
+    'channel_shuffle', 'AsymmetricPositionAttentionModule', 'LocalAttentionModule', 'PSPModule'
 ]
