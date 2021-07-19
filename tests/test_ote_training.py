@@ -300,6 +300,7 @@ class TestOTETraining:
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
+                'vitens_tiled',
 #               'coco_shortened_500',
 #               'vitens_tiled_shortened_500',
                #'dataset_2',
