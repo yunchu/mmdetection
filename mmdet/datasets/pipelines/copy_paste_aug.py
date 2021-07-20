@@ -26,27 +26,27 @@ class CopyPaste:
         self.colors = [(np.random.rand(3) * 255).astype(np.uint8) for _ in range(20)]
 
     def image_copy_paste(self, results, composed_mask):
-        if composed_mask is not None:
-            img_dtype = results['img'].dtype
-            composed_mask = composed_mask[..., None]
-            results['img'] = results['copy_paste']['img'] * composed_mask + results['img'] * (1 - composed_mask)
-            results['img'] = results['img'].astype(img_dtype)
+        img_dtype = results['img'].dtype
+        composed_mask = composed_mask[..., None]
+        results['img'] = results['copy_paste']['img'] * composed_mask + results['img'] * (1 - composed_mask)
+        results['img'] = results['img'].astype(img_dtype)
 
     def masks_copy_paste(self, results, paste_objects, composed_mask):
-        if composed_mask is not None:
-            results['gt_masks'].masks = np.array([
-                np.where(composed_mask == 1, 0, mask).astype(np.uint8) for mask in results['gt_masks'].masks
-            ])
-            results['gt_masks'].masks = np.concatenate(
-                (results['gt_masks'].masks, results['copy_paste']['gt_masks'].masks[paste_objects]), axis=0)
-            results['gt_bboxes'] = np.concatenate(
-                (results['gt_bboxes'], results['copy_paste']['gt_bboxes'][paste_objects]), axis=0)
-            self.extract_bboxes(results)
+        results['gt_masks'].masks = np.array([
+            np.where(composed_mask == 1, 0, mask).astype(np.uint8) for mask in results['gt_masks'].masks
+        ])
+        results['gt_masks'].masks = np.concatenate(
+            (results['gt_masks'].masks, results['copy_paste']['gt_masks'].masks[paste_objects]), axis=0)
+        results['gt_bboxes'] = np.concatenate(
+            (results['gt_bboxes'], results['copy_paste']['gt_bboxes'][paste_objects]), axis=0)
+        self.extract_bboxes(results)
 
     @staticmethod
     def concatenate_labels(results, paste_objects=None):
-        results['gt_labels'] = np.concatenate((results['gt_labels'], results['copy_paste']['gt_labels'][paste_objects]), axis=0)
-        results['gt_bboxes_ignore'] = np.concatenate((results['gt_bboxes_ignore'], results['copy_paste']['gt_bboxes_ignore']), axis=0)
+        results['gt_labels'] = np.concatenate(
+            (results['gt_labels'], results['copy_paste']['gt_labels'][paste_objects]), axis=0)
+        results['gt_bboxes_ignore'] = np.concatenate(
+            (results['gt_bboxes_ignore'], results['copy_paste']['gt_bboxes_ignore']), axis=0)
 
     @staticmethod
     def _filter(results, inds):
@@ -63,8 +63,10 @@ class CopyPaste:
     def filter_empty(self, results, min_size=5):
         w = results['gt_bboxes'][:, 2] - results['gt_bboxes'][:, 0]
         h = results['gt_bboxes'][:, 3] - results['gt_bboxes'][:, 1]
+        # Filter too small objects
         inds = np.argwhere((w > min_size) & (h > min_size)).squeeze()
         self._filter(results, inds)
+        # Filter objects with empty mask
         inds = np.argwhere(results['gt_masks'].areas > 0).squeeze()
         self._filter(results, inds)
 
@@ -121,11 +123,11 @@ class CopyPaste:
         return results
 
     def get_composed_mask(self, results, h, w, inds=None):
-        compose_mask = np.zeros((h, w), dtype=np.uint8)
+        composed_mask = np.zeros((h, w), dtype=np.uint8)
         for i, mask in enumerate(results['copy_paste']['gt_masks'].masks):
             if inds is None or i in inds:
-                compose_mask = np.logical_or(compose_mask, mask)
-        return compose_mask
+                composed_mask = np.logical_or(composed_mask, mask)
+        return composed_mask
 
     def __call__(self, results):
         # Get types of modified objects
@@ -142,18 +144,17 @@ class CopyPaste:
         objects_num = results['copy_paste']['gt_labels'].shape[0]
         random_num = min(random.randint(0, int(1.1 * objects_num)), objects_num)
         all_nums = [x for x in range(objects_num)]
-        paste_objects = random.sample(all_nums, random_num) if not self.copy_all else all_nums
-        paste_objects = np.array(paste_objects)
+        objects_inds = random.sample(all_nums, random_num) if not self.copy_all else all_nums
         # If list of randomly selected objects is empty do nothing
-        if not len(paste_objects):
+        if not len(objects_inds):
             return results
-        # Get composed mask from all masks on the image
-        compose_paste_mask = self.get_composed_mask(results, h, w, paste_objects)
-        # Copypaste objects to source image
-        self.image_copy_paste(results, composed_mask=compose_paste_mask)
-        self.masks_copy_paste(results, paste_objects, composed_mask=compose_paste_mask)
-        self.concatenate_labels(results, paste_objects)
+        objects_inds = np.array(objects_inds)
+        # Get composed mask from N masks on the image
+        composed_mask = self.get_composed_mask(results, h, w, objects_inds)
+        # Copypaste objects to target image
+        self.image_copy_paste(results, composed_mask=composed_mask)
+        self.masks_copy_paste(results, objects_inds, composed_mask=composed_mask)
+        self.concatenate_labels(results, objects_inds)
         self.filter_empty(results)
         self.cast(results, bbox_type, mask_type, label_type)
-        #self.visualize(results, 'CopyPaste_result')
         return results
