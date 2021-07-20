@@ -1,10 +1,12 @@
 import importlib
+import os
 import os.path as osp
 import pytest
 import sys
 import yaml
 
 from collections import namedtuple
+from copy import deepcopy
 from pprint import pformat
 
 from sc_sdk.entities.analyse_parameters import AnalyseParameters
@@ -149,6 +151,19 @@ def performance_to_score_name_value(perf: Performance):
     value = score.value
     return name, value
 
+def select_configurable_parameters(json_configurable_parameters):
+    selected = {}
+    getv = lambda c, n: c[n]['value']
+    for section, container in json_configurable_parameters.items():
+        for param in container.keys():
+            try:
+                selected[f'{section}/{param}'] = getv(container, param)
+            except TypeError:
+                pass
+            except KeyError:
+                pass
+    return selected
+
 class OTETrainingImpl:
     def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
         self.dataset_params = dataset_params
@@ -210,6 +225,8 @@ class OTETrainingImpl:
         self.environment.set_configurable_parameters(params)
         self.task.update_configurable_parameters(self.environment)
 
+        self.copy_configurable_parameters = deepcopy(params)
+
         logger.info('Start model training... [ROUND 0]')
         self.model = self.task.train(dataset=self.dataset)
         logger.info('Model training finished [ROUND 0]')
@@ -234,8 +251,15 @@ class OTETrainingImpl:
                 raise e
 
         training_performance = self.get_training_performance()
+
         score_name, score_value = performance_to_score_name_value(training_performance)
         data_collector.log_final_metric('training_performance/' + score_name, score_value)
+
+        json_configurable_parameters = self.copy_configurable_parameters.to_json()
+        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
+        for k, v in selected_configurable_parameters.items():
+            data_collector.update_metadata(k, v)
+
         return training_performance
 
     def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
@@ -318,13 +342,18 @@ class TestOTETraining:
 
         return cache['impl']
 
-
     @pytest.fixture
     def data_collector_fx(self, request):
-        setup = request.node.callspec.params # TODO: think on more detailed setup
-        logger.info(f'setup={setup}')
-        data_collector =  DataCollector(name='TestOTETraining', # TODO: or request.node.name?
-                                        setup=setup)
+        setup = deepcopy(request.node.callspec.params)
+        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
+        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")
+        setup["scenario"] = "api"
+        setup["test"] = request.node.name
+        setup["subject"] = "custom-object-detection"
+        setup["project"] = "ote"
+        logger.info(f'creating DataCollector: setup=\n{pformat(setup, width=140)}')
+        data_collector = DataCollector(name='TestOTETraining',
+                                       setup=setup)
         with data_collector:
             logger.info('data_collector is created')
             yield data_collector

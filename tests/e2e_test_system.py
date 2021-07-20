@@ -51,7 +51,6 @@ def _generate_e2e_pytest_decorator():
 
     return _e2e_pytest
 
-
 def _create_class_DataCollector():
     try:
         from e2e.collection_system.systems import TinySystem
