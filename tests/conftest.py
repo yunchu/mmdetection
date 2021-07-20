@@ -9,6 +9,7 @@ try:
 except ImportError:
     _e2e_pytest_addoption = None
     pass
+import config
 
 def pytest_addoption(parser):
     if _e2e_pytest_addoption:
