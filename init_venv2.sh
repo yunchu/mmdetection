@@ -27,7 +27,7 @@ if [ -z "${CUDA_HOME}" ] && [ -d ${CUDA_HOME_CANDIDATE} ]; then
 fi
 
 # Create virtual environment
-virtualenv ${venv_dir} -p python3.8 --prompt="(detection2)" || exit 1
+virtualenv ${venv_dir} -p python3.7 --prompt="(detection2)" || exit 1
 
 path_openvino_vars="${INTEL_OPENVINO_DIR:-/opt/intel/openvino_2021}/bin/setupvars.sh"
 if [[ -e "${path_openvino_vars}" ]]; then
