@@ -1,0 +1,99 @@
+# Description.
+name: face-detection-0207
+domain: Object Detection
+summary: Face Detection based on ShuffleNetV2 (SSD).
+
+# Algo backend.
+# Would be better to have something more precise and self-contained, e.g.:  docker image or path to Python venv activation script?
+framework: OTEDetection v2.9.1
+
+# Should be revisited?
+applications:
+  ~
+
+# Optional? requirements to the dataset. Should be revisited?
+dataset_requirements:
+  ~
+
+# Task implementation.
+task:
+  impl: mmdet.apis.ote.apis.detection.MMObjectDetectionTask
+
+# Task and hyperparameters.
+hyper_parameters:
+  impl: mmdet.apis.ote.apis.detection.MMDetectionParameters
+  # Would be good to have different groups of parameters:
+  # - Basic: Shown to the user in the first place and editable by him.
+  # - Advanced: Editable by the user used the "advanced" section.
+  # - Hidden/internal: non-editable by the user. Used to pass some parameters to the Task at its initilization.
+  params:
+    learning_parameters:
+      batch_size: 32
+      learning_rate_schedule: custom
+      learning_rate: 0.05
+      num_iters: 70 # this is number of epochs
+    algo_backend:
+      model: model.py
+      data_pipeline: ote_data_pipeline.py
+
+# Available model optimizations and their configuration.
+optimization:
+  output_format:
+    onnx:
+      default: true
+    openvino:
+      default: true
+      input_format: BGR
+      normalize_input: true
+      precision: FP32
+      pot: ~
+  nncf:
+    quantization:
+      config: compression_config.json
+      default: false
+    sparsity:
+      config: compression_config.json
+      default: false
+
+# Training resources.
+max_nodes: 1
+training_targets:
+  - GPU
+  - CPU
+
+# Inference options. Defined by OpenVINO capabilities, not Algo Backend or Platform.
+inference_target:
+  - CPU
+  - iGPU
+  - VPU
+
+# Some meta information, which may be used for model recommendation. In general, metrics are non-static, hence has to be updated.
+metrics:
+- display_name: AP @ [IoU=0.50:0.95]
+  key: ap
+  unit: '%'
+  value: 17.2
+- display_name: AP for faces > 64x64
+  key: ap_64x64
+  unit: '%'
+  value: 88.17
+- display_name: WiderFace Easy
+  key: widerface_e
+  unit: '%'
+  value: 84.406
+- display_name: WiderFace Medium
+  key: widerface_m
+  unit: '%'
+  value: 76.748
+- display_name: WiderFace Hard
+  key: widerface_h
+  unit: '%'
+  value: 43.452
+- display_name: Size
+  key: size
+  unit: Mp
+  value: 0.81
+- display_name: Complexity
+  key: complexity
+  unit: GFLOPs
+  value: 1.04

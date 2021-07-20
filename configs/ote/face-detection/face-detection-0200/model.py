@@ -1,7 +1,4 @@
 # model settings
-from numpy.core.numeric import NaN
-
-
 width_mult = 1.0
 model = dict(
     type='SingleStageDetector',
