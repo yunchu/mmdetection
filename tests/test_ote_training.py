@@ -251,6 +251,7 @@ class TestOTETraining:
                 'face-detection-0205',
                 'face-detection-0206',
                 'face-detection-0207',
+                'horizontal-text-detection-0001',
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
