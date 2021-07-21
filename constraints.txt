@@ -4,12 +4,12 @@ chardet==3.0.4
 grpcio==1.33.2
 grpcio-tools==1.33.2
 grpcio-health-checking==1.33.2
-numpy==1.20.3
+numpy==1.19.5
 opencv-python-headless==4.4.0.46
 protobuf==3.14.0
 pylint==2.6.0
 pymongo==3.11.1
-requests==2.25.0
+requests==2.25.1
 requests-toolbelt==0.9.1
 typing-extensions==3.7.4.3
 pytest==5.3.5
@@ -25,3 +25,4 @@ testfixtures==6.17.1
 pre-commit==2.7.1
 
 decorator==4.4.*
+python-dateutil==2.8.1

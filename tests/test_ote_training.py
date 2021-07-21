@@ -1,32 +1,3 @@
-#import functools
-#import numpy as np
-#import os.path as osp
-#import pytest
-#import random
-#import time
-#import warnings
-#from concurrent.futures import ThreadPoolExecutor
-#
-#from flaky import flaky
-#from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind
-#from sc_sdk.entities.dataset_item import DatasetItem
-#from sc_sdk.entities.datasets import Dataset, Subset
-#from sc_sdk.entities.image import Image
-#from sc_sdk.entities.media_identifier import ImageIdentifier
-#from sc_sdk.entities.model import NullModel
-#from sc_sdk.entities.optimized_model import OptimizedModel
-#from sc_sdk.entities.resultset import ResultSet
-#from sc_sdk.entities.shapes.box import Box
-#from sc_sdk.entities.shapes.ellipse import Ellipse
-#from sc_sdk.entities.shapes.polygon import Polygon
-#from sc_sdk.entities.task_environment import TaskEnvironment
-#from sc_sdk.tests.test_helpers import generate_random_annotated_image, rerun_on_flaky_assert
-#from sc_sdk.usecases.tasks.interfaces.model_optimizer import IModelOptimizer
-#from sc_sdk.utils.project_factory import ProjectFactory
-#
-#from mmdet.apis.ote.apis.detection import MMObjectDetectionTask, MMDetectionParameters, configurable_parameters
-
-#######
 import importlib
 import os.path as osp
 import pytest
@@ -43,10 +14,11 @@ from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
 from sc_sdk.utils.project_factory import ProjectFactory
+from sc_sdk.entities.metrics import Performance, ScoreMetric
 
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
-from e2e_test_system import e2e_pytest
+from e2e_test_system import e2e_pytest, DataCollector
 
 
 logger_name = osp.splitext(osp.basename(__file__))[0]
@@ -138,10 +110,56 @@ def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_na
     params = DatasetParameters(**training_parameters_fields)
     return params
 
+def to_dict(val):
+    """
+    General function to convert any class/structure to a serializable dict
+    if the class/structure is sufficiently simple; but nested simple structs are possible.
+    """
+    import numpy as np
+    def _to_dict(val):
+        PRIMITIVE_TYPES = (bool, int, float, str, complex) #
+        if type(val) in PRIMITIVE_TYPES:
+            return val
+        if isinstance(val, np.number):
+            return val
+        if type(val) == list:
+            return [_to_dict(v) for v in val]
+        if type(val) == dict:
+            keys = list(val.keys())
+            return {k: _to_dict(v) for k, v in val.items()}
+
+        keys = [k for k in dir(val) if not k.startswith('_') and not callable(getattr(val, k))]
+        res = {}
+        for k in keys:
+            res[k] = _to_dict(getattr(val, k))
+        return res
+    res = _to_dict(val)
+    return res
+
+def performance_to_score_name_value(perf: Performance):
+    """
+    The method is intended to get main score info from Performance class
+    """
+    if perf is None:
+        return None
+    assert isinstance(perf, Performance)
+    score = perf.score
+    assert isinstance(score, ScoreMetric)
+    name = score.name
+    value = score.value
+    return name, value
+
 class OTETrainingImpl:
     def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
         self.dataset_params = dataset_params
         self.template_file_path = template_file_path
+
+        self.template = None
+        self.project = None
+        self.environment = None
+        self.task = None
+        self.model = None
+        self.evaluation_performance = None
 
         self.was_training_run = False
         self.stored_exception = None
@@ -195,26 +213,32 @@ class OTETrainingImpl:
         logger.info('Start model training... [ROUND 0]')
         self.model = self.task.train(dataset=self.dataset)
         logger.info('Model training finished [ROUND 0]')
-        logger.info(f'RES={self.model}')
+        logger.info(f'performance={self.model.performance}')
 
-    def run_ote_training_once(self):
+    def get_training_performance(self):
+        return getattr(self.model, 'performance', None)
+
+    def run_ote_training_once(self, data_collector):
         if self.was_training_run and self.stored_exception:
             logger.warn('In function run_ote_training_once: found that previous call of the function '
                         'caused exception -- re-raising it')
             raise self.stored_exception
-        if self.was_training_run:
-            logger.info('In function run_ote_training_once: found that previous call of the function '
-                        'finished successfully -- skipping training')
-            return
-        try:
-            self._run_ote_training()
-        except Exception as e:
-            self.stored_exception = e
-            self.was_training_run = True
-            raise e
-        self.was_training_run = True
 
-    def run_ote_evaluation(self, subset=Subset.VALIDATION):
+        if not self.was_training_run:
+            try:
+                self._run_ote_training()
+                self.was_training_run = True
+            except Exception as e:
+                self.stored_exception = e
+                self.was_training_run = True
+                raise e
+
+        training_performance = self.get_training_performance()
+        score_name, score_value = performance_to_score_name_value(training_performance)
+        data_collector.log_final_metric('training_performance/' + score_name, score_value)
+        return training_performance
+
+    def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
         validation_dataset = self.dataset.get_subset(subset)
         self.predicted_validation_dataset = self.task.analyse(
             validation_dataset.with_empty_annotations(),
@@ -224,8 +248,11 @@ class OTETrainingImpl:
             ground_truth_dataset=validation_dataset,
             prediction_dataset=self.predicted_validation_dataset,
         )
-        self.performance = self.task.compute_performance(self.resultset)
-        logger.info(f'performance={self.performance}')
+        self.evaluation_performance = self.task.compute_performance(self.resultset)
+        logger.info(f'performance={self.evaluation_performance}')
+        score_name, score_value = performance_to_score_name_value(self.evaluation_performance)
+        data_collector.log_final_metric('evaluation_performance/' + score_name, score_value)
+        return self.evaluation_performance
 
 # pytest magic
 def pytest_generate_tests(metafunc):
@@ -255,6 +282,7 @@ class TestOTETraining:
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
+                'vitens_tiled',
 #               'coco_shortened_500',
 #               'vitens_tiled_shortened_500',
                #'dataset_2',
@@ -277,12 +305,14 @@ class TestOTETraining:
         for k, v in kwargs.items():
             is_ok = is_ok and (cache.get(k) == v)
         if is_ok:
+            logger.info('TestOTETraining: parameters were not changed -- cache is kept')
             return
 
         for k in list(cache.keys()):
             del cache[k]
         for k, v in kwargs.items():
             cache[k] = v
+        logger.info('TestOTETraining: parameters were changed -- cache is cleaned')
 
     @staticmethod
     def _update_impl_in_cache(cache,
@@ -292,6 +322,7 @@ class TestOTETraining:
                                                            dataset_name=dataset_name,
                                                            model_name=model_name)
         if 'impl' not in cache:
+            logger.info('TestOTETraining: creating OTETrainingImpl')
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
             template_path = template_paths[model_name]
             cache['impl'] = OTETrainingImpl(dataset_params, template_path)
@@ -299,25 +330,38 @@ class TestOTETraining:
         return cache['impl']
 
 
+    @pytest.fixture
+    def data_collector_fx(self, request):
+        setup = request.node.callspec.params # TODO: think on more detailed setup
+        logger.info(f'setup={setup}')
+        data_collector =  DataCollector(name='TestOTETraining', # TODO: or request.node.name?
+                                        setup=setup)
+        with data_collector:
+            logger.info('data_collector is created')
+            yield data_collector
+        logger.info('data_collector is released')
+
     @e2e_pytest
     def test_ote_01_training(self, dataset_name, model_name,
                              dataset_definitions_fx, template_paths_fx,
-                             cached_from_prev_test_fx):
+                             cached_from_prev_test_fx,
+                             data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
                                           dataset_definitions_fx, template_paths_fx)
 
-        impl.run_ote_training_once()
+        impl.run_ote_training_once(data_collector_fx)
 
     @e2e_pytest
     def test_ote_02_evaluation(self, dataset_name, model_name,
                                dataset_definitions_fx, template_paths_fx,
-                               cached_from_prev_test_fx):
+                               cached_from_prev_test_fx,
+                               data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
                                           dataset_definitions_fx, template_paths_fx)
 
-        impl.run_ote_training_once()
-        impl.run_ote_evaluation()
+        impl.run_ote_training_once(data_collector_fx)
+        impl.run_ote_evaluation(data_collector_fx)
