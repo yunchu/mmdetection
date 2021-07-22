@@ -34,6 +34,8 @@ def DATASET_PARAMETERS_FIELDS():
             'annotations_test',
             'images_test_dir',
             ]
+
+ROOT_PATH_KEY = '_root_path'
 DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
 
 @pytest.fixture
@@ -57,6 +59,7 @@ def dataset_definitions_fx(request):
                              f'whereas it is required for the test {request.node.originalname or request.node.name}')
     with open(path) as f:
         data = yaml.safe_load(f)
+    data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
 
 @pytest.fixture
@@ -73,6 +76,7 @@ def template_paths_fx(request):
                              f'whereas it is required for the test {request.node.originalname or request.node.name}')
     with open(path) as f:
         data = yaml.safe_load(f)
+    data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
 
 def _load_template(path):
@@ -99,10 +103,26 @@ def _create_project_and_connect_to_dataset(dataset):
 
 
 
+def _make_path_be_abs(some_val, root_path):
+    assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
+    assert isinstance(root_path, str), f'Wrong type of root_path: {root_path}, type={type(root_path)}'
+
+    if isinstance(some_val, str):
+        if not osp.isabs(some_val):
+            return osp.join(root_path, some_val)
+
+    some_dict = some_val
+    for k in sorted(some_dict.keys()):
+        v = some_dict[k]
+        if isinstance(v, str) and not osp.isabs(v):
+            some_dict[k] = osp.join(root_path, v)
+    return some_dict
+
 def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name):
     cur_dataset_definition = dataset_definitions[dataset_name]
     training_parameters_fields = {k: v for k, v in cur_dataset_definition.items()
                                   if k in DATASET_PARAMETERS_FIELDS()}
+    _make_path_be_abs(training_parameters_fields, dataset_definitions[ROOT_PATH_KEY])
 
     assert set(DATASET_PARAMETERS_FIELDS()) == set(training_parameters_fields.keys()), \
             f'ERROR: dataset definitions for name={dataset_name} does not contain all required fields'
@@ -337,7 +357,7 @@ class TestOTETraining:
         if 'impl' not in cache:
             logger.info('TestOTETraining: creating OTETrainingImpl')
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
-            template_path = template_paths[model_name]
+            template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
             cache['impl'] = OTETrainingImpl(dataset_params, template_path)
 
         return cache['impl']
