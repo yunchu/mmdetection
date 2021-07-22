@@ -110,6 +110,7 @@ def _make_path_be_abs(some_val, root_path):
     if isinstance(some_val, str):
         if not osp.isabs(some_val):
             return osp.join(root_path, some_val)
+        return some_val
 
     some_dict = some_val
     for k in sorted(some_dict.keys()):
