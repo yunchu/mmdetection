@@ -179,7 +179,7 @@ class TestOTEAPI(unittest.TestCase):
 
             info_2 = f"Expected to stop within {threshhold_2} seconds [flaky]."
 
-            self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
+            self.assertLess(time.time() - start_time, 25, info_2)  # stopping process has to happen in less than 25 seconds
             train_future.result()
             collsys_mgr.log_internal_metric("checkpoint", "3", flush=True)
 
@@ -258,25 +258,109 @@ class TestOTEAPI(unittest.TestCase):
         print(f'Performance after reloading: {performance_after_reloading.score.value:.4f}')
         print(f'Performance delta after reloading: {performance_delta:.6f}')
 
+        json_configurable_parameters = configurable_parameters.to_json()
+        return select_configurable_parameters(json_configurable_parameters), {
+            "score_threshold": score_threshold,
+            "score_tolerance": perf_delta_tolerance,
+            "score_before_reload": validation_performance.score.value,
+            "score_after_reload": performance_after_reloading.score.value
+        }
+
     @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
+        setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
+            "project": "ote",
+            "scenario": "api",
+            "test": "test_training_custom_mobilenetssd_256",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-256x256",
+            "dataset": "dummy"
+        }
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
 
     @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_384(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
+        setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
+            "project": "ote",
+            "scenario": "api",
+            "test": "test_training_custom_mobilenetssd_384",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-384x384",
+            "dataset": "dummy"
+        }
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
 
     @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_512(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
+        setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
+            "project": "ote",
+            "scenario": "api",
+            "test": "test_training_custom_mobilenetssd_512",
+            "subject": "custom-object-detection",
+            "model": "mobilenet_v2-2s_ssd-512x512",
+            "dataset": "dummy"
+        }
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
 
     # @e2e_pytest
     # def test_training_custom_mobilenet_atss(self):
 
     @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenet_ssd(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_SSD'))
+        setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
+            "project": "ote",
+            "scenario": "api",
+            "test": "test_training_custom_mobilenet_ssd",
+            "subject": "custom-object-detection",
+            "model": "mobilenetV2_SSD",
+            "dataset": "dummy"
+        }
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
 
     @e2e_pytest
+    @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenet_vfnet(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'resnet50_VFNet'))
+        setup = {
+            "environment_name": os.environ.get("TT_ENVIRONMENT_NAME", "no-env"),
+            "test_type": os.environ.get("TT_TEST_TYPE", "no-env"),            
+            "project": "ote",
+            "scenario": "api",
+            "test": "test_training_custom_mobilenet_vfnet",
+            "subject": "custom-object-detection",
+            "model": "resnet50_VFNet",
+            "dataset": "dummy"
+        }
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            params, results = self.train_and_eval(osp.join('configs', 'ote', setup['subject'], setup['model']))
+            for key, value in params.items(): collsys_mgr.update_metadata(key, value)
+            for key, value in results.items(): collsys_mgr.log_final_metric(key, value)
+

@@ -86,3 +86,14 @@ def _create_class_DataCollector():
 
 e2e_pytest = _generate_e2e_pytest_decorator()
 DataCollector = _create_class_DataCollector()
+
+def select_configurable_parameters(json_configurable_parameters):
+    selected = {}
+    getv = lambda c, n: c[n]["value"]
+    for section, container in json_configurable_parameters.items():
+        for param, values in container.items():
+            try:
+                selected[f"{section}_{param}"] = getv(container, param)
+            except TypeError: print("######## TypeError:", section, param)
+            except KeyError: print("######## KeyError:", section, param)
+    return selected
