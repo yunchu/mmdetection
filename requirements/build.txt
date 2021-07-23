@@ -1,4 +1,4 @@
 # These must be installed before building mmdetection
 cython
-numpy
+numpy>=1.16.6,<1.20  # For compatibility with OpenVINO
 torch>=1.7.1,<=1.8.1
