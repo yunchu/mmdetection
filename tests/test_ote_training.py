@@ -368,7 +368,7 @@ class TestOTETraining:
         setup = deepcopy(request.node.callspec.params)
         setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
         setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")
-        setup["scenario"] = "api"
+        setup["scenario"] = "performance"
         setup["test"] = request.node.name
         setup["subject"] = "custom-object-detection"
         setup["project"] = "ote"
