@@ -1,7 +1,7 @@
 import numpy as np
 import os.path as osp
 import random
-import time
+import time, os
 import unittest
 import warnings
 from concurrent.futures import ThreadPoolExecutor
@@ -16,6 +16,7 @@ from sc_sdk.entities.model import NullModel
 # This one breaks cyclic imports chain.
 from sc_sdk.usecases.repos import BinaryRepo
 
+from flaky import flaky
 from sc_sdk.entities.optimized_model import OptimizedModel
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.shapes.box import Box
@@ -27,6 +28,9 @@ from sc_sdk.usecases.tasks.interfaces.model_optimizer import IModelOptimizer
 from sc_sdk.utils.project_factory import ProjectFactory
 
 from mmdet.apis.ote.apis.detection import MMObjectDetectionTask, MMDetectionParameters, configurable_parameters
+
+from e2e_test_system import select_configurable_parameters
+from e2e.collection_system.systems import TinySystem
 
 from e2e_test_system import e2e_pytest
 
@@ -136,24 +140,48 @@ class TestOTEAPI(unittest.TestCase):
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='train_thread')
 
-        # Test stopping after some time
-        start_time = time.time()
-        train_future = executor.submit(detection_task.train, dataset)
-        time.sleep(10)  # give train_thread some time to initialize the model
-        detection_task.cancel_training()
+        json_configurable_parameters = configurable_parameters.to_json()
+        setup = select_configurable_parameters(json_configurable_parameters)
+        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
+        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")        
+        setup["scenario"] = "api"
+        setup["test"] = "test_cancel_training_detection"
+        setup["subject"] = "custom-object-detection"
+        setup["model"] = "mobilenet_v2-2s_ssd-256x256"
+        setup["project"] = "ote"
+        setup["dataset"] = "dummy"
 
-        # stopping process has to happen in less than 35 seconds
-        self.assertLess(time.time() - start_time, 35, 'Expected to stop within 35 seconds [flaky].')
-        train_future.result()
+        collsys_mgr = TinySystem("main", setup)
+        with collsys_mgr:
+            collsys_mgr.log_internal_metric("checkpoint", "0", flush=True)
 
-        # Test stopping immediately
-        start_time = time.time()
-        train_future = executor.submit(detection_task.train, dataset)
-        time.sleep(1.0)
-        detection_task.cancel_training()
+            # Test stopping after some time
+            start_time = time.time()
+            train_future = executor.submit(detection_task.train, dataset)
+            time.sleep(10)  # give train_thread some time to initialize the model
+            detection_task.cancel_training()
 
-        self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
-        train_future.result()
+            # stopping process has to happen in less than 35 seconds
+            self.assertLess(time.time() - start_time, 35, 'Expected to stop within 35 seconds [flaky].')
+            train_future.result()
+
+            # Test stopping immediately
+            start_time = time.time()
+            train_future = executor.submit(detection_task.train, dataset)
+            time.sleep(1.0)
+            detection_task.cancel_training()
+            
+            duration_2 = time.time() - start_time
+            threshhold_2 = 25
+            collsys_mgr.log_final_metric("duration_2", duration_2)
+            collsys_mgr.log_final_metric("threshhold_2", threshhold_2)
+            collsys_mgr.log_internal_metric("checkpoint", "2", flush=True)
+
+            info_2 = f"Expected to stop within {threshhold_2} seconds [flaky]."
+
+            self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
+            train_future.result()
+            collsys_mgr.log_internal_metric("checkpoint", "3", flush=True)
 
     @staticmethod
     def eval(task, environment, dataset):
@@ -242,8 +270,8 @@ class TestOTEAPI(unittest.TestCase):
     def test_training_custom_mobilenetssd_512(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
 
-    @e2e_pytest
-    def test_training_custom_mobilenet_atss(self):
+    # @e2e_pytest
+    # def test_training_custom_mobilenet_atss(self):
 
     @e2e_pytest
     def test_training_custom_mobilenet_ssd(self):
