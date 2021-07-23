@@ -17,8 +17,7 @@ if [[ -e ${venv_dir} ]]; then
 fi
 
 # Create virtual environment
-# virtualenv ${venv_dir} -p python3 --prompt="(detection)"
-python3 -m venv ${venv_dir} --prompt="(detection)"
+python3 -m venv ${venv_dir} --prompt="detection"
 
 . ${venv_dir}/bin/activate
 
@@ -72,18 +71,6 @@ fi
 
 # Install other requirements.
 cat requirements.txt | xargs -n 1 -L 1 pip3 install
-
-# path_openvino_vars="${INTEL_OPENVINO_DIR:-/opt/intel/openvino_2021}/bin/setupvars.sh"
-# if [[ -e "${path_openvino_vars}" ]]; then
-#   echo ". ${path_openvino_vars}" >> ${venv_dir}/bin/activate
-# fi
-
-# mo_requirements_file="${INTEL_OPENVINO_DIR:-/opt/intel/openvino_2021}/deployment_tools/model_optimizer/requirements_onnx.txt"
-# if [[ -e "${mo_requirements_file}" ]]; then
-#   pip install -qr ${mo_requirements_file}
-# else
-#   echo "[WARNING] Model optimizer requirements were not installed. Please install the OpenVino toolkit to use one."
-# fi
 
 pip install -e .
 MMDETECTION_DIR=`realpath .`
