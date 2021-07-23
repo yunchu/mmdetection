@@ -40,18 +40,21 @@ if [[ -z ${CUDA_VERSION} ]]; then
 fi
 
 if [[ -z ${CUDA_VERSION} ]]; then
-  echo "Using CUDA_VERSION ${CUDA_VERSION}"
-else
   echo "CUDA was not found, installing dependencies in CPU-only mode. If you want to use CUDA, set CUDA_HOME and CUDA_VERSION beforehand."
+else
+  echo "Using CUDA_VERSION ${CUDA_VERSION}"
 fi
 
 # Remove dots from CUDA version string, if any.
 CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
 
 # install PyTorch and MMCV.
-export TORCH_VERSION=1.8.1
-export TORCHVISION_VERSION=0.9.1
+export NUMPY_VERSION=1.19
+export TORCH_VERSION=1.7.1
+export TORCHVISION_VERSION=0.8.2
 export MMCV_VERSION=1.3.0
+
+pip install numpy==${NUMPY_VERSION}
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
   pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html
