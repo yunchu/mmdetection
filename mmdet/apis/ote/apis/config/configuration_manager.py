@@ -115,7 +115,7 @@ class MMDetectionConfigManager(object):
                 enabled_nncf_options.append(option)
 
         if 'nncf_config' in self.config:
-            del self.config['nncf_config']
+            del self.config.nncf_config
         if len(enabled_nncf_options) > 0:
             nncf_config = compose_nncf_config(self.nncf_config, enabled_nncf_options)
             # FIXME. NNCF configuration may override some training parameters, like number of epochs.
@@ -190,8 +190,6 @@ class MMDetectionConfigManager(object):
             self.config.runner.max_iters = int(configurable_parameters.learning_parameters.num_iters.value)
         else:
             self.config.runner.max_epochs = int(configurable_parameters.learning_parameters.num_iters.value)
-            self.config.total_epochs = self.config.runner.max_epochs # they are should be the same for EpochBasedRunner
-                                                                     # -- see assert in the function train_detector
         self.config.optimizer.lr = float(configurable_parameters.learning_parameters.learning_rate.value)
         self.config.data.samples_per_gpu = int(configurable_parameters.learning_parameters.batch_size.value)
         self._update_nncf_config_section(configurable_parameters)
