@@ -244,6 +244,7 @@ class TestOTEAPI(unittest.TestCase):
 
     @e2e_pytest
     def test_training_custom_mobilenet_atss(self):
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS'))
 
     @e2e_pytest
     def test_training_custom_mobilenet_ssd(self):
