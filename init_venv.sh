@@ -53,6 +53,7 @@ export TORCH_VERSION=1.7.1
 export TORCHVISION_VERSION=0.8.2
 export MMCV_VERSION=1.3.0
 
+pip install wheel
 pip install numpy==${NUMPY_VERSION}
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
@@ -70,7 +71,7 @@ else
 fi
 
 # Install other requirements.
-cat requirements.txt | xargs -n 1 -L 1 pip3 install
+cat requirements.txt | xargs -n 1 -L 1 pip3 install --no-binary :mmpycocotools,Polygon3:
 
 pip install -e .
 MMDETECTION_DIR=`realpath .`
