@@ -10,16 +10,6 @@ from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 
-#from sc_sdk.entities.analyse_parameters import AnalyseParameters
-#from sc_sdk.entities.dataset_storage import NullDatasetStorage
-#from sc_sdk.entities.datasets import Subset
-#from sc_sdk.entities.resultset import ResultSet
-#from sc_sdk.entities.task_environment import TaskEnvironment
-#from sc_sdk.logging import logger_factory
-#from sc_sdk.utils.project_factory import ProjectFactory
-#
-#from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
-
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
 from sc_sdk.entities.id import ID
@@ -33,9 +23,6 @@ from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
 from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
-
-#!!!!!!!!!!!!!!                    from sc_sdk.configuration import cfg_helper
-#from sc_sdk.configuration.helper.utils import ids_to_strings
 
 from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
@@ -101,30 +88,6 @@ def template_paths_fx(request):
         data = yaml.safe_load(f)
     data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
-
-#def _load_template(path):
-#    with open(path) as f:
-#        template = yaml.full_load(f)
-#    # Save path to template file, to resolve relative paths later.
-#    template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
-#    return template
-#
-#def _get_task_class(path):
-#    module_name, class_name = path.rsplit('.', 1)
-#    module = importlib.import_module(module_name)
-#    return getattr(module, class_name)
-#
-#
-#def _create_project_and_connect_to_dataset(dataset):
-#    project = ProjectFactory().create_project_single_task(
-#        name='otedet-sample-project',
-#        description='otedet-sample-project',
-#        label_names=dataset.get_labels(),
-#        task_name='otedet-task')
-#    dataset.set_project_labels(project.get_labels())
-#    return project
-#
-#
 
 def _make_path_be_abs(some_val, root_path):
     assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
@@ -208,6 +171,23 @@ def select_configurable_parameters(json_configurable_parameters):
                 pass
     return selected
 
+def convert_hyperparams_to_dict(hyperparams):
+    def _convert(p):
+        if p is None:
+            return None
+        d = {}
+        groups = getattr(p, 'groups', [])
+        parameters = getattr(p, 'parameters', [])
+        assert (not groups) or isinstance(groups, list), f'Wrong field "groups" of p={p}'
+        assert (not parameters) or isinstance(parameters, list), f'Wrong field "parameters" of p={p}'
+        for group_name in groups:
+            g = getattr(p, group_name, None)
+            d[group_name] = _convert(g)
+        for par_name in parameters:
+            d[par_name] = getattr(p, par_name, None)
+        return d
+    return _convert(hyperparams)
+
 class OTETrainingImpl:
     def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
         self.dataset_params = dataset_params
@@ -222,7 +202,7 @@ class OTETrainingImpl:
         self.was_training_run = False
         self.stored_exception = None
 
-        self.copy_configurable_parameters = None
+        self.copy_hyperparams = None
 
     @staticmethod
     def _create_environment_and_task(params, labels_schema, template):
@@ -277,16 +257,7 @@ class OTETrainingImpl:
             self.environment.get_model_configuration(),
             model_status=ModelStatus.NOT_READY)
 
-        self.copy_configurable_parameters = deepcopy(self.task.hyperparams)
-#        p = self.copy_configurable_parameters
-#        print(f'p = {p}')
-#        print(f'p.__dict__ = {p.__dict__}')
-#        print(f'p.learning_parameters.__dict__ = {p.learning_parameters.__dict__}')
-#        print(f'vars(p.learning_parameters) = {vars(p.learning_parameters)}')
-#        hyperparams_str = ids_to_strings(cfg_helper.convert(p, dict, enum_to_str=True))
-#        print(f'type(hyperparams_str) = {type(hyperparams_str)}')
-#        print(f'hyperparams_str = {hyperparams_str}')
-#        print('=~=~=~')
+        self.copy_hyperparams = deepcopy(self.task.hyperparams)
 
         self.task.train(self.dataset, self.output_model)
         logger.info(f'performance={self.output_model.performance}')
@@ -317,11 +288,9 @@ class OTETrainingImpl:
         else:
             logger.warning(f'WARNING: Cannot get training performance')
 
-#        logger.info(f'!!!!!!!!!!!!!! self.copy_configurable_parameters = {self.copy_configurable_parameters}')
-#        json_configurable_parameters = self.copy_configurable_parameters.to_json()
-#        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
-#        for k, v in selected_configurable_parameters.items():
-#            data_collector.update_metadata(k, v)
+        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
+        for k, v in hyperparams_dict.items():
+            data_collector.update_metadata(k, v)
 
         return training_performance
 
