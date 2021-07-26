@@ -1,10 +1,12 @@
 import importlib
+import os
 import os.path as osp
 import pytest
 import sys
 import yaml
 
 from collections import namedtuple
+from copy import deepcopy
 from pprint import pformat
 
 from sc_sdk.entities.analyse_parameters import AnalyseParameters
@@ -32,6 +34,8 @@ def DATASET_PARAMETERS_FIELDS():
             'annotations_test',
             'images_test_dir',
             ]
+
+ROOT_PATH_KEY = '_root_path'
 DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
 
 @pytest.fixture
@@ -55,6 +59,7 @@ def dataset_definitions_fx(request):
                              f'whereas it is required for the test {request.node.originalname or request.node.name}')
     with open(path) as f:
         data = yaml.safe_load(f)
+    data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
 
 @pytest.fixture
@@ -71,6 +76,7 @@ def template_paths_fx(request):
                              f'whereas it is required for the test {request.node.originalname or request.node.name}')
     with open(path) as f:
         data = yaml.safe_load(f)
+    data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
 
 def _load_template(path):
@@ -97,10 +103,27 @@ def _create_project_and_connect_to_dataset(dataset):
 
 
 
+def _make_path_be_abs(some_val, root_path):
+    assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
+    assert isinstance(root_path, str), f'Wrong type of root_path: {root_path}, type={type(root_path)}'
+
+    if isinstance(some_val, str):
+        if not osp.isabs(some_val):
+            return osp.join(root_path, some_val)
+        return some_val
+
+    some_dict = some_val
+    for k in sorted(some_dict.keys()):
+        v = some_dict[k]
+        if isinstance(v, str) and not osp.isabs(v):
+            some_dict[k] = osp.join(root_path, v)
+    return some_dict
+
 def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name):
     cur_dataset_definition = dataset_definitions[dataset_name]
     training_parameters_fields = {k: v for k, v in cur_dataset_definition.items()
                                   if k in DATASET_PARAMETERS_FIELDS()}
+    _make_path_be_abs(training_parameters_fields, dataset_definitions[ROOT_PATH_KEY])
 
     assert set(DATASET_PARAMETERS_FIELDS()) == set(training_parameters_fields.keys()), \
             f'ERROR: dataset definitions for name={dataset_name} does not contain all required fields'
@@ -148,6 +171,19 @@ def performance_to_score_name_value(perf: Performance):
     name = score.name
     value = score.value
     return name, value
+
+def select_configurable_parameters(json_configurable_parameters):
+    selected = {}
+    getv = lambda c, n: c[n]['value']
+    for section, container in json_configurable_parameters.items():
+        for param in container.keys():
+            try:
+                selected[f'{section}/{param}'] = getv(container, param)
+            except TypeError:
+                pass
+            except KeyError:
+                pass
+    return selected
 
 class OTETrainingImpl:
     def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
@@ -210,6 +246,8 @@ class OTETrainingImpl:
         self.environment.set_configurable_parameters(params)
         self.task.update_configurable_parameters(self.environment)
 
+        self.copy_configurable_parameters = deepcopy(params)
+
         logger.info('Start model training... [ROUND 0]')
         self.model = self.task.train(dataset=self.dataset)
         logger.info('Model training finished [ROUND 0]')
@@ -234,8 +272,15 @@ class OTETrainingImpl:
                 raise e
 
         training_performance = self.get_training_performance()
+
         score_name, score_value = performance_to_score_name_value(training_performance)
         data_collector.log_final_metric('training_performance/' + score_name, score_value)
+
+        json_configurable_parameters = self.copy_configurable_parameters.to_json()
+        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
+        for k, v in selected_configurable_parameters.items():
+            data_collector.update_metadata(k, v)
+
         return training_performance
 
     def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
@@ -324,18 +369,23 @@ class TestOTETraining:
         if 'impl' not in cache:
             logger.info('TestOTETraining: creating OTETrainingImpl')
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
-            template_path = template_paths[model_name]
+            template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
             cache['impl'] = OTETrainingImpl(dataset_params, template_path)
 
         return cache['impl']
 
-
     @pytest.fixture
     def data_collector_fx(self, request):
-        setup = request.node.callspec.params # TODO: think on more detailed setup
-        logger.info(f'setup={setup}')
-        data_collector =  DataCollector(name='TestOTETraining', # TODO: or request.node.name?
-                                        setup=setup)
+        setup = deepcopy(request.node.callspec.params)
+        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
+        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-env")
+        setup["scenario"] = "api"
+        setup["test"] = request.node.name
+        setup["subject"] = "custom-object-detection"
+        setup["project"] = "ote"
+        logger.info(f'creating DataCollector: setup=\n{pformat(setup, width=140)}')
+        data_collector = DataCollector(name='TestOTETraining',
+                                       setup=setup)
         with data_collector:
             logger.info('data_collector is created')
             yield data_collector
