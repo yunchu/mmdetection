@@ -1,4 +1,5 @@
 import importlib
+import logging
 import os
 import os.path as osp
 import pytest
@@ -9,22 +10,44 @@ from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 
-from sc_sdk.entities.analyse_parameters import AnalyseParameters
+#from sc_sdk.entities.analyse_parameters import AnalyseParameters
+#from sc_sdk.entities.dataset_storage import NullDatasetStorage
+#from sc_sdk.entities.datasets import Subset
+#from sc_sdk.entities.resultset import ResultSet
+#from sc_sdk.entities.task_environment import TaskEnvironment
+#from sc_sdk.logging import logger_factory
+#from sc_sdk.utils.project_factory import ProjectFactory
+#
+#from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
+
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
+from sc_sdk.entities.id import ID
+from sc_sdk.entities.inference_parameters import InferenceParameters
+from sc_sdk.entities.metrics import Performance, ScoreMetric
+from sc_sdk.entities.model import NullModel, Model, ModelStatus
+from sc_sdk.entities.model_storage import NullModelStorage
+from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
+from sc_sdk.entities.project import NullProject
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
-from sc_sdk.utils.project_factory import ProjectFactory
-from sc_sdk.entities.metrics import Performance, ScoreMetric
+from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
+#!!!!!!!!!!!!!!                    from sc_sdk.configuration import cfg_helper
+#from sc_sdk.configuration.helper.utils import ids_to_strings
+
+from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
+from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
+from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, load_template, get_task_class
 
 from e2e_test_system import e2e_pytest, DataCollector
 
 
 logger_name = osp.splitext(osp.basename(__file__))[0]
 logger = logger_factory.get_logger(logger_name)
+logger.setLevel(logging.DEBUG)
 
 def DATASET_PARAMETERS_FIELDS():
     return ['annotations_train',
@@ -79,29 +102,29 @@ def template_paths_fx(request):
     data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
 
-def _load_template(path):
-    with open(path) as f:
-        template = yaml.full_load(f)
-    # Save path to template file, to resolve relative paths later.
-    template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
-    return template
-
-def _get_task_class(path):
-    module_name, class_name = path.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, class_name)
-
-
-def _create_project_and_connect_to_dataset(dataset):
-    project = ProjectFactory().create_project_single_task(
-        name='otedet-sample-project',
-        description='otedet-sample-project',
-        label_names=dataset.get_labels(),
-        task_name='otedet-task')
-    dataset.set_project_labels(project.get_labels())
-    return project
-
-
+#def _load_template(path):
+#    with open(path) as f:
+#        template = yaml.full_load(f)
+#    # Save path to template file, to resolve relative paths later.
+#    template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
+#    return template
+#
+#def _get_task_class(path):
+#    module_name, class_name = path.rsplit('.', 1)
+#    module = importlib.import_module(module_name)
+#    return getattr(module, class_name)
+#
+#
+#def _create_project_and_connect_to_dataset(dataset):
+#    project = ProjectFactory().create_project_single_task(
+#        name='otedet-sample-project',
+#        description='otedet-sample-project',
+#        label_names=dataset.get_labels(),
+#        task_name='otedet-task')
+#    dataset.set_project_labels(project.get_labels())
+#    return project
+#
+#
 
 def _make_path_be_abs(some_val, root_path):
     assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
@@ -164,7 +187,7 @@ def performance_to_score_name_value(perf: Performance):
     The method is intended to get main score info from Performance class
     """
     if perf is None:
-        return None
+        return None, None
     assert isinstance(perf, Performance)
     score = perf.score
     assert isinstance(score, ScoreMetric)
@@ -191,25 +214,21 @@ class OTETrainingImpl:
         self.template_file_path = template_file_path
 
         self.template = None
-        self.project = None
         self.environment = None
         self.task = None
-        self.model = None
+        self.output_model = None
         self.evaluation_performance = None
 
         self.was_training_run = False
         self.stored_exception = None
 
+        self.copy_configurable_parameters = None
+
     @staticmethod
-    def _create_environment_and_task(project, template):
-        task_impl_path = template['task']['impl']
-        task_cls = _get_task_class(task_impl_path)
-
-        environment = TaskEnvironment(project=project, task_node=project.tasks[-1])
-        params = task_cls.get_configurable_parameters(environment)
-        task_cls.apply_template_configurable_parameters(params, template)
-        environment.set_configurable_parameters(params)
-
+    def _create_environment_and_task(params, labels_schema, template):
+        environment = TaskEnvironment(model=NullModel(), configurable_parameters=params, label_schema=labels_schema)
+        task_impl_path = template['task']['base']
+        task_cls = get_task_class(task_impl_path)
         task = task_cls(task_environment=environment)
         return environment, task
 
@@ -217,6 +236,9 @@ class OTETrainingImpl:
         print(f'self.template_file_path = {self.template_file_path}')
         print(f'Using for train annotation file {self.dataset_params.annotations_train}')
         print(f'Using for val annotation file {self.dataset_params.annotations_val}')
+
+        logger.debug('Load model template')
+        self.template = load_template(self.template_file_path)
 
         self.dataset = MMDatasetAdapter(
             train_ann_file=self.dataset_params.annotations_train,
@@ -226,35 +248,51 @@ class OTETrainingImpl:
             test_ann_file=self.dataset_params.annotations_test,
             test_data_root=self.dataset_params.images_test_dir,
             dataset_storage=NullDatasetStorage)
+
+        self.labels_schema = generate_label_schema(self.dataset.get_labels())
+        labels_list = self.labels_schema.get_labels(False)
+        self.dataset.set_project_labels(labels_list)
         print(f'train dataset: {len(self.dataset.get_subset(Subset.TRAINING))} items')
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
-        self.template = _load_template(self.template_file_path)
 
-        self.project = _create_project_and_connect_to_dataset(self.dataset)
-        self.environment, self.task = self._create_environment_and_task(self.project, self.template)
+        logger.debug('Setup environment')
+        params = OTEDetectionConfig(workspace_id=ID(), project_id=ID(), task_id=ID())
+        apply_template_configurable_parameters(params, self.template)
+        self.environment, self.task = self._create_environment_and_task(params,
+                                                                        self.labels_schema,
+                                                                        self.template)
 
 
-        # Tweak parameters.
-        params = self.task.get_configurable_parameters(self.environment)
-        if True: # DEBUG prints
-            print(f'params before training=\n{pformat(params.serialize(), width=140)}')
-        params.learning_parameters.nncf_quantization.value = False
-        params.learning_parameters.num_iters.value = 5
-#        params.postprocessing.result_based_confidence_threshold.value = False
-#        params.postprocessing.confidence_threshold.value = 0.025
-        self.environment.set_configurable_parameters(params)
-        self.task.update_configurable_parameters(self.environment)
 
-        self.copy_configurable_parameters = deepcopy(params)
+        logger.debug('Set hyperparameters')
+        self.task.hyperparams.learning_parameters.num_checkpoints = 2
+        self.task.hyperparams.learning_parameters.num_iters = 5
 
-        logger.info('Start model training... [ROUND 0]')
-        self.model = self.task.train(dataset=self.dataset)
-        logger.info('Model training finished [ROUND 0]')
-        logger.info(f'performance={self.model.performance}')
+        logger.debug('Train model')
+        self.output_model = Model(
+            NullProject(),
+            NullModelStorage(),
+            self.dataset,
+            self.environment.get_model_configuration(),
+            model_status=ModelStatus.NOT_READY)
+
+        self.copy_configurable_parameters = deepcopy(self.task.hyperparams)
+#        p = self.copy_configurable_parameters
+#        print(f'p = {p}')
+#        print(f'p.__dict__ = {p.__dict__}')
+#        print(f'p.learning_parameters.__dict__ = {p.learning_parameters.__dict__}')
+#        print(f'vars(p.learning_parameters) = {vars(p.learning_parameters)}')
+#        hyperparams_str = ids_to_strings(cfg_helper.convert(p, dict, enum_to_str=True))
+#        print(f'type(hyperparams_str) = {type(hyperparams_str)}')
+#        print(f'hyperparams_str = {hyperparams_str}')
+#        print('=~=~=~')
+
+        self.task.train(self.dataset, self.output_model)
+        logger.info(f'performance={self.output_model.performance}')
 
     def get_training_performance(self):
-        return getattr(self.model, 'performance', None)
+        return getattr(self.output_model, 'performance', None)
 
     def run_ote_training_once(self, data_collector):
         if self.was_training_run and self.stored_exception:
@@ -274,26 +312,32 @@ class OTETrainingImpl:
         training_performance = self.get_training_performance()
 
         score_name, score_value = performance_to_score_name_value(training_performance)
-        data_collector.log_final_metric('training_performance/' + score_name, score_value)
+        if score_name:
+            data_collector.log_final_metric('training_performance/' + score_name, score_value)
+        else:
+            logger.warning(f'WARNING: Cannot get training performance')
 
-        json_configurable_parameters = self.copy_configurable_parameters.to_json()
-        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
-        for k, v in selected_configurable_parameters.items():
-            data_collector.update_metadata(k, v)
+#        logger.info(f'!!!!!!!!!!!!!! self.copy_configurable_parameters = {self.copy_configurable_parameters}')
+#        json_configurable_parameters = self.copy_configurable_parameters.to_json()
+#        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
+#        for k, v in selected_configurable_parameters.items():
+#            data_collector.update_metadata(k, v)
 
         return training_performance
 
     def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
+        logger.debug('Get predictions on the validation set')
         validation_dataset = self.dataset.get_subset(subset)
-        self.predicted_validation_dataset = self.task.analyse(
+        self.predicted_validation_dataset = self.task.infer(
             validation_dataset.with_empty_annotations(),
-            AnalyseParameters(is_evaluation=True))
+            InferenceParameters(is_evaluation=True))
         self.resultset = ResultSet(
-            model=self.model,
+            model=self.output_model,
             ground_truth_dataset=validation_dataset,
             prediction_dataset=self.predicted_validation_dataset,
         )
-        self.evaluation_performance = self.task.compute_performance(self.resultset)
+        logger.debug('Estimate quality on validation set')
+        self.evaluation_performance = self.task.evaluate(self.resultset)
         logger.info(f'performance={self.evaluation_performance}')
         score_name, score_value = performance_to_score_name_value(self.evaluation_performance)
         data_collector.log_final_metric('evaluation_performance/' + score_name, score_value)
@@ -327,7 +371,7 @@ class TestOTETraining:
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
-                'vitens_tiled',
+                #TMPCOMMENT#'vitens_tiled',
 #               'coco_shortened_500',
 #               'vitens_tiled_shortened_500',
                #'dataset_2',
