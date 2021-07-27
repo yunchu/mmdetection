@@ -1,3 +1,4 @@
+import copy
 import importlib
 import logging
 import os
@@ -198,9 +199,15 @@ class OTETrainingImpl:
         self.task = None
         self.output_model = None
         self.evaluation_performance = None
+        self.environment_for_export = None
+        self.exported_model = None
+        self.openvino_task = None
+        self.evaluation_performance_exported = None
 
         self.was_training_run = False
-        self.stored_exception = None
+        self.stored_exception_training = None
+        self.was_export_run = False
+        self.stored_exception_export = None
 
         self.copy_hyperparams = None
 
@@ -266,17 +273,17 @@ class OTETrainingImpl:
         return getattr(self.output_model, 'performance', None)
 
     def run_ote_training_once(self, data_collector):
-        if self.was_training_run and self.stored_exception:
+        if self.was_training_run and self.stored_exception_training:
             logger.warn('In function run_ote_training_once: found that previous call of the function '
                         'caused exception -- re-raising it')
-            raise self.stored_exception
+            raise self.stored_exception_training
 
         if not self.was_training_run:
             try:
                 self._run_ote_training()
                 self.was_training_run = True
             except Exception as e:
-                self.stored_exception = e
+                self.stored_exception_training = e
                 self.was_training_run = True
                 raise e
 
@@ -295,6 +302,10 @@ class OTETrainingImpl:
         return training_performance
 
     def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
         logger.debug('Get predictions on the validation set')
         validation_dataset = self.dataset.get_subset(subset)
         self.predicted_validation_dataset = self.task.infer(
@@ -311,6 +322,81 @@ class OTETrainingImpl:
         score_name, score_value = performance_to_score_name_value(self.evaluation_performance)
         data_collector.log_final_metric('evaluation_performance/' + score_name, score_value)
         return self.evaluation_performance
+
+    def _run_ote_export(self, data_collector):
+        logger.debug('Copy environment for evaluation exported model')
+        # TODO(lbeynens): CONSIDER IT WITH Pavel
+        self.environment_for_export = copy.copy(self.environment)
+        logger.debug('Create exported model')
+        self.exported_model = OptimizedModel(
+            NullProject(),
+            NullModelStorage(),
+            self.dataset,
+            self.environment_for_export.get_model_configuration(),
+            ModelOptimizationType.MO,
+            [ModelPrecision.FP32],
+            optimization_methods=[],
+            optimization_level={},
+            target_device=TargetDevice.UNSPECIFIED,
+            performance_improvement={},
+            model_size_reduction=1.,
+            model_status=ModelStatus.NOT_READY)
+        logger.debug('Run export')
+        self.task.export(ExportType.OPENVINO, self.exported_model)
+        logger.debug('Set exported model into environment for export')
+        self.environment_for_export.model = self.exported_model
+
+    def run_ote_export_once(self, data_collector):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
+        if self.was_export_run and self.stored_exception_export:
+            logger.warn('In function run_ote_export_once: found that previous call of the function '
+                        'caused exception -- re-raising it')
+            raise self.stored_exception_export
+
+        if not self.was_export_run:
+            try:
+                self._run_ote_export(data_collector)
+                self.was_export_run = True
+            except Exception as e:
+                self.stored_exception_export = e
+                self.was_export_run = True
+                raise e
+
+    def run_ote_evaluation_exported(self, data_collector, subset=Subset.VALIDATION):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
+        if not self.was_export_run:
+            raise RuntimeError('Export was not run for the OTETrainingImpl instance')
+        if self.stored_exception_export:
+            raise RuntimeError('Export was not successful for the OTETrainingImpl instance')
+
+        logger.debug('Create OpenVINO Task')
+        openvino_task_impl_path = self.template['task']['openvino']
+        openvino_task_cls = get_task_class(openvino_task_impl_path)
+        self.openvino_task = openvino_task_cls(self.environment_for_export)
+
+        logger.debug('Get predictions on the validation set')
+        validation_dataset = self.dataset.get_subset(subset)
+        self.predicted_validation_dataset_exp = self.openvino_task.infer(
+            validation_dataset.with_empty_annotations(),
+            InferenceParameters(is_evaluation=True))
+        self.resultset_exp = ResultSet(
+            model=self.exported_model,
+            ground_truth_dataset=validation_dataset,
+            prediction_dataset=self.predicted_validation_dataset_exp,
+        )
+        logger.debug('Estimate quality on validation set')
+        self.evaluation_performance_exported = self.openvino_task.evaluate(self.resultset_exp)
+
+        logger.info(f'performance exported={self.evaluation_performance_exported}')
+        score_name, score_value = performance_to_score_name_value(self.evaluation_performance_exported)
+        data_collector.log_final_metric('evaluation_performance_exported/' + score_name, score_value)
+        return self.evaluation_performance_exported
 
 # pytest magic
 def pytest_generate_tests(metafunc):
@@ -417,3 +503,30 @@ class TestOTETraining:
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
+
+    @e2e_pytest
+    def test_ote_03_export(self, dataset_name, model_name,
+                           dataset_definitions_fx, template_paths_fx,
+                           cached_from_prev_test_fx,
+                           data_collector_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
+
+        impl.run_ote_training_once(data_collector_fx)
+        impl.run_ote_export_once(data_collector_fx)
+
+    @e2e_pytest
+    def test_ote_04_evaluation_exported(self, dataset_name, model_name,
+                                        dataset_definitions_fx, template_paths_fx,
+                                        cached_from_prev_test_fx,
+                                        data_collector_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
+
+        impl.run_ote_training_once(data_collector_fx)
+        impl.run_ote_export_once(data_collector_fx)
+        impl.run_ote_evaluation_exported(data_collector_fx)
