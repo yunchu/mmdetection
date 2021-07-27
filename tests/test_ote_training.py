@@ -1,4 +1,6 @@
+import copy
 import importlib
+import logging
 import os
 import os.path as osp
 import pytest
@@ -9,22 +11,31 @@ from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 
-from sc_sdk.entities.analyse_parameters import AnalyseParameters
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
+from sc_sdk.entities.id import ID
+from sc_sdk.entities.inference_parameters import InferenceParameters
+from sc_sdk.entities.metrics import Performance, ScoreMetric
+from sc_sdk.entities.model import NullModel, Model, ModelStatus
+from sc_sdk.entities.model_storage import NullModelStorage
+from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
+from sc_sdk.entities.project import NullProject
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
-from sc_sdk.utils.project_factory import ProjectFactory
-from sc_sdk.entities.metrics import Performance, ScoreMetric
+from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
+from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
+from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
+from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, load_template, get_task_class
 
 from e2e_test_system import e2e_pytest, DataCollector
 
 
 logger_name = osp.splitext(osp.basename(__file__))[0]
 logger = logger_factory.get_logger(logger_name)
+logger.setLevel(logging.DEBUG)
 
 def DATASET_PARAMETERS_FIELDS():
     return ['annotations_train',
@@ -78,30 +89,6 @@ def template_paths_fx(request):
         data = yaml.safe_load(f)
     data[ROOT_PATH_KEY] = osp.dirname(path)
     return data
-
-def _load_template(path):
-    with open(path) as f:
-        template = yaml.full_load(f)
-    # Save path to template file, to resolve relative paths later.
-    template['hyper_parameters']['params'].setdefault('algo_backend', {})['template'] = path
-    return template
-
-def _get_task_class(path):
-    module_name, class_name = path.rsplit('.', 1)
-    module = importlib.import_module(module_name)
-    return getattr(module, class_name)
-
-
-def _create_project_and_connect_to_dataset(dataset):
-    project = ProjectFactory().create_project_single_task(
-        name='otedet-sample-project',
-        description='otedet-sample-project',
-        label_names=dataset.get_labels(),
-        task_name='otedet-task')
-    dataset.set_project_labels(project.get_labels())
-    return project
-
-
 
 def _make_path_be_abs(some_val, root_path):
     assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
@@ -164,7 +151,7 @@ def performance_to_score_name_value(perf: Performance):
     The method is intended to get main score info from Performance class
     """
     if perf is None:
-        return None
+        return None, None
     assert isinstance(perf, Performance)
     score = perf.score
     assert isinstance(score, ScoreMetric)
@@ -185,31 +172,50 @@ def select_configurable_parameters(json_configurable_parameters):
                 pass
     return selected
 
+def convert_hyperparams_to_dict(hyperparams):
+    def _convert(p):
+        if p is None:
+            return None
+        d = {}
+        groups = getattr(p, 'groups', [])
+        parameters = getattr(p, 'parameters', [])
+        assert (not groups) or isinstance(groups, list), f'Wrong field "groups" of p={p}'
+        assert (not parameters) or isinstance(parameters, list), f'Wrong field "parameters" of p={p}'
+        for group_name in groups:
+            g = getattr(p, group_name, None)
+            d[group_name] = _convert(g)
+        for par_name in parameters:
+            d[par_name] = getattr(p, par_name, None)
+        return d
+    return _convert(hyperparams)
+
 class OTETrainingImpl:
     def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
         self.dataset_params = dataset_params
         self.template_file_path = template_file_path
 
         self.template = None
-        self.project = None
         self.environment = None
         self.task = None
-        self.model = None
+        self.output_model = None
         self.evaluation_performance = None
+        self.environment_for_export = None
+        self.exported_model = None
+        self.openvino_task = None
+        self.evaluation_performance_exported = None
 
         self.was_training_run = False
-        self.stored_exception = None
+        self.stored_exception_training = None
+        self.was_export_run = False
+        self.stored_exception_export = None
+
+        self.copy_hyperparams = None
 
     @staticmethod
-    def _create_environment_and_task(project, template):
-        task_impl_path = template['task']['impl']
-        task_cls = _get_task_class(task_impl_path)
-
-        environment = TaskEnvironment(project=project, task_node=project.tasks[-1])
-        params = task_cls.get_configurable_parameters(environment)
-        task_cls.apply_template_configurable_parameters(params, template)
-        environment.set_configurable_parameters(params)
-
+    def _create_environment_and_task(params, labels_schema, template):
+        environment = TaskEnvironment(model=NullModel(), configurable_parameters=params, label_schema=labels_schema)
+        task_impl_path = template['task']['base']
+        task_cls = get_task_class(task_impl_path)
         task = task_cls(task_environment=environment)
         return environment, task
 
@@ -217,6 +223,9 @@ class OTETrainingImpl:
         print(f'self.template_file_path = {self.template_file_path}')
         print(f'Using for train annotation file {self.dataset_params.annotations_train}')
         print(f'Using for val annotation file {self.dataset_params.annotations_val}')
+
+        logger.debug('Load model template')
+        self.template = load_template(self.template_file_path)
 
         self.dataset = MMDatasetAdapter(
             train_ann_file=self.dataset_params.annotations_train,
@@ -226,78 +235,168 @@ class OTETrainingImpl:
             test_ann_file=self.dataset_params.annotations_test,
             test_data_root=self.dataset_params.images_test_dir,
             dataset_storage=NullDatasetStorage)
+
+        self.labels_schema = generate_label_schema(self.dataset.get_labels())
+        labels_list = self.labels_schema.get_labels(False)
+        self.dataset.set_project_labels(labels_list)
         print(f'train dataset: {len(self.dataset.get_subset(Subset.TRAINING))} items')
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
-        self.template = _load_template(self.template_file_path)
 
-        self.project = _create_project_and_connect_to_dataset(self.dataset)
-        self.environment, self.task = self._create_environment_and_task(self.project, self.template)
+        logger.debug('Setup environment')
+        params = OTEDetectionConfig(workspace_id=ID(), project_id=ID(), task_id=ID())
+        apply_template_configurable_parameters(params, self.template)
+        self.environment, self.task = self._create_environment_and_task(params,
+                                                                        self.labels_schema,
+                                                                        self.template)
 
 
-        # Tweak parameters.
-        params = self.task.get_configurable_parameters(self.environment)
-        if True: # DEBUG prints
-            print(f'params before training=\n{pformat(params.serialize(), width=140)}')
-        params.learning_parameters.nncf_quantization.value = False
-        params.learning_parameters.num_iters.value = 5
-#        params.postprocessing.result_based_confidence_threshold.value = False
-#        params.postprocessing.confidence_threshold.value = 0.025
-        self.environment.set_configurable_parameters(params)
-        self.task.update_configurable_parameters(self.environment)
 
-        self.copy_configurable_parameters = deepcopy(params)
+        logger.debug('Set hyperparameters')
+        self.task.hyperparams.learning_parameters.num_checkpoints = 2
+        self.task.hyperparams.learning_parameters.num_iters = 5
 
-        logger.info('Start model training... [ROUND 0]')
-        self.model = self.task.train(dataset=self.dataset)
-        logger.info('Model training finished [ROUND 0]')
-        logger.info(f'performance={self.model.performance}')
+        logger.debug('Train model')
+        self.output_model = Model(
+            NullProject(),
+            NullModelStorage(),
+            self.dataset,
+            self.environment.get_model_configuration(),
+            model_status=ModelStatus.NOT_READY)
+
+        self.copy_hyperparams = deepcopy(self.task.hyperparams)
+
+        self.task.train(self.dataset, self.output_model)
+        logger.info(f'performance={self.output_model.performance}')
 
     def get_training_performance(self):
-        return getattr(self.model, 'performance', None)
+        return getattr(self.output_model, 'performance', None)
 
     def run_ote_training_once(self, data_collector):
-        if self.was_training_run and self.stored_exception:
+        if self.was_training_run and self.stored_exception_training:
             logger.warn('In function run_ote_training_once: found that previous call of the function '
                         'caused exception -- re-raising it')
-            raise self.stored_exception
+            raise self.stored_exception_training
 
         if not self.was_training_run:
             try:
                 self._run_ote_training()
                 self.was_training_run = True
             except Exception as e:
-                self.stored_exception = e
+                self.stored_exception_training = e
                 self.was_training_run = True
                 raise e
 
         training_performance = self.get_training_performance()
 
         score_name, score_value = performance_to_score_name_value(training_performance)
-        data_collector.log_final_metric('training_performance/' + score_name, score_value)
+        if score_name:
+            data_collector.log_final_metric('training_performance/' + score_name, score_value)
+        else:
+            logger.warning(f'WARNING: Cannot get training performance')
 
-        json_configurable_parameters = self.copy_configurable_parameters.to_json()
-        selected_configurable_parameters = select_configurable_parameters(json_configurable_parameters)
-        for k, v in selected_configurable_parameters.items():
+        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
+        for k, v in hyperparams_dict.items():
             data_collector.update_metadata(k, v)
 
         return training_performance
 
     def run_ote_evaluation(self, data_collector, subset=Subset.VALIDATION):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
+        logger.debug('Get predictions on the validation set')
         validation_dataset = self.dataset.get_subset(subset)
-        self.predicted_validation_dataset = self.task.analyse(
+        self.predicted_validation_dataset = self.task.infer(
             validation_dataset.with_empty_annotations(),
-            AnalyseParameters(is_evaluation=True))
+            InferenceParameters(is_evaluation=True))
         self.resultset = ResultSet(
-            model=self.model,
+            model=self.output_model,
             ground_truth_dataset=validation_dataset,
             prediction_dataset=self.predicted_validation_dataset,
         )
-        self.evaluation_performance = self.task.compute_performance(self.resultset)
+        logger.debug('Estimate quality on validation set')
+        self.evaluation_performance = self.task.evaluate(self.resultset)
         logger.info(f'performance={self.evaluation_performance}')
         score_name, score_value = performance_to_score_name_value(self.evaluation_performance)
         data_collector.log_final_metric('evaluation_performance/' + score_name, score_value)
         return self.evaluation_performance
+
+    def _run_ote_export(self, data_collector):
+        logger.debug('Copy environment for evaluation exported model')
+        # TODO(lbeynens): CONSIDER IT WITH Pavel
+        self.environment_for_export = copy.copy(self.environment)
+        logger.debug('Create exported model')
+        self.exported_model = OptimizedModel(
+            NullProject(),
+            NullModelStorage(),
+            self.dataset,
+            self.environment_for_export.get_model_configuration(),
+            ModelOptimizationType.MO,
+            [ModelPrecision.FP32],
+            optimization_methods=[],
+            optimization_level={},
+            target_device=TargetDevice.UNSPECIFIED,
+            performance_improvement={},
+            model_size_reduction=1.,
+            model_status=ModelStatus.NOT_READY)
+        logger.debug('Run export')
+        self.task.export(ExportType.OPENVINO, self.exported_model)
+        logger.debug('Set exported model into environment for export')
+        self.environment_for_export.model = self.exported_model
+
+    def run_ote_export_once(self, data_collector):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
+        if self.was_export_run and self.stored_exception_export:
+            logger.warn('In function run_ote_export_once: found that previous call of the function '
+                        'caused exception -- re-raising it')
+            raise self.stored_exception_export
+
+        if not self.was_export_run:
+            try:
+                self._run_ote_export(data_collector)
+                self.was_export_run = True
+            except Exception as e:
+                self.stored_exception_export = e
+                self.was_export_run = True
+                raise e
+
+    def run_ote_evaluation_exported(self, data_collector, subset=Subset.VALIDATION):
+        if not self.was_training_run:
+            raise RuntimeError('Training was not run for the OTETrainingImpl instance')
+        if self.stored_exception_training:
+            raise RuntimeError('Training was not successful for the OTETrainingImpl instance')
+        if not self.was_export_run:
+            raise RuntimeError('Export was not run for the OTETrainingImpl instance')
+        if self.stored_exception_export:
+            raise RuntimeError('Export was not successful for the OTETrainingImpl instance')
+
+        logger.debug('Create OpenVINO Task')
+        openvino_task_impl_path = self.template['task']['openvino']
+        openvino_task_cls = get_task_class(openvino_task_impl_path)
+        self.openvino_task = openvino_task_cls(self.environment_for_export)
+
+        logger.debug('Get predictions on the validation set')
+        validation_dataset = self.dataset.get_subset(subset)
+        self.predicted_validation_dataset_exp = self.openvino_task.infer(
+            validation_dataset.with_empty_annotations(),
+            InferenceParameters(is_evaluation=True))
+        self.resultset_exp = ResultSet(
+            model=self.exported_model,
+            ground_truth_dataset=validation_dataset,
+            prediction_dataset=self.predicted_validation_dataset_exp,
+        )
+        logger.debug('Estimate quality on validation set')
+        self.evaluation_performance_exported = self.openvino_task.evaluate(self.resultset_exp)
+
+        logger.info(f'performance exported={self.evaluation_performance_exported}')
+        score_name, score_value = performance_to_score_name_value(self.evaluation_performance_exported)
+        data_collector.log_final_metric('evaluation_performance_exported/' + score_name, score_value)
+        return self.evaluation_performance_exported
 
 # pytest magic
 def pytest_generate_tests(metafunc):
@@ -316,7 +415,7 @@ class TestOTETraining:
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
-                'vitens_tiled',
+                #TMPCOMMENT#'vitens_tiled',
 #               'coco_shortened_500',
 #               'vitens_tiled_shortened_500',
                #'dataset_2',
@@ -404,3 +503,30 @@ class TestOTETraining:
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
+
+    @e2e_pytest
+    def test_ote_03_export(self, dataset_name, model_name,
+                           dataset_definitions_fx, template_paths_fx,
+                           cached_from_prev_test_fx,
+                           data_collector_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
+
+        impl.run_ote_training_once(data_collector_fx)
+        impl.run_ote_export_once(data_collector_fx)
+
+    @e2e_pytest
+    def test_ote_04_evaluation_exported(self, dataset_name, model_name,
+                                        dataset_definitions_fx, template_paths_fx,
+                                        cached_from_prev_test_fx,
+                                        data_collector_fx):
+        cache = cached_from_prev_test_fx
+        impl = self._update_impl_in_cache(cache,
+                                          dataset_name, model_name,
+                                          dataset_definitions_fx, template_paths_fx)
+
+        impl.run_ote_training_once(data_collector_fx)
+        impl.run_ote_export_once(data_collector_fx)
+        impl.run_ote_evaluation_exported(data_collector_fx)

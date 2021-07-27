@@ -12,7 +12,16 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-from .configurable_parameters import MMDetectionParameters
-from .task import MMObjectDetectionTask, MMDetectionTaskType
 
-__all__ = [MMDetectionParameters, MMObjectDetectionTask, MMDetectionTaskType]
+from .config_utils import (patch_config, set_hyperparams, prepare_for_training, prepare_for_testing,
+    config_from_string, config_to_string, save_config_to_file, apply_template_configurable_parameters)
+from .configuration import OTEDetectionConfig
+from .ote_utils import generate_label_schema, load_template, get_task_class
+from .task import OTEDetectionTask
+from .openvino_task import OpenVINODetectionTask
+
+
+__all__ = [OTEDetectionConfig, OTEDetectionTask, patch_config, set_hyperparams, prepare_for_training,
+    prepare_for_testing, config_from_string, config_to_string, save_config_to_file,
+    apply_template_configurable_parameters, generate_label_schema, load_template, get_task_class,
+    OpenVINODetectionTask]
