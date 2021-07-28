@@ -17,11 +17,12 @@ dataset_requirements:
 
 # Task implementation.
 task:
-  impl: mmdet.apis.ote.apis.detection.MMObjectDetectionTask
+  base: mmdet.apis.ote.apis.detection.OTEDetectionTask
+  openvino: mmdet.apis.ote.apis.detection.OpenVINODetectionTask
 
 # Task and hyperparameters.
 hyper_parameters:
-  impl: mmdet.apis.ote.apis.detection.MMDetectionParameters
+  impl: mmdet.apis.ote.apis.detection.OTEDetectionConfig
   # Would be good to have different groups of parameters:
   # - Basic: Shown to the user in the first place and editable by him.
   # - Advanced: Editable by the user used the "advanced" section.
@@ -29,12 +30,10 @@ hyper_parameters:
   params:
     learning_parameters:
       batch_size: 32
-      learning_rate_schedule: custom
       learning_rate: 0.05
       num_iters: 70
     algo_backend:
       model: model.py
-      data_pipeline: ote_data_pipeline.py
 
 # Available model optimizations and their configuration.
 optimization:

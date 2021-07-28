@@ -1,3 +1,6 @@
+_base_ = [
+    './coco_data_pipeline.py'
+]
 # model settings
 width_mult = 1.0
 model = dict(
@@ -8,8 +11,6 @@ model = dict(
         out_indices=(4, 5),
         frozen_stages=-1,
         norm_eval=False),
-        # pretrained=True
-    # ),
     neck=None,
     bbox_head=dict(
         type='SSDHead',
@@ -35,7 +36,7 @@ model = dict(
             type='MaxIoUAssigner',
             pos_iou_thr=0.4,
             neg_iou_thr=0.4,
-            min_pos_iou=0.,
+            min_pos_iou=0.0,
             ignore_iof_thr=-1,
             gt_max_assign_all=False),
         smoothl1_beta=1.,
@@ -50,6 +51,7 @@ model = dict(
         min_bbox_size=0,
         score_thr=0.02,
         max_per_img=200))
+evaluation = dict(interval=1000, metric='mAP')
 # optimizer
 optimizer = dict(type='SGD', lr=0.05, momentum=0.9, weight_decay=0.0005)
 optimizer_config = dict()

@@ -2,7 +2,6 @@ input_size = 384
 # model training and testing settings
 # dataset settings
 dataset_type = 'CocoDataset'
-data_root = 'data/WIDERFace/'
 img_norm_cfg = dict(mean=[0, 0, 0], std=[255, 255, 255], to_rgb=True)
 train_pipeline = [
     dict(type='LoadImageFromFile', to_float32=True),
@@ -45,23 +44,22 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             classes=('face',),
-            ann_file=data_root + '/train.json',
-            min_size=17,
-            img_prefix=data_root,
+            ann_file='data/coco/annotations/instances_train2017.json',
+            img_prefix='data/coco/train2017',
             pipeline=train_pipeline
         )
     ),
     val=dict(
         type=dataset_type,
         classes=('face',),
-        ann_file=data_root + '/val.json',
-        img_prefix=data_root,
+        ann_file='data/coco/annotations/instances_val2017.json',
+        img_prefix='data/coco/val2017',
         test_mode=True,
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         classes=('face',),
-        ann_file=data_root + '/val.json',
-        img_prefix=data_root,
+        ann_file='data/coco/annotations/instances_val2017.json',
+        img_prefix='data/coco/val2017',
         test_mode=True,
         pipeline=test_pipeline))
