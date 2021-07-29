@@ -67,6 +67,17 @@ class CocoDataset(CustomDataset):
     def __init__(self, min_size=None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.min_size = min_size
+        self.pseudo_dataset = None
+        if 'pseudo_labels_ann_file' in kwargs:
+            self.pseudo_dataset = self.add_pseudo_dataset(**kwargs)
+
+    def add_pseudo_dataset(self, **kwargs):
+        kwargs = {
+            'ann_file': kwargs['pseudo_labels_ann_file'],
+            'data_root': kwargs['pseudo_labels_data_root'],
+            'pipeline': kwargs['pipeline'],
+        }
+        return CocoDataset(**kwargs)
 
     def load_annotations(self, ann_file):
         """Load annotation from COCO style annotation file.

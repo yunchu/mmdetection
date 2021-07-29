@@ -19,6 +19,11 @@ class GroupSampler(Sampler):
         for i, size in enumerate(self.group_sizes):
             self.num_samples += int(np.ceil(
                 size / self.samples_per_gpu)) * self.samples_per_gpu
+        if hasattr(dataset, 'pseudo_dataset') and dataset.pseudo_dataset is not None:
+            self.pseudo_sampler = self.add_pseudo_sampler(dataset.pseudo_dataset, samples_per_gpu)
+
+    def add_pseudo_sampler(self, dataset, samples_per_gpu):
+        return GroupSampler(dataset, samples_per_gpu)
 
     def __iter__(self):
         indices = []
@@ -92,6 +97,12 @@ class DistributedGroupSampler(Sampler):
                 math.ceil(self.group_sizes[i] * 1.0 / self.samples_per_gpu /
                           self.num_replicas)) * self.samples_per_gpu
         self.total_size = self.num_samples * self.num_replicas
+
+        if hasattr(dataset, 'pseudo_dataset') and dataset.pseudo_dataset is not None:
+            self.pseudo_sampler = self.add_pseudo_sampler(dataset.pseudo_dataset, samples_per_gpu)
+
+    def add_pseudo_sampler(self, dataset, samples_per_gpu):
+        return GroupSampler(dataset, samples_per_gpu)
 
     def __iter__(self):
         # deterministically shuffle based on epoch

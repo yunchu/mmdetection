@@ -8,7 +8,7 @@ import numpy as np
 from mmcv.parallel import collate
 from mmcv.runner import get_dist_info
 from mmcv.utils import Registry, build_from_cfg
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, BatchSampler
 
 from .samplers import DistributedGroupSampler, DistributedSampler, GroupSampler
 
@@ -26,6 +26,26 @@ PIPELINES = Registry('pipeline')
 from .dataset_wrappers import ConcatDataset, RepeatDataset
 from .coco import CocoDataset, ConcatenatedCocoDataset
 from .coco_with_text import CocoWithTextDataset, ConcatenatedCocoWithTextDataset
+
+
+class BatchSamplerSelfTraining(BatchSampler):
+    def __init__(self, sampler, batch_size, drop_last=False):
+        super(BatchSamplerSelfTraining, self).__init__(sampler, batch_size, drop_last)
+
+    def __iter__(self):
+        batch = []
+        for i, idx in enumerate(self.sampler):
+            pseudo_idx = None
+            if hasattr(self.sampler, 'pseudo_sampler'):
+                pseudo_idx = next(iter(self.sampler.pseudo_sampler))
+            batch.append([idx, 'base'])
+            if pseudo_idx is not None:
+                batch.append([pseudo_idx, 'pseudo'])
+            if len(batch) == self.batch_size:
+                yield batch
+                batch = []
+        if len(batch) > 0 and not self.drop_last:
+            yield batch
 
 
 def get_image_prefixes_auto(cfg, ann_files):
@@ -168,15 +188,26 @@ def build_dataloader(dataset,
         worker_init_fn, num_workers=num_workers, rank=rank,
         seed=seed) if seed is not None else None
 
-    data_loader = DataLoader(
-        dataset,
-        batch_size=batch_size,
-        sampler=sampler,
-        num_workers=num_workers,
-        collate_fn=partial(collate, samples_per_gpu=samples_per_gpu),
-        pin_memory=False,
-        worker_init_fn=init_fn,
-        **kwargs)
+    if hasattr(dataset, 'pseudo_dataset'):
+        batch_sampler = BatchSamplerSelfTraining(sampler, batch_size)
+        data_loader = DataLoader(
+            dataset,
+            batch_sampler=batch_sampler,
+            num_workers=num_workers,
+            collate_fn=partial(collate, samples_per_gpu=samples_per_gpu),
+            pin_memory=False,
+            worker_init_fn=init_fn,
+            **kwargs)
+    else:
+        data_loader = DataLoader(
+            dataset,
+            batch_size=batch_size,
+            sampler=sampler,
+            num_workers=num_workers,
+            collate_fn=partial(collate, samples_per_gpu=samples_per_gpu),
+            pin_memory=False,
+            worker_init_fn=init_fn,
+            **kwargs)
 
     return data_loader
 

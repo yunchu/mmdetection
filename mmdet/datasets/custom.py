@@ -62,7 +62,8 @@ class CustomDataset(Dataset):
                  seg_prefix=None,
                  proposal_file=None,
                  test_mode=False,
-                 filter_empty_gt=True):
+                 filter_empty_gt=True,
+                 **kwargs):
         self.ann_file = ann_file
         self.data_root = data_root
         self.img_prefix = img_prefix
@@ -191,9 +192,12 @@ class CustomDataset(Dataset):
         if self.test_mode:
             return self.prepare_test_img(idx)
         while True:
-            data = self.prepare_train_img(idx)
+            if idx[1] == 'pseudo' and hasattr(self, 'pseudo_dataset'):
+                data = self.pseudo_dataset.prepare_train_img(idx[0])
+            else:
+                data = self.prepare_train_img(idx[0])
             if data is None:
-                idx = self._rand_another(idx)
+                idx = self._rand_another(idx[0])
                 continue
             return data
 
