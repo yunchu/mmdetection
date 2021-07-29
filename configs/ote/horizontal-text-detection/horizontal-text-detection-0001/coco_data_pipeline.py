@@ -1,11 +1,10 @@
 # model training and testing settings
 # dataset settings
 dataset_type = 'CocoDataset'
-data_root = 'data/text-dataset/'
 img_norm_cfg = dict(
     mean=[0, 0, 0], std=[255, 255, 255], to_rgb=True)
 train_pipeline = [
-    dict(type='LoadImageFromFile'),
+    dict(type='LoadImageFromFile', to_float32=True),
     dict(type='LoadAnnotations', with_bbox=True),
     dict(
         type='MinIoURandomCrop',
@@ -46,21 +45,22 @@ data = dict(
         dataset=dict(
             type=dataset_type,
             classes=('text',),
-            ann_file=data_root + 'IC13TRAIN_IC15_IC17_IC19_MSRATD500_COCOTEXT.json',
-            img_prefix=data_root,
-            pipeline=train_pipeline),
+            ann_file='data/coco/annotations/instances_train2017.json',
+            img_prefix='data/coco/train2017',
+            pipeline=train_pipeline
+        )
     ),
     val=dict(
         type=dataset_type,
         classes=('text',),
-        ann_file=data_root + 'IC13TEST.json',
-        img_prefix=data_root,
+        ann_file='data/coco/annotations/instances_val2017.json',
+        img_prefix='data/coco/val2017',
         test_mode=True,
         pipeline=test_pipeline),
     test=dict(
         type=dataset_type,
         classes=('text',),
-        ann_file=data_root + 'IC13TEST.json',
-        img_prefix=data_root,
+        ann_file='data/coco/annotations/instances_val2017.json',
+        img_prefix='data/coco/val2017',
         test_mode=True,
         pipeline=test_pipeline))

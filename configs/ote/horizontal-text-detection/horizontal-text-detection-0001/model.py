@@ -1,3 +1,6 @@
+_base_ = [
+    './coco_data_pipeline.py'
+]
 # model settings
 model = dict(
     type='FCOS',
@@ -48,6 +51,7 @@ model = dict(
         score_thr=0.25,
         nms=dict(type='nms', iou_threshold=0.5),
         max_per_img=100))
+evaluation = dict(interval=1000, metric='mAP')
 # optimizer
 optimizer = dict(
     type='SGD',
@@ -72,9 +76,8 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-# device_ids = range(4)
 dist_params = dict(backend='nccl')
-runner = dict(type='IterBasedRunner', max_iters=10000)
+runner = dict(type='IterBasedRunner', max_iters=13000)
 log_level = 'INFO'
 work_dir = 'outputs/horizontal-text-detection'
 load_from = 'https://download.01.org/opencv/openvino_training_extensions/models/object_detection/v2/horizontal-text-detection-0001.pth'
