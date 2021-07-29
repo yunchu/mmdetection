@@ -25,7 +25,7 @@ from sc_sdk.entities.shapes.box import Box
 from sc_sdk.entities.shapes.ellipse import Ellipse
 from sc_sdk.entities.shapes.polygon import Polygon
 from sc_sdk.entities.task_environment import TaskEnvironment
-from sc_sdk.tests.test_helpers import generate_random_annotated_image
+from sc_sdk.tests.test_helpers import generate_random_annotated_image, rerun_on_flaky_assert
 from sc_sdk.usecases.tasks.interfaces.export_interface import IExportTask, ExportType
 from sc_sdk.utils import restricted_pickle_module
 from sc_sdk.utils.project_factory import NullProject
