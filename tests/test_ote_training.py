@@ -258,7 +258,7 @@ class OTETrainingImpl:
         elif self.num_training_iters < 1000:
             num_checkpoints = 10
         else:
-            num_checkpoints = 1000
+            num_checkpoints = 30
         self.task.hyperparams.learning_parameters.num_checkpoints = num_checkpoints
 
         logger.debug('Train model')
