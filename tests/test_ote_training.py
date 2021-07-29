@@ -190,9 +190,11 @@ def convert_hyperparams_to_dict(hyperparams):
     return _convert(hyperparams)
 
 class OTETrainingImpl:
-    def __init__(self, dataset_params: DatasetParameters, template_file_path: str):
+    def __init__(self, dataset_params: DatasetParameters, template_file_path: str,
+                 num_training_iters: int):
         self.dataset_params = dataset_params
         self.template_file_path = template_file_path
+        self.num_training_iters = num_training_iters
 
         self.template = None
         self.environment = None
@@ -249,12 +251,15 @@ class OTETrainingImpl:
         self.environment, self.task = self._create_environment_and_task(params,
                                                                         self.labels_schema,
                                                                         self.template)
-
-
-
         logger.debug('Set hyperparameters')
-        self.task.hyperparams.learning_parameters.num_checkpoints = 2
-        self.task.hyperparams.learning_parameters.num_iters = 5
+        self.task.hyperparams.learning_parameters.num_iters = self.num_training_iters
+        if self.num_training_iters < 10:
+            num_checkpoints = 2
+        elif self.num_training_iters < 1000:
+            num_checkpoints = 10
+        else:
+            num_checkpoints = 1000
+        self.task.hyperparams.learning_parameters.num_checkpoints = num_checkpoints
 
         logger.debug('Train model')
         self.output_model = Model(
@@ -410,6 +415,7 @@ def pytest_generate_tests(metafunc):
 class TestOTETraining:
     parameters = {
             'model_name': [
+<<<<<<< HEAD
                 'mobilenet_v2-2s_ssd-256x256',
                 'mobilenet_v2-2s_ssd-384x384',
                 'mobilenet_v2-2s_ssd-512x512',
@@ -423,15 +429,28 @@ class TestOTETraining:
                 'face-detection-0206',
                 'face-detection-0207',
                 'horizontal-text-detection-0001',
+=======
+                'mobilenet_v2_2s_ssd_256x256',
+>>>>>>> origin/lb/integrate_e2e_to_sc_sdk_tests_ver3
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
-                #TMPCOMMENT#'vitens_tiled',
+#                'vitens_tiled',
+                #'bbcd',
 #               'coco_shortened_500',
 #               'vitens_tiled_shortened_500',
-               #'dataset_2',
             ]
     }
+
+    DEFAULT_NUM_ITERS = 5
+    NUM_ITERS_KEY = 'NUM_ITERS'
+    num_training_iters_for_tests = [ # the list of elements defining custom num training iters for each test
+            {
+                'model_name': 'mobilenet_v2_2s_ssd_256x256',
+                'dataset_name': 'bbcd',
+                NUM_ITERS_KEY: 350
+            },
+    ]
 
     @pytest.fixture(scope='class')
     def cached_from_prev_test_fx(self):
@@ -461,7 +480,9 @@ class TestOTETraining:
     @staticmethod
     def _update_impl_in_cache(cache,
                               dataset_name, model_name,
-                              dataset_definitions, template_paths):
+                              dataset_definitions, template_paths,
+                              num_training_iters):
+        # TODO(lbeynens): make this a fixture with conditional ops inside
         TestOTETraining._clean_cache_if_parameters_changed(cache,
                                                            dataset_name=dataset_name,
                                                            model_name=model_name)
@@ -469,7 +490,7 @@ class TestOTETraining:
             logger.info('TestOTETraining: creating OTETrainingImpl')
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
             template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
-            cache['impl'] = OTETrainingImpl(dataset_params, template_path)
+            cache['impl'] = OTETrainingImpl(dataset_params, template_path, num_training_iters)
 
         return cache['impl']
 
@@ -490,15 +511,37 @@ class TestOTETraining:
             yield data_collector
         logger.info('data_collector is released')
 
+    @pytest.fixture
+    def num_training_iters_fx(self, request):
+        cur_params = deepcopy(request.node.callspec.params)
+        def _should_use_el(el):
+            common_keys = set(cur_params.keys()) & set(el.keys())
+            return all(cur_params[k] == el[k] for k in common_keys)
+
+        all_elements = self.num_training_iters_for_tests
+        selected_elements = [el for el in all_elements if _should_use_el(el)]
+        assert len(selected_elements) <= 1, (
+                f'Too many elements selected from num_training_iters_for_tests list for params={cur_params}')
+
+        if len(selected_elements) == 0:
+            return self.DEFAULT_NUM_ITERS
+
+        num_iters = selected_elements[0][self.NUM_ITERS_KEY]
+        logger.debug(f'For params={cur_params} found num_iters={num_iters}')
+        return num_iters
+
+
     @e2e_pytest
     def test_ote_01_training(self, dataset_name, model_name,
                              dataset_definitions_fx, template_paths_fx,
                              cached_from_prev_test_fx,
-                             data_collector_fx):
+                             data_collector_fx,
+                             num_training_iters_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx)
+                                          dataset_definitions_fx, template_paths_fx,
+                                          num_training_iters_fx)
 
         impl.run_ote_training_once(data_collector_fx)
 
@@ -506,11 +549,13 @@ class TestOTETraining:
     def test_ote_02_evaluation(self, dataset_name, model_name,
                                dataset_definitions_fx, template_paths_fx,
                                cached_from_prev_test_fx,
-                               data_collector_fx):
+                               data_collector_fx,
+                               num_training_iters_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx)
+                                          dataset_definitions_fx, template_paths_fx,
+                                          num_training_iters_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
@@ -519,11 +564,13 @@ class TestOTETraining:
     def test_ote_03_export(self, dataset_name, model_name,
                            dataset_definitions_fx, template_paths_fx,
                            cached_from_prev_test_fx,
-                           data_collector_fx):
+                           data_collector_fx,
+                           num_training_iters_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx)
+                                          dataset_definitions_fx, template_paths_fx,
+                                          num_training_iters_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_export_once(data_collector_fx)
@@ -532,11 +579,13 @@ class TestOTETraining:
     def test_ote_04_evaluation_exported(self, dataset_name, model_name,
                                         dataset_definitions_fx, template_paths_fx,
                                         cached_from_prev_test_fx,
-                                        data_collector_fx):
+                                        data_collector_fx,
+                                        num_training_iters_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
                                           dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx)
+                                          dataset_definitions_fx, template_paths_fx,
+                                          num_training_iters_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_export_once(data_collector_fx)
