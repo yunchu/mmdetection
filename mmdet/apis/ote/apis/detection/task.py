@@ -118,6 +118,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         # Extra control variables.
         self.training_round_id = 0
         self.is_training = False
+        self.training_work_dir = None
         self.should_stop = False
         self.time_monitor = None
 
@@ -299,6 +300,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             self.model = old_model
             self.should_stop = False
             self.is_training = False
+            self.training_work_dir = None
             self.time_monitor = None
             return
 
@@ -308,6 +310,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         training_config = prepare_for_training(config, train_dataset, val_dataset,
                                                self.training_round_id, self.time_monitor, learning_curves)
         mm_train_dataset = build_dataset(training_config.data.train)
+        self.training_work_dir = training_config.work_dir
         self.is_training = True
         self.model.train()
         train_detector(model=self.model, dataset=mm_train_dataset, cfg=training_config, distributed=True, validate=True)
@@ -319,6 +322,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             self.model = old_model
             self.should_stop = False
             self.is_training = False
+            self.training_work_dir = None
             self.time_monitor = None
             return
 
@@ -353,6 +357,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                 self.model = old_model
 
         self.is_training = False
+        self.training_work_dir = None
         self.time_monitor = None
 
 
@@ -388,7 +393,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         """
         logger.info("Cancel training requested.")
         self.should_stop = True
-        stop_training_filepath = os.path.join(self.config.work_dir, '.stop_training')
+        stop_training_filepath = os.path.join(self.training_work_dir, '.stop_training')
         open(stop_training_filepath, 'a').close()
 
 
