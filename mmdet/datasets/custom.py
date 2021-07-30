@@ -192,7 +192,7 @@ class CustomDataset(Dataset):
         if self.test_mode:
             return self.prepare_test_img(idx)
         while True:
-            if idx[1] == 'pseudo' and hasattr(self, 'pseudo_dataset'):
+            if idx[1] == 'pseudo' and hasattr(self, 'pseudo_dataset') and self.pseudo_dataset is not None:
                 data = self.pseudo_dataset.prepare_train_img(idx[0])
             else:
                 data = self.prepare_train_img(idx[0])
@@ -223,7 +223,7 @@ class CustomDataset(Dataset):
         copy_past_ann_info = self.get_ann_info(copy_past_idx)
 
         if self.proposals is not None:
-            results['proposals'] = self.proposals[idx]
+            results['proposals'] = self.proposals[idx[0]]
         self.pre_pipeline(results)
 
         results['copy_paste'] = dict(img_info=copy_past_img_info, ann_info=copy_past_ann_info)

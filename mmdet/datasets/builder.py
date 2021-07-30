@@ -188,7 +188,7 @@ def build_dataloader(dataset,
         worker_init_fn, num_workers=num_workers, rank=rank,
         seed=seed) if seed is not None else None
 
-    if hasattr(dataset, 'pseudo_dataset'):
+    if hasattr(dataset, 'pseudo_dataset') and dataset.pseudo_dataset is not None:
         batch_sampler = BatchSamplerSelfTraining(sampler, batch_size)
         data_loader = DataLoader(
             dataset,
