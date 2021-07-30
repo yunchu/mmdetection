@@ -476,7 +476,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                output_model: OptimizedModel):
         assert export_type == ExportType.OPENVINO
         optimized_model_precision = ModelPrecision.FP32
-        with tempfile.TemporaryDirectory(prefix="export-", dir=self.config.work_dir) as tempdir:
+        with tempfile.TemporaryDirectory(prefix="ote-det-export-") as tempdir:
             logger.info(f'Optimized model will be temporarily saved to "{tempdir}"')
             try:
                 from torch.jit._trace import TracerWarning
