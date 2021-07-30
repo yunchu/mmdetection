@@ -17,9 +17,10 @@ import copy
 import glob
 import os
 import tempfile
-from typing import Optional, List
+from typing import Any, Optional, List
 
 from mmcv import Config, ConfigDict
+from mmcv.runner import master_only
 from sc_sdk.entities.datasets import Dataset, Subset
 from sc_sdk.entities.label import Label
 from sc_sdk.logging import logger_factory
@@ -28,7 +29,7 @@ from sc_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 from .configuration import OTEDetectionConfig
 
 
-logger = logger_factory.get_logger("OTEDetectionTask")
+logger = logger_factory.get_logger("OTEDetectionTask.config_utils")
 
 
 def apply_template_configurable_parameters(params: OTEDetectionConfig, template: dict):
@@ -76,6 +77,8 @@ def patch_config(config: Config, work_dir: str, labels: List[Label], random_seed
     if evaluation_metric is not None:
         config.evaluation.save_best = evaluation_metric
     config.evaluation.rule = 'greater'
+    # FIXME. Does if have to be explicitly set for CPU-only mode?
+    # config.evaluation.gpu_collect = False
 
     label_names = [lab.name for lab in labels]
     set_data_classes(config, label_names)
@@ -108,10 +111,10 @@ def prepare_for_testing(config: Config, dataset: Dataset) -> Config:
 
 
 def prepare_for_training(config: Config, train_dataset: Dataset, val_dataset: Dataset,
-                         time_monitor: TimeMonitorCallback, learning_curves: defaultdict) -> Config:
+                         round_id: Any, time_monitor: TimeMonitorCallback, learning_curves: defaultdict) -> Config:
     config = copy.deepcopy(config)
 
-    prepare_work_dir(config)
+    prepare_work_dir(config, round_id)
 
     # config.data.test.ote_dataset = dataset.get_subset(Subset.TESTING)
     config.data.val.ote_dataset = val_dataset
@@ -160,6 +163,7 @@ def config_from_string(config_string: str) -> Config:
         return Config.fromfile(temp_file.name)
 
 
+@master_only
 def save_config_to_file(config: Config):
     """ Dump the full config to a file. Filename is 'config.py', it is saved in the current work_dir. """
     filepath = os.path.join(config.work_dir, 'config.py')
@@ -168,16 +172,16 @@ def save_config_to_file(config: Config):
         f.write(config_string)
 
 
-def prepare_work_dir(config: Config) -> str:
+def prepare_work_dir(config: Config, round_id: Any = 0) -> str:
     base_work_dir = config.work_dir
-    checkpoint_dirs = glob.glob(os.path.join(base_work_dir, "checkpoints_round_*"))
-    train_round_checkpoint_dir = os.path.join(base_work_dir, f"checkpoints_round_{len(checkpoint_dirs)}")
-    os.makedirs(train_round_checkpoint_dir)
+
+    train_round_checkpoint_dir = os.path.join(base_work_dir, f"checkpoints_round_{round_id}")
+    os.makedirs(train_round_checkpoint_dir, exist_ok=True)
     logger.info(f"Checkpoints and logs for this training run are stored in {train_round_checkpoint_dir}")
     config.work_dir = train_round_checkpoint_dir
     if 'meta' not in config.runner:
         config.runner.meta = ConfigDict()
-    config.runner.meta.exp_name = f"train_round_{len(checkpoint_dirs)}"
+    config.runner.meta.exp_name = f"train_round_{round_id}"
     # Save training config for debugging. It is saved in the checkpoint dir for this training round
     save_config_to_file(config)
     return train_round_checkpoint_dir

@@ -31,6 +31,8 @@ from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from sc_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 
+from mmcv.runner import master_only
+
 from .configuration import OTEDetectionConfig
 
 
@@ -163,6 +165,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask):
         self.model = self.task_environment.model
         self.inferencer = self.load_inferencer()
 
+    @master_only
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         return OpenVINODetectionInferencer(self.hparams,
@@ -170,12 +173,14 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask):
                                            self.model.get_data("openvino.xml"),
                                            self.model.get_data("openvino.bin"))
 
+    @master_only
     def infer(self, dataset: Dataset, inference_parameters: Optional[InferenceParameters] = None) -> Dataset:
         from tqdm import tqdm
         for dataset_item in tqdm(dataset):
             dataset_item.annotation_scene = self.inferencer.predict(dataset_item.numpy)
         return dataset
 
+    @master_only
     def evaluate(self,
                  output_result_set: ResultSet,
                  evaluation_metric: Optional[str] = None):

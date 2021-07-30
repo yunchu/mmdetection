@@ -144,7 +144,8 @@ class OTEDetectionConfig(TaskConfig):
         template = configurable_str("template.yaml", "", editable=False, visible_in_ui=False)
         model = configurable_str("model.py", "", editable=False, visible_in_ui=False)
         model_name = configurable_str("object detection model", "", editable=False, visible_in_ui=False)
-        data_pipeline = configurable_str("ote_data_pipeline.py", "", editable=False, visible_in_ui=False)
+        scratch_space = configurable_str("/tmp/ote-det-scratch", "", editable=False, visible_in_ui=False)
+
 
     learning_parameters = add_parameter_group(__LearningParameters)
     algo_backend = add_parameter_group(__AlgoBackend)

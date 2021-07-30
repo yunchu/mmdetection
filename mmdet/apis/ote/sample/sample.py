@@ -15,6 +15,11 @@
 import argparse
 import os.path as osp
 import sys
+import warnings
+
+warnings.filterwarnings('ignore', category=DeprecationWarning, message='.*cElementTree is deprecated.*')
+warnings.filterwarnings('ignore', category=UserWarning, message='.*Nevergrad package could not be imported.*')
+warnings.filterwarnings('ignore', category=UserWarning, message='.*This overload of nonzero is deprecated.*')
 
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
@@ -35,13 +40,16 @@ from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, load_template, get_task_class
 
 
-logger = logger_factory.get_logger('Sample')
+logger = logger_factory.get_logger('OTEDetectionSample')
+import logging
+logger.setLevel(logging.INFO)
 
 
 def parse_args():
     parser = argparse.ArgumentParser(description='Sample showcasing the new API')
     parser.add_argument('template_file_path', help='path to template file')
     parser.add_argument('--data-dir', default='data')
+    parser.add_argument('--work-dir', default='/tmp/ote-det-scratch')
     parser.add_argument('--export', action='store_true')
     args = parser.parse_args()
     return args
@@ -71,6 +79,7 @@ def main(args):
     logger.info('Setup environment')
     params = OTEDetectionConfig(workspace_id=ID(), project_id=ID(), task_id=ID())
     apply_template_configurable_parameters(params, template)
+    params.algo_backend.scratch_space = args.work_dir
     environment = TaskEnvironment(model=NullModel(), configurable_parameters=params, label_schema=labels_schema)
 
     logger.info('Create base Task')

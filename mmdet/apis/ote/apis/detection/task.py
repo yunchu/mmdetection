@@ -14,10 +14,13 @@
 
 import copy
 import io
+import logging
 import os
 import shutil
 import tempfile
 import torch
+import torch.distributed as dist
+import torch.multiprocessing as mp
 import warnings
 from collections import defaultdict
 from typing import Optional, List, Tuple
@@ -47,19 +50,29 @@ from sc_sdk.usecases.tasks.interfaces.export_interface import IExportTask, Expor
 from sc_sdk.usecases.tasks.interfaces.unload_interface import IUnload
 from sc_sdk.logging import logger_factory
 
-from mmcv.parallel import MMDataParallel
-from mmcv.runner import load_checkpoint
+from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.runner import load_checkpoint, get_dist_info, init_dist, master_only
 from mmcv.utils import Config
-from mmdet.apis import train_detector, single_gpu_test, export_model
+from mmdet.apis import train_detector, single_gpu_test, multi_gpu_test, export_model
 from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.config_utils import (patch_config, set_hyperparams, prepare_for_training,
     prepare_for_testing)
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
 from mmdet.datasets import build_dataset, build_dataloader
 from mmdet.models import build_detector
+from mmdet.parallel import MMDataCPU
 
 
 logger = logger_factory.get_logger("OTEDetectionTask")
+
+
+def init_dist_cpu(launcher, backend, **kwargs):
+    if mp.get_start_method(allow_none=True) is None:
+        mp.set_start_method('spawn')
+    if launcher == 'pytorch':
+        dist.init_process_group(backend=backend, **kwargs)
+    else:
+        raise ValueError(f'Invalid launcher type: {launcher}')
 
 
 class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTask, IUnload):
@@ -72,14 +85,23 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         """
         logger.info(f"Loading OTEDetectionTask.")
-        self.scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
-        logger.info(f"Scratch space created at {self.scratch_space}")
 
         self.task_environment = task_environment
         self.hyperparams = hyperparams = task_environment.get_configurable_parameters(OTEDetectionConfig)
 
+        self.scratch_space = self.hyperparams.algo_backend.scratch_space
+        logger.info(f"Scratch space for the task: {self.scratch_space}")
         self.model_name = hyperparams.algo_backend.model_name
         self.labels = task_environment.get_labels(False)
+
+        if not torch.distributed.is_initialized():
+            if torch.cuda.is_available():
+                init_dist(launcher='pytorch')
+            else:
+                init_dist_cpu(backend="gloo")
+        self.rank, self.world_size = get_dist_info()
+        self.gpu_ids = range(self.world_size)
+        logger.warning(f'World size {self.world_size}, rank {self.rank}')
 
         # Get and prepare mmdet config.
         template_file_path = hyperparams.algo_backend.template
@@ -88,11 +110,13 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.config = Config.fromfile(config_file_path)
         patch_config(self.config, self.scratch_space, self.labels, random_seed=42)
         set_hyperparams(self.config, hyperparams)
+        self.config.gpu_ids = self.gpu_ids
 
         # Create and initialize PyTorch model.
         self.model = self._load_model(task_environment.model)
 
         # Extra control variables.
+        self.training_round_id = 0
         self.is_training = False
         self.should_stop = False
         self.time_monitor = None
@@ -159,38 +183,37 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         prediction_results, _ = self._infer_detector(self.model, self.config, dataset, False)
 
-        # Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format
-        for dataset_item, output in zip(dataset, prediction_results):
-            width = dataset_item.width
-            height = dataset_item.height
+        if self.rank == 0:
+            # Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format
+            for dataset_item, output in zip(dataset, prediction_results):
+                width = dataset_item.width
+                height = dataset_item.height
 
-            shapes = []
-            for label_idx, detections in enumerate(output):
-                for i in range(detections.shape[0]):
-                    probability = float(detections[i, 4])
-                    coords = detections[i, :4].astype(float).copy()
-                    coords /= np.array([width, height, width, height], dtype=float)
-                    coords = np.clip(coords, 0, 1)
+                shapes = []
+                for label_idx, detections in enumerate(output):
+                    for i in range(detections.shape[0]):
+                        probability = float(detections[i, 4])
+                        coords = detections[i, :4].astype(float).copy()
+                        coords /= np.array([width, height, width, height], dtype=float)
+                        coords = np.clip(coords, 0, 1)
 
-                    if probability < confidence_threshold:
-                        continue
+                        if probability < confidence_threshold:
+                            continue
 
-                    assigned_label = [ScoredLabel(self.labels[label_idx],
-                                                  probability=probability)]
-                    if coords[3] - coords[1] <= 0 or coords[2] - coords[0] <= 0:
-                        continue
+                        assigned_label = [ScoredLabel(self.labels[label_idx], probability=probability)]
+                        if coords[3] - coords[1] <= 0 or coords[2] - coords[0] <= 0:
+                            continue
 
-                    shapes.append(Annotation(
-                        Box(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
-                        labels=assigned_label))
+                        shapes.append(Annotation(
+                            Box(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
+                            labels=assigned_label))
 
-            dataset_item.append_annotations(shapes)
+                dataset_item.append_annotations(shapes)
 
         return dataset
 
 
-    @staticmethod
-    def _infer_detector(model: torch.nn.Module, config: Config, dataset: Dataset,
+    def _infer_detector(self, model: torch.nn.Module, config: Config, dataset: Dataset,
                         eval: Optional[bool] = False, metric_name: Optional[str] = 'mAP') -> Tuple[List, float]:
         model.eval()
         test_config = prepare_for_testing(config, dataset)
@@ -200,19 +223,26 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                                              samples_per_gpu=batch_size,
                                              workers_per_gpu=test_config.data.workers_per_gpu,
                                              num_gpus=1,
-                                             dist=False,
+                                             dist=True,
                                              shuffle=False)
-        eval_model = MMDataParallel(model.cuda(test_config.gpu_ids[0]),
-                                    device_ids=test_config.gpu_ids)
-        # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
-        eval_predictions = single_gpu_test(eval_model, mm_val_dataloader, show=False)
+
+        if torch.cuda.is_available():
+            model = MMDistributedDataParallel(
+                model.cuda(),
+                device_ids=[torch.cuda.current_device()],
+                broadcast_buffers=False)
+            eval_predictions = multi_gpu_test(model, mm_val_dataloader, config.work_dir, False)
+        else:
+            model = MMDataCPU(model)
+            eval_predictions = single_gpu_test(model, mm_val_dataloader, show=False)
 
         metric = None
-        if eval:
+        if eval and self.rank == 0:
             metric = mm_val_dataset.evaluate(eval_predictions, metric=metric_name)[metric_name]
         return eval_predictions, metric
 
 
+    @master_only
     def evaluate(self,
                  output_result_set: ResultSet,
                  evaluation_metric: Optional[str] = None):
@@ -246,6 +276,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         """ Trains a model on a dataset """
 
         set_hyperparams(self.config, self.hyperparams)
+        self.training_round_id += 1
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
@@ -274,11 +305,12 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         # Run training.
         self.time_monitor = TimeMonitorCallback(0, 0, 0, 0, update_progress_callback=lambda _: None)
         learning_curves = defaultdict(OTELoggerHook.Curve)
-        training_config = prepare_for_training(config, train_dataset, val_dataset, self.time_monitor, learning_curves)
+        training_config = prepare_for_training(config, train_dataset, val_dataset,
+                                               self.training_round_id, self.time_monitor, learning_curves)
         mm_train_dataset = build_dataset(training_config.data.train)
         self.is_training = True
         self.model.train()
-        train_detector(model=self.model, dataset=mm_train_dataset, cfg=training_config, validate=True)
+        train_detector(model=self.model, dataset=mm_train_dataset, cfg=training_config, distributed=True, validate=True)
 
         # Check for stop signal when training has stopped. If should_stop is true, training was cancelled and no new
         # model should be returned. Old train model is restored.
@@ -291,37 +323,40 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             return
 
         # Load the best weights and check if model has improved.
-        training_metrics = self._generate_training_metrics_group(learning_curves)
         best_checkpoint_path = os.path.join(training_config.work_dir, 'latest.pth')
         best_checkpoint = torch.load(best_checkpoint_path)
         self.model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
         _, final_performance = self._infer_detector(self.model, config, val_dataset, True)
-        improved = final_performance > initial_performance
 
-        # Return a new model if model has improved, or there is no model yet.
-        if improved or isinstance(self.task_environment.model, NullModel):
-            if improved:
-                logger.info("Training finished, and it has an improved model")
+        if self.rank == 0:
+            improved = final_performance > initial_performance
+
+            # Return a new model if model has improved, or there is no model yet.
+            if improved or isinstance(self.task_environment.model, NullModel):
+                if improved:
+                    logger.info("Training finished, and it has an improved model")
+                else:
+                    logger.info("First training round, saving the model.")
+                # Add mAP metric and loss curves
+                training_metrics = self._generate_training_metrics_group(learning_curves)
+                performance = Performance(score=ScoreMetric(value=final_performance, name="mAP"),
+                                          dashboard_metrics=training_metrics)
+                logger.info('FINAL MODEL PERFORMANCE\n' + str(performance))
+                self.save_model(output_model)
+                output_model.performance = performance
+                output_model.model_status = ModelStatus.SUCCESS
             else:
-                logger.info("First training round, saving the model.")
-            # Add mAP metric and loss curves
-            performance = Performance(score=ScoreMetric(value=final_performance, name="mAP"),
-                                      dashboard_metrics=training_metrics)
-            logger.info('FINAL MODEL PERFORMANCE\n' + str(performance))
-            self.save_model(output_model)
-            output_model.performance = performance
-            output_model.model_status = ModelStatus.SUCCESS
-        else:
-            logger.info("Model performance has not improved while training. No new model has been saved.")
-            # Restore old training model if training from scratch and not improved
-            self.model = old_model
+                logger.info("Model performance has not improved while training. No new model has been saved.")
+                # Restore old training model if training from scratch and not improved
+                self.model = old_model
 
         self.is_training = False
         self.time_monitor = None
 
 
+    @master_only
     def save_model(self, output_model: Model):
         buffer = io.BytesIO()
         hyperparams = self.task_environment.get_configurable_parameters(OTEDetectionConfig)
@@ -343,6 +378,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         return -1.0
 
 
+    @master_only
     def cancel_training(self):
         """
         Sends a cancel training signal to gracefully stop the optimizer. The signal consists of creating a
@@ -427,24 +463,28 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             ctypes.string_at(0)
         else:
             logger.warning("Got unload request, but not on Docker. Only clearing CUDA cache")
-            torch.cuda.empty_cache()
-            logger.warning(f"Done unloading. "
-                           f"Torch is still occupying {torch.cuda.memory_allocated()} bytes of GPU memory")
+            if torch.cuda.is_available():
+                torch.cuda.empty_cache()
+                logger.warning(f"CUDA cache is cleared. "
+                    "Torch is still occupying {torch.cuda.memory_allocated()} bytes of GPU memory")
+            logger.warning("Done unloading.")
 
 
+    @master_only
     def export(self,
                export_type: ExportType,
                output_model: OptimizedModel):
         assert export_type == ExportType.OPENVINO
         optimized_model_precision = ModelPrecision.FP32
-        with tempfile.TemporaryDirectory() as tempdir:
-            optimized_model_dir = os.path.join(tempdir, "export")
-            logger.info(f'Optimized model will be temporarily saved to "{optimized_model_dir}"')
-            os.makedirs(optimized_model_dir, exist_ok=True)
+        with tempfile.TemporaryDirectory(prefix="export-", dir=self.config.work_dir) as tempdir:
+            logger.info(f'Optimized model will be temporarily saved to "{tempdir}"')
             try:
                 from torch.jit._trace import TracerWarning
                 warnings.filterwarnings("ignore", category=TracerWarning)
-                model = self.model.cuda(self.config.gpu_ids[0])
+                if torch.cuda.is_available():
+                    model = self.model.cuda(self.config.gpu_ids[0])
+                else:
+                    model = self.model.cpu()
                 export_model(model, self.config, tempdir,
                              target='openvino', precision=optimized_model_precision.name)
                 bin_file = [f for f in os.listdir(tempdir) if f.endswith('.bin')][0]
@@ -458,6 +498,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                 raise RuntimeError("Optimization was unsuccessful.") from ex
 
 
+    @master_only
     def _delete_scratch_space(self):
         """
         Remove model checkpoints and mmdet logs
