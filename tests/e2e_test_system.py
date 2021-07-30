@@ -22,13 +22,16 @@ import traceback
 import getpass
 import time
 
+from e2e.markers.run_type import MarkRunType
 
 
-def _generate_e2e_pytest_decorator():
+def _generate_e2e_pytest_decorator(test_type):
     try:
         from e2e.markers.mark_meta import MarkMeta
     except ImportError:
-        def _e2e_pytest(func):
+        def _e2e_pytest_api(func):
+            return func
+        def _e2e_pytest_performance(func):
             return func
         return _e2e_pytest
 
@@ -39,7 +42,7 @@ def _generate_e2e_pytest_decorator():
     class OTEComponent(MarkMeta):
         OTE = "ote"
 
-    def _e2e_pytest(func):
+    def _e2e_pytest_api(func):
         @pytest.mark.components(OTEComponent.OTE)
         @pytest.mark.priority_medium
         @pytest.mark.reqids(Requirements.REQ_DUMMY)
@@ -49,7 +52,20 @@ def _generate_e2e_pytest_decorator():
             return func(*args, **kwargs)
         return wrapper
 
-    return _e2e_pytest
+    def _e2e_pytest_performance(func):
+        @pytest.mark.components(OTEComponent.OTE)
+        @pytest.mark.priority_medium
+        @pytest.mark.reqids(Requirements.REQ_DUMMY)
+        @pytest.mark.api_performance
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            return func(*args, **kwargs)
+        return wrapper
+
+    if test_type == MarkRunType.TEST_MARK_OTHER:
+        return _e2e_pytest_api
+    elif test_type == MarkRunType.TEST_MARK_PERFORMANCE:
+        return _e2e_pytest_performance
 
 def _create_class_DataCollector():
     try:
@@ -84,7 +100,8 @@ def _create_class_DataCollector():
 
         return _dummy_DataCollector
 
-e2e_pytest = _generate_e2e_pytest_decorator()
+e2e_pytest_api = _generate_e2e_pytest_decorator(MarkRunType.TEST_MARK_OTHER)
+e2e_pytest_performance = _generate_e2e_pytest_decorator(MarkRunType.TEST_MARK_PERFORMANCE)
 DataCollector = _create_class_DataCollector()
 
 def select_configurable_parameters(json_configurable_parameters):
