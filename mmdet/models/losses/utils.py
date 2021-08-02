@@ -3,6 +3,15 @@ import functools
 import torch.nn.functional as F
 
 
+def get_indices(img_metas, names=('coco', 'openimages')):
+    output = {name: [] for name in names}
+    for i, meta in enumerate(img_metas):
+        for name in names:
+            if name in meta['filename'].lower():
+                output[name].append(i)
+    return output
+
+
 def reduce_loss(loss, reduction):
     """Reduce loss as specified.
 

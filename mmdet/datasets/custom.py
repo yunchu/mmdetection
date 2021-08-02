@@ -188,7 +188,6 @@ class CustomDataset(Dataset):
             dict: Training/test data (with annotation if `test_mode` is set \
                 True).
         """
-
         if self.test_mode:
             return self.prepare_test_img(idx)
         while True:
@@ -197,7 +196,7 @@ class CustomDataset(Dataset):
             else:
                 data = self.prepare_train_img(idx[0])
             if data is None:
-                idx = self._rand_another(idx[0])
+                idx = [self._rand_another(idx[0]), idx[1]]
                 continue
             return data
 

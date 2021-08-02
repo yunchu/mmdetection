@@ -10,6 +10,7 @@ from ...core.utils.misc import topk
 from ..builder import HEADS
 from .anchor_head import AnchorHead
 from .rpn_test_mixin import RPNTestMixin
+from mmdet.models.losses.utils import get_indices
 
 
 @HEADS.register_module()
@@ -68,15 +69,25 @@ class RPNHead(RPNTestMixin, AnchorHead):
         Returns:
             dict[str, Tensor]: A dictionary of loss components.
         """
-        losses = super(RPNHead, self).loss(
-            cls_scores,
-            bbox_preds,
-            gt_bboxes,
-            None,
-            img_metas,
-            gt_bboxes_ignore=gt_bboxes_ignore)
-        return dict(
-            loss_rpn_cls=losses['loss_cls'], loss_rpn_bbox=losses['loss_bbox'])
+        inds = get_indices(img_metas)
+        losses = {name: None for name in inds.keys()}
+        for name, ind in inds.items():
+            cls_scores_i = [cls_score[ind] for cls_score in cls_scores]
+            bbox_preds_i = [bbox_pred[ind] for bbox_pred in bbox_preds]
+            gt_bboxes_i = [gt_bboxes[i] for i in ind]
+            img_metas_i = [img_metas[i] for i in ind]
+            losses[name] = super(RPNHead, self).loss(
+                cls_scores_i,
+                bbox_preds_i,
+                gt_bboxes_i,
+                None,
+                img_metas_i,
+                gt_bboxes_ignore=gt_bboxes_ignore)
+        losses_ = dict(
+            loss_rpn_cls={'coco': losses['coco']['loss_cls'], 'openimages': losses['openimages']['loss_cls']},
+            loss_rpn_bbox={'coco': losses['coco']['loss_bbox'], 'openimages': losses['openimages']['loss_bbox']}
+        )
+        return losses_
 
     def _get_bboxes_single(self,
                            cls_scores,

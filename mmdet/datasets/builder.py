@@ -41,7 +41,7 @@ class BatchSamplerSelfTraining(BatchSampler):
             batch.append([idx, 'base'])
             if pseudo_idx is not None:
                 batch.append([pseudo_idx, 'pseudo'])
-            if len(batch) == self.batch_size:
+            if len(batch) >= self.batch_size:
                 yield batch
                 batch = []
         if len(batch) > 0 and not self.drop_last:

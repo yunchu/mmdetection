@@ -7,6 +7,7 @@ from .test_mixins import BBoxTestMixin, MaskTestMixin
 
 from mmdet.core.bbox.transforms import bbox2result
 from mmdet.core.mask.transforms import mask2result
+from mmdet.models.losses.utils import get_indices
 import numpy as np
 
 
@@ -130,8 +131,11 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             mask_results = self._mask_forward_train(x, sampling_results,
                                                     bbox_results['bbox_feats'],
                                                     gt_masks, img_metas)
-            losses.update(mask_results['loss_mask'])
-
+            #losses.update(mask_results['loss_mask'])
+            losses['loss_mask'] = {'coco': mask_results['loss_mask']['coco']['loss_mask']}
+            losses['loss_mask']['openimages'] = mask_results['loss_mask']['openimages']['loss_mask']
+            losses['loss_point'] = {'coco': mask_results['loss_mask']['coco']['loss_point']}
+            losses['loss_point']['openimages'] = mask_results['loss_mask']['openimages']['loss_point']
         return losses
 
     def _bbox_forward(self, x, rois):
@@ -150,52 +154,88 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
     def _bbox_forward_train(self, x, sampling_results, gt_bboxes, gt_labels,
                             img_metas):
         """Run forward function and calculate loss for box head in training."""
-        rois = bbox2roi([res.bboxes for res in sampling_results])
-        bbox_results = self._bbox_forward(x, rois)
-
-        bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes,
-                                                  gt_labels, self.train_cfg)
-        loss_bbox = self.bbox_head.loss(bbox_results['cls_score'],
-                                        bbox_results['bbox_pred'], rois,
-                                        *bbox_targets)
-
-        bbox_results.update(loss_bbox=loss_bbox)
-        return bbox_results
+        inds = get_indices(img_metas)
+        loss = {
+            'loss_cls': {},
+            'acc': {},
+            'loss_bbox': {}
+        }
+        results = {
+            'cls_score': {},
+            'bbox_pred': {},
+            'bbox_feats': {}
+        }
+        for name, ind in inds.items():
+            rois = bbox2roi([res.bboxes for i, res in enumerate(sampling_results) if i in ind])
+            x_i = [x_[ind] for x_ in x]
+            bbox_results = self._bbox_forward(x_i, rois)
+            sampling_results_i = [sampling_results[i] for i in ind]
+            gt_bboxes_i = [gt_bboxes[i] for i in ind]
+            gt_labels_i = [gt_labels[i] for i in ind]
+            bbox_targets = self.bbox_head.get_targets(sampling_results_i, gt_bboxes_i,
+                                                      gt_labels_i, self.train_cfg)
+            loss_bbox = self.bbox_head.loss(bbox_results['cls_score'],
+                                            bbox_results['bbox_pred'], rois,
+                                            *bbox_targets)
+            loss['loss_cls'][name] = loss_bbox['loss_cls']
+            loss['acc'][name] = loss_bbox['acc']
+            loss['loss_bbox'][name] = loss_bbox['loss_bbox']
+            bbox_results.update(loss_bbox=loss)
+            results['cls_score'][name] = bbox_results['cls_score']
+            results['bbox_pred'][name] = bbox_results['bbox_pred']
+            results['bbox_feats'][name] = bbox_results['bbox_feats']
+        results['loss_bbox'] = loss
+        return results
 
     def _mask_forward_train(self, x, sampling_results, bbox_feats, gt_masks,
                             img_metas):
         """Run forward function and calculate loss for mask head in
         training."""
-        if not self.share_roi_extractor:
-            pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results])
-            mask_results = self._mask_forward(x, pos_rois)
-        else:
-            pos_inds = []
-            device = bbox_feats.device
-            for res in sampling_results:
-                pos_inds.append(
-                    torch.ones(
-                        res.pos_bboxes.shape[0],
-                        device=device,
-                        dtype=torch.uint8))
-                pos_inds.append(
-                    torch.zeros(
-                        res.neg_bboxes.shape[0],
-                        device=device,
-                        dtype=torch.uint8))
-            pos_inds = torch.cat(pos_inds)
+        inds = get_indices(img_metas)
+        results = {
+            'mask_pred': {},
+            'mask_feats': {},
+            'loss_mask': {},
+            'mask_targets': {},
+        }
+        for name, ind in inds.items():
+            sampling_results_i = [sampling_results[i] for i in ind]
+            x_i = [x_[ind] for x_ in x]
+            gt_masks_i = [gt_masks[i] for i in ind]
+            if not self.share_roi_extractor:
+                pos_rois = bbox2roi([res.pos_bboxes for res in sampling_results_i])
+                mask_results = self._mask_forward(x_i, pos_rois)
+            else:
+                pos_inds = []
+                device = bbox_feats[name].device
+                for res in sampling_results_i:
+                    pos_inds.append(
+                        torch.ones(
+                            res.pos_bboxes.shape[0],
+                            device=device,
+                            dtype=torch.uint8))
+                    pos_inds.append(
+                        torch.zeros(
+                            res.neg_bboxes.shape[0],
+                            device=device,
+                            dtype=torch.uint8))
+                pos_inds = torch.cat(pos_inds)
 
-            mask_results = self._mask_forward(
-                x, pos_inds=pos_inds, bbox_feats=bbox_feats)
+                mask_results = self._mask_forward(
+                    x_i, pos_inds=pos_inds, bbox_feats=bbox_feats[name])
 
-        mask_targets = self.mask_head.get_targets(sampling_results, gt_masks,
-                                                  self.train_cfg)
-        pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results])
-        loss_mask = self.mask_head.loss(mask_results['mask_pred'],
-                                        mask_targets, pos_labels)
+            mask_targets = self.mask_head.get_targets(sampling_results_i, gt_masks_i,
+                                                      self.train_cfg)
+            pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results_i])
+            loss_mask = self.mask_head.loss(mask_results['mask_pred'],
+                                            mask_targets, pos_labels)
 
-        mask_results.update(loss_mask=loss_mask, mask_targets=mask_targets)
-        return mask_results
+            mask_results.update(loss_mask=loss_mask, mask_targets=mask_targets)
+            results['mask_pred'][name] = mask_results['mask_pred']
+            results['mask_feats'][name] = mask_results['mask_feats']
+            results['loss_mask'][name] = loss_mask
+            results['mask_targets'][name] = mask_targets
+        return results
 
     def _mask_forward(self, x, rois=None, pos_inds=None, bbox_feats=None):
         """Mask head forward function used in both training and testing."""

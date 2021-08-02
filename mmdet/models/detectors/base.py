@@ -16,6 +16,7 @@ from mmcv.utils import print_log
 from mmdet.core.visualization import imshow_det_bboxes
 from mmdet.integration.nncf import no_nncf_trace
 from mmdet.utils import get_root_logger
+from mmdet.utils.ema import EMA
 
 
 class BaseDetector(nn.Module, metaclass=ABCMeta):
@@ -26,6 +27,9 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
         self.fp16_enabled = False
         self.img_metas = None
         self.forward_backup = None
+        self.ema_coco = None
+        self.ema_openimages = None
+        self.alpha = 0.5
 
     @property
     def with_neck(self):
@@ -267,12 +271,38 @@ class BaseDetector(nn.Module, metaclass=ABCMeta):
                 log_vars[loss_name] = loss_value.mean()
             elif isinstance(loss_value, list):
                 log_vars[loss_name] = sum(_loss.mean() for _loss in loss_value)
+            elif isinstance(loss_value, dict):
+                for k, v in loss_value.items():
+                    name = loss_name + '_' + k
+                    if isinstance(v, list):
+                        loss_value = sum(_loss.mean() for _loss in v)
+                    elif isinstance(v, torch.Tensor):
+                        loss_value = v.mean()
+                    log_vars[name] = loss_value.mean()
             else:
                 raise TypeError(
                     f'{loss_name} is not a tensor or list of tensors')
 
-        loss = sum(_value for _key, _value in log_vars.items()
-                   if 'loss' in _key)
+        decay = 0.9997
+        loss_coco = sum(_value for _key, _value in log_vars.items()
+                   if 'loss' in _key and 'coco' in _key)
+        loss_openimages = sum(_value for _key, _value in log_vars.items()
+                        if 'loss' in _key and 'openimages' in _key)
+
+        if self.ema_coco is None:
+            self.ema_coco = EMA(loss_coco, decay)
+        else:
+            self.ema_coco.update(loss_coco)
+
+        if self.ema_openimages is None:
+            self.ema_openimages = EMA(loss_openimages, decay)
+        else:
+            self.ema_openimages.update(loss_openimages)
+
+        ema_relate = self.ema_coco.get() / self.ema_openimages.get()
+        loss = 1 / (1 + self.alpha) * (loss_coco + self.alpha * ema_relate * loss_openimages)
+        #loss = sum(_value for _key, _value in log_vars.items()
+        #           if 'loss' in _key)
 
         log_vars['loss'] = loss
         for loss_name, loss_value in log_vars.items():

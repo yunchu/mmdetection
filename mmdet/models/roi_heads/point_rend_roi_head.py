@@ -9,6 +9,7 @@ from mmdet.core.utils.misc import dummy_pad
 from .. import builder
 from ..builder import HEADS
 from .standard_roi_head import StandardRoIHead
+from mmdet.models.losses.utils import get_indices
 
 
 @HEADS.register_module()
@@ -44,7 +45,9 @@ class PointRendRoIHead(StandardRoIHead):
             loss_point = self._mask_point_forward_train(
                 x, sampling_results, mask_results['mask_pred'], gt_masks,
                 img_metas)
-            mask_results['loss_mask'].update(loss_point)
+            #mask_results['loss_mask'].update(loss_point)
+            mask_results['loss_mask']['coco']['loss_point'] = loss_point['loss_point']['coco']
+            mask_results['loss_mask']['openimages']['loss_point'] = loss_point['loss_point']['openimages']
 
         return mask_results
 
@@ -52,22 +55,29 @@ class PointRendRoIHead(StandardRoIHead):
                                   gt_masks, img_metas):
         """Run forward function and calculate loss for point head in
         training."""
-        pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results])
-        rel_roi_points = self.point_head.get_roi_rel_points_train(
-            mask_pred, pos_labels, cfg=self.train_cfg)
-        rois = bbox2roi([res.pos_bboxes for res in sampling_results])
+        inds = get_indices(img_metas)
+        loss = {'loss_point': {}}
+        for name, ind in inds.items():
+            x_i = [x_[ind] for x_ in x]
+            sampling_results_i = [sampling_results[i] for i in ind]
+            gt_masks_i = [gt_masks[i] for i in ind]
+            img_metas_i = [img_metas[i] for i in ind]
+            pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results_i])
+            rel_roi_points = self.point_head.get_roi_rel_points_train(
+                mask_pred[name], pos_labels, cfg=self.train_cfg)
+            rois = bbox2roi([res.pos_bboxes for res in sampling_results_i])
 
-        fine_grained_point_feats = self._get_fine_grained_point_feats(
-            x, rois, rel_roi_points, img_metas)
-        coarse_point_feats = point_sample(mask_pred, rel_roi_points)
-        mask_point_pred = self.point_head(fine_grained_point_feats,
-                                          coarse_point_feats)
-        mask_point_target = self.point_head.get_targets(
-            rois, rel_roi_points, sampling_results, gt_masks, self.train_cfg)
-        loss_mask_point = self.point_head.loss(mask_point_pred,
-                                               mask_point_target, pos_labels)
-
-        return loss_mask_point
+            fine_grained_point_feats = self._get_fine_grained_point_feats(
+                x_i, rois, rel_roi_points, img_metas_i)
+            coarse_point_feats = point_sample(mask_pred[name], rel_roi_points)
+            mask_point_pred = self.point_head(fine_grained_point_feats,
+                                              coarse_point_feats)
+            mask_point_target = self.point_head.get_targets(
+                rois, rel_roi_points, sampling_results_i, gt_masks_i, self.train_cfg)
+            loss_mask_point = self.point_head.loss(mask_point_pred,
+                                                   mask_point_target, pos_labels)
+            loss['loss_point'][name] = loss_mask_point['loss_point']
+        return loss
 
     def _get_fine_grained_point_feats(self, x, rois, rel_roi_points,
                                       img_metas):
