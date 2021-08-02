@@ -298,17 +298,17 @@ class TestOTEAPI(unittest.TestCase):
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-    def test_training_custom_mobilenetssd_256(self):
+    def test_training_custom_mobilenetssd_256_int8(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'), ModelPrecision.INT8)
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-    def test_training_custom_mobilenetssd_384(self):
+    def test_training_custom_mobilenetssd_384_int8(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'), ModelPrecision.INT8)
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
-    def test_training_custom_mobilenetssd_512(self):
+    def test_training_custom_mobilenetssd_512_int8(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'), ModelPrecision.INT8)
 
     @e2e_pytest_api
