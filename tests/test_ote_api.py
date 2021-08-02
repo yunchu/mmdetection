@@ -167,7 +167,7 @@ class TestOTEAPI(unittest.TestCase):
         performance = task.evaluate(result_set)
         return performance
 
-    def train_and_eval(self, template_dir):
+    def train_and_eval(self, template_dir, model_precision):
         """
         Run training, analysis, evaluation and model optimization
         Flow of the test:
@@ -212,7 +212,7 @@ class TestOTEAPI(unittest.TestCase):
                 dataset,
                 detection_environment.get_model_configuration(),
                 ModelOptimizationType.MO,
-                [ModelPrecision.FP32],
+                [model_precision],
                 optimization_methods=[],
                 optimization_level={},
                 target_device=TargetDevice.UNSPECIFIED,
@@ -284,17 +284,17 @@ class TestOTEAPI(unittest.TestCase):
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'), ModelPrecision.FP32)
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_384(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'), ModelPrecision.FP32)
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_512(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'), ModelPrecision.FP32)
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
