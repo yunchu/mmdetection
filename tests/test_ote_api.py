@@ -167,7 +167,7 @@ class TestOTEAPI(unittest.TestCase):
         performance = task.evaluate(result_set)
         return performance
 
-    def train_and_eval(self, template_dir, model_precision):
+    def train_and_eval(self, template_dir):
         """
         Run training, analysis, evaluation and model optimization
         Flow of the test:
@@ -212,7 +212,7 @@ class TestOTEAPI(unittest.TestCase):
                 dataset,
                 detection_environment.get_model_configuration(),
                 ModelOptimizationType.MO,
-                [model_precision],
+                [ModelPrecision.INT8],
                 optimization_methods=[],
                 optimization_level={},
                 target_device=TargetDevice.UNSPECIFIED,
@@ -284,7 +284,7 @@ class TestOTEAPI(unittest.TestCase):
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
     def test_training_custom_mobilenetssd_256(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'), FP32)
+        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
 
     @e2e_pytest_api
     @flaky(max_runs=2, rerun_filter=rerun_on_flaky_assert())
