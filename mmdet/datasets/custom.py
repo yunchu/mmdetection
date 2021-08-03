@@ -175,6 +175,7 @@ class CustomDataset(Dataset):
 
     def _rand_another(self, idx):
         """Get another random index from the same group as the given index."""
+        idx  = min(idx, self.flag.shape[0] - 1)
         pool = np.where(self.flag == self.flag[idx])[0]
         return np.random.choice(pool)
 
