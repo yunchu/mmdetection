@@ -41,7 +41,7 @@ model = dict(
         ),
         bbox_coder=dict(
             type='DeltaXYWHBBoxCoder',
-            target_means=(.0, .0, .0, .0),
+            target_means=(0.0, 0.0, 0.0, 0.0),
             target_stds=(0.1, 0.1, 0.2, 0.2), ),
         depthwise_heads=True,
         depthwise_heads_activations='relu',

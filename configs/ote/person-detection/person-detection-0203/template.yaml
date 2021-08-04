@@ -28,7 +28,7 @@ hyper_parameters:
   # - Hidden/internal: non-editable by the user. Used to pass some parameters to the Task at its initilization.
   params:
     learning_parameters:
-      batch_size: 14
+      batch_size: 7 # original batch size 14
       learning_rate: 0.025
       num_iters: 20
     algo_backend:
@@ -60,8 +60,8 @@ training_targets:
 
 # Inference options. Defined by OpenVINO capabilities, not Algo Backend or Platform.
 inference_target:
-- CPU
-- iGPU
+  - CPU
+  - iGPU
 
 # Some meta information, which may be used for model recommendation. In general, metrics are non-static, hence has to be updated.
 metrics:
