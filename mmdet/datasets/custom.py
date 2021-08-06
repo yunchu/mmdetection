@@ -192,9 +192,10 @@ class CustomDataset(Dataset):
         if self.test_mode:
             return self.prepare_test_img(idx)
         while True:
-            if idx[1] == 'pseudo' and hasattr(self, 'pseudo_dataset') and self.pseudo_dataset is not None:
+            if hasattr(self, 'pseudo_dataset') and self.pseudo_dataset is not None and idx[1] == 'pseudo':
                 data = self.pseudo_dataset.prepare_train_img(idx[0])
             else:
+                idx = [idx] if not isinstance(idx, list) else idx
                 data = self.prepare_train_img(idx[0])
             if data is None:
                 idx = [self._rand_another(idx[0]), idx[1]]

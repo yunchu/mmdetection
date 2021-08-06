@@ -42,7 +42,8 @@ class TwoStageDetector(BaseDetector):
 
         self.train_cfg = train_cfg
         self.test_cfg = test_cfg
-        self.alpha = train_cfg['rcnn']['alpha']
+        if 'alpha' in train_cfg['rcnn'].keys():
+            self.alpha = train_cfg['rcnn']['alpha']
 
         self.init_weights(pretrained=pretrained)
 

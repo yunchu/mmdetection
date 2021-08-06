@@ -189,4 +189,6 @@ class CopyPaste:
         self.concatenate_labels(results, objects_inds)
         self.filter_empty(results)
         self.cast(results, bbox_type, mask_type, label_type)
+        if results['gt_bboxes'].shape[0] == 0:
+            return None
         return results
