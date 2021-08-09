@@ -312,7 +312,7 @@ class BiFPN(nn.Module):
             else:
                 extra_inputs.append(self.extra_convs[i](extra_inputs[-1]))
 
-        outputs = inputs + extra_inputs
+        outputs = inputs + tuple(extra_inputs)
         for layer in self.layers:
             outputs = layer(outputs)
 
