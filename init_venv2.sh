@@ -21,7 +21,7 @@ if [[ -e ${venv_dir} ]]; then
 fi
 
 # Create virtual environment
-python3.7 -m venv ${venv_dir} --prompt="detection"
+python3.7 -m venv ${venv_dir} --prompt="detection2"
 
 . ${venv_dir}/bin/activate
 
@@ -61,23 +61,27 @@ export TORCHVISION_VERSION=0.9.1
 export NUMPY_VERSION=1.19.5
 export MMCV_VERSION=1.3.0
 
-pip install wheel
+#pip install wheel
 
 CONSTRAINTS_FILE=$(tempfile)
 echo numpy==${NUMPY_VERSION} >> ${CONSTRAINTS_FILE}
 
+cat constraints.txt >> ${CONSTRAINTS_FILE}
+
 if [[ -z $CUDA_VERSION_CODE ]]; then
-  pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html
   echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
+  pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html \
+          -c ${CONSTRAINTS_FILE}
 elif [[ $CUDA_VERSION_CODE == "102" ]]; then
-  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION}
   echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
+  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -c ${CONSTRAINTS_FILE}
 else
-  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html
   echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
+  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html \
+          -c ${CONSTRAINTS_FILE}
 fi
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
