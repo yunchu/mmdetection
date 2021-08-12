@@ -18,61 +18,77 @@ if [[ -e ${venv_dir} ]]; then
   exit
 fi
 
+# Create virtual environment
+python3 -m venv ${venv_dir} --prompt="detection"
+
+. ${venv_dir}/bin/activate
+
+# Get CUDA version.
 CUDA_HOME_CANDIDATE=/usr/local/cuda
 if [ -z "${CUDA_HOME}" ] && [ -d ${CUDA_HOME_CANDIDATE} ]; then
   echo "Exporting CUDA_HOME as ${CUDA_HOME_CANDIDATE}"
   export CUDA_HOME=${CUDA_HOME_CANDIDATE}
 fi
 
-# Create virtual environment
-virtualenv ${venv_dir} -p python3 --prompt="(detection)" || exit 1
-
-path_openvino_vars="${INTEL_OPENVINO_DIR:-/opt/intel/openvino_2021}/bin/setupvars.sh"
-if [[ -e "${path_openvino_vars}" ]]; then
-  echo ". ${path_openvino_vars}" >> ${venv_dir}/bin/activate
-fi
-
-. ${venv_dir}/bin/activate
-
-
-if [ -z ${CUDA_VERSION} ] && [ -e "$CUDA_HOME/version.txt" ]; then
-  # Get CUDA version from version.txt file.
-  CUDA_VERSION=$(cat $CUDA_HOME/version.txt | sed -e "s/^.*CUDA Version *//" -e "s/ .*//")
+if [ -e "$CUDA_HOME" ]; then
+  if [ -e "$CUDA_HOME/version.txt" ]; then
+    # Get CUDA version from version.txt file.
+    CUDA_VERSION=$(cat $CUDA_HOME/version.txt | sed -e "s/^.*CUDA Version *//" -e "s/ .*//")
+  else
+    # Get CUDA version from directory name.
+    CUDA_HOME_DIR=`readlink -f $CUDA_HOME`
+    CUDA_HOME_DIR=`basename $CUDA_HOME_DIR`
+    CUDA_VERSION=`echo $CUDA_HOME_DIR | cut -d "-" -f 2`
+  fi
 fi
 
 if [[ -z ${CUDA_VERSION} ]]; then
-  # Get CUDA version from nvidia-smi output.
-  CUDA_VERSION=$(nvidia-smi | grep "CUDA Version" | sed -e "s/^.*CUDA Version: *//" -e "s/ .*//")
+  echo "CUDA was not found, installing dependencies in CPU-only mode. If you want to use CUDA, set CUDA_HOME and CUDA_VERSION beforehand."
+else
+  echo "Using CUDA_VERSION ${CUDA_VERSION}"
 fi
 
-echo "Using CUDA_VERSION as ${CUDA_VERSION}"
 # Remove dots from CUDA version string, if any.
 CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
 
 # install PyTorch and MMCV.
 export TORCH_VERSION=1.8.1
 export TORCHVISION_VERSION=0.9.1
+export NUMPY_VERSION=1.19.5
 export MMCV_VERSION=1.3.0
 
-if [[ $CUDA_VERSION_CODE == "102" ]]; then
-  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -c constraints.txt || exit 1
+pip install wheel
+
+CONSTRAINTS_FILE=$(tempfile)
+echo numpy==${NUMPY_VERSION} >> ${CONSTRAINTS_FILE}
+
+if [[ -z $CUDA_VERSION_CODE ]]; then
+  pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html
+  echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
+elif [[ $CUDA_VERSION_CODE == "102" ]]; then
+  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION}
+  echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
 else
-  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html -c constraints.txt || exit 1
+  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html
+  echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
 fi
 
-pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c constraints.txt || exit 1
+if [[ -z $CUDA_VERSION_CODE ]]; then
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
+else
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
+fi
 
 # Install other requirements.
-cat requirements.txt | xargs -n 1 -L 1 pip3 install -c constraints.txt || exit 1
+# Install mmpycocotools and Polygon3 from source to make sure it is compatible with installed numpy version.
+pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools -c ${CONSTRAINTS_FILE}
+pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 -c ${CONSTRAINTS_FILE}
+cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache -c ${CONSTRAINTS_FILE}
 
-mo_requirements_file="${INTEL_OPENVINO_DIR:-/opt/intel/openvino_2021}/deployment_tools/model_optimizer/requirements_onnx.txt"
-if [[ -e "${mo_requirements_file}" ]]; then
-  pip install -qr ${mo_requirements_file} -c constraints.txt || exit 1
-else
-  echo "[WARNING] Model optimizer requirements were not installed. Please install the OpenVino toolkit to use one."
-fi
-
-pip install -c constraints.txt -e . || exit 1
+pip install -e . -c ${CONSTRAINTS_FILE}
 MMDETECTION_DIR=`realpath .`
 echo "export MMDETECTION_DIR=${MMDETECTION_DIR}" >> ${venv_dir}/bin/activate
 

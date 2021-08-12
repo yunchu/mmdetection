@@ -57,6 +57,7 @@ from mmdet.apis.ote.apis.detection.config_utils import (patch_config, set_hyperp
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
 from mmdet.datasets import build_dataset, build_dataloader
 from mmdet.models import build_detector
+from mmdet.parallel import MMDataCPU
 
 
 logger = logger_factory.get_logger("OTEDetectionTask")
@@ -76,7 +77,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         logger.info(f"Scratch space created at {self.scratch_space}")
 
         self.task_environment = task_environment
-        self.hyperparams = hyperparams = task_environment.get_configurable_parameters(OTEDetectionConfig)
+        self.hyperparams = hyperparams = task_environment.get_hyper_parameters(OTEDetectionConfig)
 
         self.model_name = hyperparams.algo_backend.model_name
         self.labels = task_environment.get_labels(False)
@@ -93,6 +94,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.model = self._load_model(task_environment.model)
 
         # Extra control variables.
+        self.training_work_dir = None
         self.is_training = False
         self.should_stop = False
         self.time_monitor = None
@@ -102,7 +104,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         if model != NullModel():
             # If a model has been trained and saved for the task already, create empty model and load weights here
             buffer = io.BytesIO(model.get_data("weights.pth"))
-            model_data = torch.load(buffer)
+            model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             model = self._create_model(self.config, from_scratch=True)
 
@@ -202,8 +204,11 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                                              num_gpus=1,
                                              dist=False,
                                              shuffle=False)
-        eval_model = MMDataParallel(model.cuda(test_config.gpu_ids[0]),
-                                    device_ids=test_config.gpu_ids)
+        if torch.cuda.is_available():
+            eval_model = MMDataParallel(model.cuda(test_config.gpu_ids[0]),
+                                        device_ids=test_config.gpu_ids)
+        else:
+            eval_model = MMDataCPU(model)
         # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
         eval_predictions = single_gpu_test(eval_model, mm_val_dataloader, show=False)
 
@@ -253,10 +258,10 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         # Create new model if training from scratch.
         old_model = copy.deepcopy(self.model)
-        if train_parameters is not None and train_parameters.train_on_empty_model:
-            logger.info("Training from scratch, creating new model")
-            # FIXME. Isn't it an overkill? Consider calling init_weights instead.
-            self.model = self._create_model(config=config, from_scratch=True)
+        # if train_parameters is not None and train_parameters.train_on_empty_model:
+        #     logger.info("Training from scratch, creating new model")
+        #     # FIXME. Isn't it an overkill? Consider calling init_weights instead.
+        #     self.model = self._create_model(config=config, from_scratch=True)
 
         # Evaluate model performance before training.
         _, initial_performance = self._infer_detector(self.model, config, val_dataset, True)
@@ -269,12 +274,14 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             self.should_stop = False
             self.is_training = False
             self.time_monitor = None
+            self.training_work_dir = None
             return
 
         # Run training.
         self.time_monitor = TimeMonitorCallback(0, 0, 0, 0, update_progress_callback=lambda _: None)
         learning_curves = defaultdict(OTELoggerHook.Curve)
         training_config = prepare_for_training(config, train_dataset, val_dataset, self.time_monitor, learning_curves)
+        self.training_work_dir = training_config.work_dir
         mm_train_dataset = build_dataset(training_config.data.train)
         self.is_training = True
         self.model.train()
@@ -324,7 +331,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
     def save_model(self, output_model: Model):
         buffer = io.BytesIO()
-        hyperparams = self.task_environment.get_configurable_parameters(OTEDetectionConfig)
+        hyperparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
         hyperparams_str = ids_to_strings(cfg_helper.convert(hyperparams, dict, enum_to_str=True))
         labels = {label.name: label.color.rgb_tuple for label in self.labels}
         modelinfo = {'model': self.model.state_dict(), 'config': hyperparams_str, 'labels': labels, 'VERSION': 1}
@@ -352,7 +359,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         """
         logger.info("Cancel training requested.")
         self.should_stop = True
-        stop_training_filepath = os.path.join(self.config.work_dir, '.stop_training')
+        stop_training_filepath = os.path.join(self.training_work_dir, '.stop_training')
         open(stop_training_filepath, 'a').close()
 
 
