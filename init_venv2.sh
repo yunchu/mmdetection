@@ -25,8 +25,6 @@ python3.7 -m venv ${venv_dir} --prompt="detection2"
 
 . ${venv_dir}/bin/activate
 
-pip install setuptools==44.0.0 || exit 1
-
 # Get CUDA version.
 CUDA_HOME_CANDIDATE=/usr/local/cuda
 if [ -z "${CUDA_HOME}" ] && [ -d ${CUDA_HOME_CANDIDATE} ]; then
@@ -61,42 +59,46 @@ export TORCHVISION_VERSION=0.9.1
 export NUMPY_VERSION=1.19.5
 export MMCV_VERSION=1.3.0
 
-#pip install wheel
-
 CONSTRAINTS_FILE=$(tempfile)
 echo numpy==${NUMPY_VERSION} >> ${CONSTRAINTS_FILE}
 
 cat constraints.txt >> ${CONSTRAINTS_FILE}
 
+pip install --upgrade pip || exit 1
+
+pip install wheel || exit 1
+
 if [[ -z $CUDA_VERSION_CODE ]]; then
   echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
   pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html \
-          -c ${CONSTRAINTS_FILE}
+          -c ${CONSTRAINTS_FILE} || exit 1
 elif [[ $CUDA_VERSION_CODE == "102" ]]; then
   echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
-  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -c ${CONSTRAINTS_FILE}
+  pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -c ${CONSTRAINTS_FILE} || exit 1
 else
   echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
   pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html \
-          -c ${CONSTRAINTS_FILE}
+          -c ${CONSTRAINTS_FILE} || exit 1
 fi
 
+echo "Time before mmcv-full build:" $(date +"%Y-%m-%d_%H-%M-%S")
 if [[ -z $CUDA_VERSION_CODE ]]; then
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE} || exit 1
 else
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE} || exit 1
 fi
+echo "Time after mmcv-full build:" $(date +"%Y-%m-%d_%H-%M-%S")
 
 # Install other requirements.
 # Install mmpycocotools and Polygon3 from source to make sure it is compatible with installed numpy version.
-pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools -c ${CONSTRAINTS_FILE}
-pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 -c ${CONSTRAINTS_FILE}
-cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache -c ${CONSTRAINTS_FILE}
+pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools -c ${CONSTRAINTS_FILE} || exit 1
+pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 -c ${CONSTRAINTS_FILE} || exit 1
+cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache -c ${CONSTRAINTS_FILE} || exit 1
 
-pip install -e . -c ${CONSTRAINTS_FILE}
+pip install -e . -c ${CONSTRAINTS_FILE} || exit 1
 MMDETECTION_DIR=`realpath .`
 echo "export MMDETECTION_DIR=${MMDETECTION_DIR}" >> ${venv_dir}/bin/activate
 
