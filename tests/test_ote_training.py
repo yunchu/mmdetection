@@ -16,7 +16,7 @@ from sc_sdk.entities.datasets import Subset
 from sc_sdk.entities.id import ID
 from sc_sdk.entities.inference_parameters import InferenceParameters
 from sc_sdk.entities.metrics import Performance, ScoreMetric
-from sc_sdk.entities.model import NullModel, Model, ModelStatus
+from sc_sdk.entities.model import Model, ModelStatus, NullModel
 from sc_sdk.entities.model_storage import NullModelStorage
 from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
 from sc_sdk.entities.project import NullProject
@@ -25,10 +25,10 @@ from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
 from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
-from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
+from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
+from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, get_task_class, load_template
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
-from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, load_template, get_task_class
 
 from e2e_test_system import e2e_pytest, DataCollector
 
@@ -215,7 +215,7 @@ class OTETrainingImpl:
 
     @staticmethod
     def _create_environment_and_task(params, labels_schema, template):
-        environment = TaskEnvironment(model=NullModel(), configurable_parameters=params, label_schema=labels_schema)
+        environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema)
         task_impl_path = template['task']['base']
         task_cls = get_task_class(task_impl_path)
         task = task_cls(task_environment=environment)
@@ -246,7 +246,7 @@ class OTETrainingImpl:
 
 
         logger.debug('Setup environment')
-        params = OTEDetectionConfig(workspace_id=ID(), project_id=ID(), task_id=ID())
+        params = OTEDetectionConfig(workspace_id=ID(), model_storage_id=ID())
         apply_template_configurable_parameters(params, self.template)
         self.environment, self.task = self._create_environment_and_task(params,
                                                                         self.labels_schema,
@@ -339,7 +339,7 @@ class OTETrainingImpl:
             self.dataset,
             self.environment_for_export.get_model_configuration(),
             ModelOptimizationType.MO,
-            [ModelPrecision.FP32],
+            precision=[ModelPrecision.FP32],
             optimization_methods=[],
             optimization_level={},
             target_device=TargetDevice.UNSPECIFIED,
