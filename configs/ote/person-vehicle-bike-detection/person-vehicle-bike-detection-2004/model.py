@@ -1,14 +1,17 @@
+_base_ = [
+    './coco_data_pipeline.py'
+]
 # model settings
 model = dict(
     type='ATSS',
+    pretrained=True,
     backbone=dict(
         type='mobilenetv2_w1',
         out_indices=(2, 3, 4, 5),
         frozen_stages=-1,
-        norm_eval=False,
-        pretrained=True
+        norm_eval=False
     ),
-    neck=dict(
+     neck=dict(
         type='FPN',
         in_channels=[24, 32, 96, 320],
         out_channels=32,
@@ -30,7 +33,7 @@ model = dict(
             strides=[8, 16, 32, 64, 128]),
         bbox_coder=dict(
             type='DeltaXYWHBBoxCoder',
-            target_means=[.0, .0, .0, .0],
+            target_means=[0.0, 0.0, 0.0, 0.0],
             target_stds=[0.1, 0.1, 0.2, 0.2]),
         loss_cls=dict(
             type='FocalLoss',
@@ -53,78 +56,7 @@ model = dict(
         score_thr=0.05,
         nms=dict(type='nms', iou_threshold=0.6),
         max_per_img=100))
-# dataset settings
-dataset_type = 'CocoDataset'
-data_root = '../../data/airport/'
-img_norm_cfg = dict(
-    mean=[0, 0, 0], std=[255, 255, 255], to_rgb=True)
-train_pipeline = [
-    dict(type='LoadImageFromFile', to_float32=True),
-    dict(type='LoadAnnotations', with_bbox=True),
-    dict(
-        type='PhotoMetricDistortion',
-        brightness_delta=32,
-        contrast_range=(0.5, 1.5),
-        saturation_range=(0.5, 1.5),
-        hue_delta=18),
-    dict(type='Expand', ratio_range=(1, 3)),
-    dict(
-        type='MinIoURandomCrop',
-        min_ious=(0.1, 0.3, 0.5, 0.7, 0.9),
-        min_crop_size=0.3),
-    dict(
-        type='Resize',
-        img_scale=[(448, 256), (448, 320)],
-        keep_ratio=False),
-    dict(type='RandomFlip', flip_ratio=0.5),
-    dict(type='Normalize', **img_norm_cfg),
-    dict(type='Pad', size_divisor=32),
-    dict(type='DefaultFormatBundle'),
-    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
-]
-test_pipeline = [
-    dict(type='LoadImageFromFile'),
-    dict(
-        type='MultiScaleFlipAug',
-        img_scale=(448, 256),
-        flip=False,
-        transforms=[
-            dict(type='Resize', keep_ratio=False),
-            dict(type='RandomFlip'),
-            dict(type='Normalize', **img_norm_cfg),
-            dict(type='Pad', size_divisor=32),
-            dict(type='ImageToTensor', keys=['img']),
-            dict(type='Collect', keys=['img']),
-        ])
-]
-data = dict(
-    samples_per_gpu=54,
-    workers_per_gpu=4,
-    train=dict(
-        type='RepeatDataset',
-        times=1,
-        dataset=dict(
-            type=dataset_type,
-            classes=('vehicle', 'person', 'non-vehicle'),
-            ann_file=data_root + 'annotation_example_train.json',
-            img_prefix=data_root + 'train',
-            pipeline=train_pipeline
-        )
-    ),
-    val=dict(
-        type=dataset_type,
-        classes=('vehicle', 'person', 'non-vehicle'),
-        ann_file=data_root + 'annotation_example_val.json',
-        img_prefix=data_root + 'val',
-        test_mode=True,
-        pipeline=test_pipeline),
-    test=dict(
-        type=dataset_type,
-        classes=('vehicle', 'person', 'non-vehicle'),
-        ann_file=data_root + 'annotation_example_val.json',
-        img_prefix=data_root + 'val',
-        test_mode=True,
-        pipeline=test_pipeline))
+evaluation = dict(interval=1000, metric='mAP')
 # optimizer
 optimizer = dict(
     type='SGD',
@@ -138,7 +70,7 @@ lr_config = dict(
     warmup='constant',
     warmup_iters=500,
     warmup_ratio=1.0 / 3,
-    step=[10, 15, 18])
+    step=[10000, 15000, 18000])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -149,10 +81,11 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
-total_epochs = 20
 dist_params = dict(backend='nccl')
+runner = dict(type='IterBasedRunner', max_iters=13000)
 log_level = 'INFO'
 work_dir = 'outputs/person-vehicle-bike-detection-2004'
-load_from = None
+load_from = 'https://storage.openvinotoolkit.org/repositories/openvino_training_extensions/models/object_detection/v2/vehicle-person-bike-detection-2004.pth'
 resume_from = None
 workflow = [('train', 1)]
+cudnn_benchmark = True

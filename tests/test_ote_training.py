@@ -415,7 +415,23 @@ def pytest_generate_tests(metafunc):
 class TestOTETraining:
     parameters = {
             'model_name': [
+<<<<<<< HEAD
+                'mobilenet_v2-2s_ssd-256x256',
+                'mobilenet_v2-2s_ssd-384x384',
+                'mobilenet_v2-2s_ssd-512x512',
+                'mobilenetV2_ATSS',
+                'mobilenetV2_SSD',
+                'resnet50_VFNet'
+                'face-detection-0200',
+                'face-detection-0202',
+                'face-detection-0204',
+                'face-detection-0205',
+                'face-detection-0206',
+                'face-detection-0207',
+                'horizontal-text-detection-0001',
+=======
                 'mobilenet_v2_2s_ssd_256x256',
+>>>>>>> origin/lb/integrate_e2e_to_sc_sdk_tests_ver3
              ],
             'dataset_name': [
                 'vitens_tiled_shortened_500_A',
