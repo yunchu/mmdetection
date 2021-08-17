@@ -1,5 +1,6 @@
 import copy
 import importlib
+import itertools
 import logging
 import os
 import os.path as osp
@@ -403,50 +404,132 @@ class OTETrainingImpl:
         data_collector.log_final_metric('evaluation_performance_exported/' + score_name, score_value)
         return self.evaluation_performance_exported
 
+# Note that each TestBunch describes a group of similar tests
+# If 'model_name' or 'dataset_name' are lists, cartesian product of tests will be run.
+TestBunch = namedtuple('TestBunch', ['model_name', 'dataset_name', 'num_training_iters', 'usecase'])
+
 # pytest magic
 def pytest_generate_tests(metafunc):
+    #import pudb; pudb._get_debugger(term_size=(135,35)).set_trace()
     if metafunc.cls is None:
         return
     if not issubclass(metafunc.cls, TestOTETraining):
         return
-    metafunc.parametrize('model_name', metafunc.cls.parameters['model_name'], scope='class')
-    metafunc.parametrize('dataset_name', metafunc.cls.parameters['dataset_name'], scope='class')
+
+    # It allows to filter by usecase
+    usecase = metafunc.config.getoption('--test-usecase')
+
+    argnames, argvalues, ids = metafunc.cls.get_list_of_tests(usecase)
+
+#    metafunc.parametrize('model_name', metafunc.cls.parameters['model_name'], scope='class')
+#    metafunc.parametrize('dataset_name', metafunc.cls.parameters['dataset_name'], scope='class')
+    metafunc.parametrize(argnames, argvalues, ids=ids, scope='class')
 
 class TestOTETraining:
-    parameters = {
-            'model_name': [
-                'mobilenet_v2-2s_ssd-256x256',
-                'mobilenet_v2-2s_ssd-384x384',
-                'mobilenet_v2-2s_ssd-512x512',
-                'mobilenetV2_ATSS',
-                'mobilenetV2_SSD',
-                'resnet50_VFNet'
-                'face-detection-0200',
-                'face-detection-0202',
-                'face-detection-0204',
-                'face-detection-0205',
-                'face-detection-0206',
-                'face-detection-0207',
-                'horizontal-text-detection-0001',
-             ],
-            'dataset_name': [
-                'vitens_tiled_shortened_500_A',
-#                'vitens_tiled',
-                #'bbcd',
-#               'coco_shortened_500',
-#               'vitens_tiled_shortened_500',
-            ]
-    }
-
     DEFAULT_NUM_ITERS = 5
-    NUM_ITERS_KEY = 'NUM_ITERS'
-    num_training_iters_for_tests = [ # the list of elements defining custom num training iters for each test
-            {
-                'model_name': 'mobilenet_v2_2s_ssd_256x256',
-                'dataset_name': 'bbcd',
-                NUM_ITERS_KEY: 350
-            },
+    test_bunches = [
+            TestBunch(
+                model_name=[
+                    'face-detection-0200',
+                    'face-detection-0202',
+                    'face-detection-0204',
+                    'face-detection-0205',
+                    'face-detection-0206',
+                    'face-detection-0207',
+                ],
+                dataset_name='airport_faces',
+                num_training_iters=None,
+                usecase='precommit',
+            ),
+            TestBunch(
+                model_name=[
+                    'horizontal-text-detection-0001',
+                ],
+                dataset_name='horizontal_text_detection',
+                num_training_iters=None,
+                usecase='precommit',
+            ),
+            TestBunch(
+                model_name=[
+                    'mobilenet_v2-2s_ssd-256x256',
+#                    'mobilenet_v2-2s_ssd-384x384',
+#                    'mobilenet_v2-2s_ssd-512x512',
+#                    'mobilenetV2_ATSS',
+#                    'mobilenetV2_SSD',
+#                    'resnet50_VFNet'
+                ],
+                dataset_name='vitens_tiled_shortened_500_A',
+                num_training_iters=None,
+                usecase='precommit',
+            ),
+            TestBunch(
+                model_name=[
+                    'mobilenet_v2-2s_ssd-256x256',
+#                    'mobilenet_v2-2s_ssd-384x384',
+#                    'mobilenet_v2-2s_ssd-512x512',
+#                    'mobilenetV2_ATSS',
+#                    'mobilenetV2_SSD',
+#                    'resnet50_VFNet'
+                ],
+                dataset_name='bbcd',
+                num_training_iters=350,
+                usecase='reallife',
+            ),
     ]
+
+
+    @classmethod
+    def get_list_of_tests(cl, usecase: str = None):
+        """
+        The functions generates the lists of values for the tests from the field test_bunches of the class.
+
+        The function returns two lists
+        * argnames -- 3-element tuple with names of the test parameters:
+          ('model_name', 'dataset_name', 'num_training_iters')
+        * argvalues -- list of 3-element tuples (model_name, dataset_name, num_training_iters)
+          -- the parameters for the tests
+        * ids -- list of strings with ids corresponding the parameters of the tests
+
+        The lists argvalues and ids will have the same length.
+
+        If the parameter `usecase` is set, it makes filtering by usecase field of TestBunch-s.
+        """
+        test_bunches = cl.test_bunches
+        DEFAULT_NUM_ITERS = cl.DEFAULT_NUM_ITERS
+        assert all(isinstance(el, TestBunch) for el in test_bunches)
+
+        argnames = ('model_name', 'dataset_name', 'num_training_iters')
+        argvalues = []
+        ids = []
+        for el in test_bunches:
+            if usecase is not None and el.usecase != usecase:
+                continue
+            if isinstance(el.model_name, (list, tuple)):
+                model_names = el.model_name
+            else:
+                model_names = [el.model_name]
+            if isinstance(el.dataset_name, (list, tuple)):
+                dataset_names = el.dataset_name
+            else:
+                dataset_names = [el.dataset_name]
+
+            model_dataset = list(itertools.product(model_names, dataset_names))
+            num_iters = el.num_training_iters if el.num_training_iters is not None else DEFAULT_NUM_ITERS
+
+            for m, d in model_dataset:
+                argvalues.append((m, d, num_iters))
+                ids.append(f'{m};{d};{num_iters}iters;{el.usecase}')
+
+        return argnames, argvalues, ids
+
+#    NUM_ITERS_KEY = 'NUM_ITERS'
+#    num_training_iters_for_tests = [ # the list of elements defining custom num training iters for each test
+#            {
+#                'model_name': 'mobilenet_v2_2s_ssd_256x256',
+#                'dataset_name': 'bbcd',
+#                NUM_ITERS_KEY: 350
+#            },
+#    ]
 
     @pytest.fixture(scope='class')
     def cached_from_prev_test_fx(self):
@@ -475,9 +558,8 @@ class TestOTETraining:
 
     @staticmethod
     def _update_impl_in_cache(cache,
-                              dataset_name, model_name,
-                              dataset_definitions, template_paths,
-                              num_training_iters):
+                              dataset_name, model_name, num_training_iters,
+                              dataset_definitions, template_paths):
         # TODO(lbeynens): make this a fixture with conditional ops inside
         TestOTETraining._clean_cache_if_parameters_changed(cache,
                                                            dataset_name=dataset_name,
@@ -507,82 +589,75 @@ class TestOTETraining:
             yield data_collector
         logger.info('data_collector is released')
 
-    @pytest.fixture
-    def num_training_iters_fx(self, request):
-        cur_params = deepcopy(request.node.callspec.params)
-        def _should_use_el(el):
-            common_keys = set(cur_params.keys()) & set(el.keys())
-            return all(cur_params[k] == el[k] for k in common_keys)
-
-        all_elements = self.num_training_iters_for_tests
-        selected_elements = [el for el in all_elements if _should_use_el(el)]
-        assert len(selected_elements) <= 1, (
-                f'Too many elements selected from num_training_iters_for_tests list for params={cur_params}')
-
-        if len(selected_elements) == 0:
-            return self.DEFAULT_NUM_ITERS
-
-        num_iters = selected_elements[0][self.NUM_ITERS_KEY]
-        logger.debug(f'For params={cur_params} found num_iters={num_iters}')
-        return num_iters
+#    @pytest.fixture
+#    def num_training_iters_fx(self, request):
+#        cur_params = deepcopy(request.node.callspec.params)
+#        def _should_use_el(el):
+#            common_keys = set(cur_params.keys()) & set(el.keys())
+#            return all(cur_params[k] == el[k] for k in common_keys)
+#
+#        all_elements = self.num_training_iters_for_tests
+#        selected_elements = [el for el in all_elements if _should_use_el(el)]
+#        assert len(selected_elements) <= 1, (
+#                f'Too many elements selected from num_training_iters_for_tests list for params={cur_params}')
+#
+#        if len(selected_elements) == 0:
+#            return self.DEFAULT_NUM_ITERS
+#
+#        num_iters = selected_elements[0][self.NUM_ITERS_KEY]
+#        logger.debug(f'For params={cur_params} found num_iters={num_iters}')
+#        return num_iters
 
 
     @e2e_pytest
-    def test_ote_01_training(self, dataset_name, model_name,
+    def test_ote_01_training(self, dataset_name, model_name, num_training_iters,
                              dataset_definitions_fx, template_paths_fx,
                              cached_from_prev_test_fx,
-                             data_collector_fx,
-                             num_training_iters_fx):
+                             data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
-                                          dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx,
-                                          num_training_iters_fx)
+                                          dataset_name, model_name, num_training_iters,
+                                          dataset_definitions_fx, template_paths_fx)
 
         impl.run_ote_training_once(data_collector_fx)
 
     @e2e_pytest
-    def test_ote_02_evaluation(self, dataset_name, model_name,
+    def test_ote_02_evaluation(self, dataset_name, model_name, num_training_iters,
                                dataset_definitions_fx, template_paths_fx,
                                cached_from_prev_test_fx,
-                               data_collector_fx,
-                               num_training_iters_fx):
+                               data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
-                                          dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx,
-                                          num_training_iters_fx)
+                                          dataset_name, model_name, num_training_iters,
+                                          dataset_definitions_fx, template_paths_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
 
     @e2e_pytest
-    def test_ote_03_export(self, dataset_name, model_name,
+    def test_ote_03_export(self, dataset_name, model_name, num_training_iters,
                            dataset_definitions_fx, template_paths_fx,
                            cached_from_prev_test_fx,
-                           data_collector_fx,
-                           num_training_iters_fx):
+                           data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
-                                          dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx,
-                                          num_training_iters_fx)
+                                          dataset_name, model_name, num_training_iters,
+                                          dataset_definitions_fx, template_paths_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_export_once(data_collector_fx)
 
     @e2e_pytest
-    def test_ote_04_evaluation_exported(self, dataset_name, model_name,
+    def test_ote_04_evaluation_exported(self, dataset_name, model_name, num_training_iters,
                                         dataset_definitions_fx, template_paths_fx,
                                         cached_from_prev_test_fx,
-                                        data_collector_fx,
-                                        num_training_iters_fx):
+                                        data_collector_fx):
         cache = cached_from_prev_test_fx
         impl = self._update_impl_in_cache(cache,
-                                          dataset_name, model_name,
-                                          dataset_definitions_fx, template_paths_fx,
-                                          num_training_iters_fx)
+                                          dataset_name, model_name, num_training_iters,
+                                          dataset_definitions_fx, template_paths_fx)
 
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_export_once(data_collector_fx)
         impl.run_ote_evaluation_exported(data_collector_fx)
+
