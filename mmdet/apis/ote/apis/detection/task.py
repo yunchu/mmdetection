@@ -100,8 +100,10 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.task_environment = task_environment
         self.hyperparams = hyperparams = task_environment.get_hyper_parameters(OTEDetectionConfig)
 
-        self.scratch_space = self.hyperparams.algo_backend.scratch_space
-        logger.info(f"Scratch space for the task: {self.scratch_space}")
+        # self.scratch_space = self.hyperparams.algo_backend.scratch_space
+        self.scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
+        logger.info(f"Scratch space created at {self.scratch_space}")
+        # logger.info(f"Scratch space for the task: {self.scratch_space}")
         self.model_name = hyperparams.algo_backend.model_name
         self.labels = task_environment.get_labels(False)
 
@@ -244,7 +246,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
                 model.cuda(),
                 device_ids=[torch.cuda.current_device()],
                 broadcast_buffers=False)
-            eval_predictions = multi_gpu_test(model, mm_val_dataloader, config.work_dir, False)
+            eval_predictions = multi_gpu_test(model, mm_val_dataloader)
         else:
             model = MMDataCPU(model)
             eval_predictions = single_gpu_test(model, mm_val_dataloader, show=False)
