@@ -39,7 +39,7 @@ from mmdet.apis.ote.apis.detection.config_utils import \
 from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
                                                      load_template)
 
-from e2e_test_system import e2e_pytest
+from e2e_test_system import e2e_pytest_api
 
 
 class TestOTEAPI(unittest.TestCase):
@@ -113,7 +113,7 @@ class TestOTEAPI(unittest.TestCase):
         hyper_parameters.postprocessing.confidence_threshold = 0.1
         return hyper_parameters
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_cancel_training_detection(self):
         """
         Tests starting and cancelling training.
@@ -291,26 +291,26 @@ class TestOTEAPI(unittest.TestCase):
                             f'larger than the tolerance of {perf_delta_tolerance}')
 
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenetssd_256(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenetssd_384(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenetssd_512(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenet_atss(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS'))
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenet_ssd(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_SSD'))
 
-    @e2e_pytest
+    @e2e_pytest_api
     def test_training_custom_mobilenet_vfnet(self):
         self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'resnet50_VFNet'))

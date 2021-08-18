@@ -31,7 +31,7 @@ from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, get_task_class, load_template
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
-from e2e_test_system import e2e_pytest, DataCollector
+from e2e_test_system import e2e_pytest_performance, DataCollector
 
 
 logger_name = osp.splitext(osp.basename(__file__))[0]
@@ -609,7 +609,7 @@ class TestOTETraining:
 #        return num_iters
 
 
-    @e2e_pytest
+    @e2e_pytest_performance
     def test_ote_01_training(self, dataset_name, model_name, num_training_iters,
                              dataset_definitions_fx, template_paths_fx,
                              cached_from_prev_test_fx,
@@ -621,7 +621,7 @@ class TestOTETraining:
 
         impl.run_ote_training_once(data_collector_fx)
 
-    @e2e_pytest
+    @e2e_pytest_performance
     def test_ote_02_evaluation(self, dataset_name, model_name, num_training_iters,
                                dataset_definitions_fx, template_paths_fx,
                                cached_from_prev_test_fx,
@@ -634,7 +634,7 @@ class TestOTETraining:
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_evaluation(data_collector_fx)
 
-    @e2e_pytest
+    @e2e_pytest_performance
     def test_ote_03_export(self, dataset_name, model_name, num_training_iters,
                            dataset_definitions_fx, template_paths_fx,
                            cached_from_prev_test_fx,
@@ -647,7 +647,7 @@ class TestOTETraining:
         impl.run_ote_training_once(data_collector_fx)
         impl.run_ote_export_once(data_collector_fx)
 
-    @e2e_pytest
+    @e2e_pytest_performance
     def test_ote_04_evaluation_exported(self, dataset_name, model_name, num_training_iters,
                                         dataset_definitions_fx, template_paths_fx,
                                         cached_from_prev_test_fx,
