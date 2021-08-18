@@ -28,63 +28,86 @@ if [ -z "${CUDA_HOME}" ] && [ -d ${CUDA_HOME_CANDIDATE} ]; then
   export CUDA_HOME=${CUDA_HOME_CANDIDATE}
 fi
 
-if [ -z ${CUDA_VERSION} ] && [ -e "$CUDA_HOME/version.txt" ]; then
-  # Get CUDA version from version.txt file.
-  CUDA_VERSION=$(cat $CUDA_HOME/version.txt | sed -e "s/^.*CUDA Version *//" -e "s/ .*//")
+if [ -e "$CUDA_HOME" ]; then
+  if [ -e "$CUDA_HOME/version.txt" ]; then
+    # Get CUDA version from version.txt file.
+    CUDA_VERSION=$(cat $CUDA_HOME/version.txt | sed -e "s/^.*CUDA Version *//" -e "s/ .*//")
+  else
+    # Get CUDA version from directory name.
+    CUDA_HOME_DIR=`readlink -f $CUDA_HOME`
+    CUDA_HOME_DIR=`basename $CUDA_HOME_DIR`
+    CUDA_VERSION=`echo $CUDA_HOME_DIR | cut -d "-" -f 2`
+  fi
 fi
 
-if [[ -z ${CUDA_VERSION} ]]; then
-  # Get CUDA version from nvidia-smi output.
-  CUDA_VERSION=$(nvidia-smi | grep "CUDA Version" | sed -e "s/^.*CUDA Version: *//" -e "s/ .*//")
-fi
+# install PyTorch and MMCV.
+export TORCH_VERSION=1.8.1
+export TORCHVISION_VERSION=0.9.1
+export NUMPY_VERSION=1.19.5
+export MMCV_VERSION=1.3.0
 
 if [[ -z ${CUDA_VERSION} ]]; then
   echo "CUDA was not found, installing dependencies in CPU-only mode. If you want to use CUDA, set CUDA_HOME and CUDA_VERSION beforehand."
 else
+  # Remove dots from CUDA version string, if any.
+  CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
   echo "Using CUDA_VERSION ${CUDA_VERSION}"
-fi
-
-# Remove dots from CUDA version string, if any.
-CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
-
-# install PyTorch and MMCV.
-export NUMPY_VERSION=1.19.5
-export MMCV_VERSION=1.3.0
-
-if [[ -z ${TORCH_VERSION} ]]; then
-  export TORCH_VERSION=1.7.1
-fi
-
-if [[ -z ${TORCHVISION_VERSION} ]]; then
-  export TORCHVISION_VERSION=0.8.2
+  if [[ "${CUDA_VERSION_CODE}" != "111" ]] && [[ "${CUDA_VERSION_CODE}" != "102" ]] ; then
+    echo "CUDA version must be either 10.2 or 11.1"
+    exit 1
+  fi
+  if [[ "${CUDA_VERSION_CODE}" == "102" ]] ; then
+    if [[ "${TORCH_VERSION}" != "1.8.1" ]] && [[ "${TORCH_VERSION}" != "1.9.0" ]]; then
+      echo "if CUDA version is 10.2, then PyTorch must be either 1.8.1 or 1.9.0"
+      exit 1
+    fi
+  elif [[ "${CUDA_VERSION_CODE}" == "111" ]] ; then
+    if [[ "${TORCH_VERSION}" != "1.9.0" ]]; then
+      echo "if CUDA version is 11.1, then PyTorch must be 1.9.0"
+      exit 1
+    fi
+  fi
 fi
 
 pip install wheel
-pip install numpy==${NUMPY_VERSION}
+
+CONSTRAINTS_FILE=$(tempfile)
+echo numpy==${NUMPY_VERSION} >> ${CONSTRAINTS_FILE}
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
   pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html
+  echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
 elif [[ $CUDA_VERSION_CODE == "102" ]]; then
   pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION}
+  echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
 else
   pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html
+  echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
 fi
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
 else
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html
+  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE}
 fi
 
 # Install other requirements.
 # Install mmpycocotools and Polygon3 from source to make sure it is compatible with installed numpy version.
-pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools
-pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8
-cat requirements.txt | xargs -n 1 -L 1 pip install
+pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools -c ${CONSTRAINTS_FILE}
+pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 -c ${CONSTRAINTS_FILE}
+cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache -c ${CONSTRAINTS_FILE}
 
-pip install -e .
+pip install -e . -c ${CONSTRAINTS_FILE}
 MMDETECTION_DIR=`realpath .`
 echo "export MMDETECTION_DIR=${MMDETECTION_DIR}" >> ${venv_dir}/bin/activate
+
+pip install -e $SC_SDK_REPO/src/ote_sdk -c ${CONSTRAINTS_FILE}
+pip install -e $SC_SDK_REPO/src/sc_sdk -c ${CONSTRAINTS_FILE}
+pip install -e $SC_SDK_REPO/src/common/users_handler -c ${CONSTRAINTS_FILE}
+pip install `find $SC_SDK_REPO/.cache -name *.whl`
 
 deactivate
 

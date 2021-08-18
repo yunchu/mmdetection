@@ -1,36 +1,169 @@
 import io
+import json
 import numpy as np
+import os
 import os.path as osp
 import random
+import tempfile
 import time
 import torch
 import unittest
 import warnings
+import yaml
 from concurrent.futures import ThreadPoolExecutor
-
-from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind
+from ote_sdk.entities.id import ID
+from ote_sdk.entities.metrics import Performance
+from ote_sdk.entities.shapes.box import Box
+from ote_sdk.entities.shapes.ellipse import Ellipse
+from ote_sdk.entities.shapes.polygon import Polygon
+from sc_sdk.configuration.helper import convert, create
+from sc_sdk.entities.annotation import (Annotation, AnnotationScene,
+                                        AnnotationSceneKind)
 from sc_sdk.entities.dataset_item import DatasetItem
-from sc_sdk.entities.datasets import Dataset, Subset, NullDatasetStorage
-from sc_sdk.entities.id import ID
+from sc_sdk.entities.datasets import Dataset, NullDatasetStorage, Subset
 from sc_sdk.entities.image import Image
-from sc_sdk.entities.inference_parameters import InferenceParameters
 from sc_sdk.entities.media_identifier import ImageIdentifier
-from sc_sdk.entities.metrics import Performance
-from sc_sdk.entities.model import NullModel, Model, ModelStatus, NullModelStorage
-from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
+from sc_sdk.entities.model import (Model, ModelStatus, NullModel,
+                                   NullModelStorage)
+from sc_sdk.entities.model_template import parse_model_template
+from sc_sdk.entities.optimized_model import (ModelOptimizationType,
+                                             ModelPrecision, OptimizedModel,
+                                             TargetDevice)
 from sc_sdk.entities.resultset import ResultSet
-from sc_sdk.entities.shapes.box import Box
-from sc_sdk.entities.shapes.ellipse import Ellipse
-from sc_sdk.entities.shapes.polygon import Polygon
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.tests.test_helpers import generate_random_annotated_image
-from sc_sdk.usecases.tasks.interfaces.export_interface import IExportTask, ExportType
-from sc_sdk.utils import restricted_pickle_module
+from sc_sdk.usecases.tasks.interfaces.export_interface import (ExportType,
+                                                               IExportTask)
 from sc_sdk.utils.project_factory import NullProject
+from subprocess import run
 
-from mmdet.apis.ote.apis.detection import OTEDetectionTask, OTEDetectionConfig, OpenVINODetectionTask
-from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
-from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, load_template
+from mmdet.apis.ote.apis.detection import (OpenVINODetectionTask,
+                                           OTEDetectionConfig,
+                                           OTEDetectionTask)
+from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
+from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
+                                                     reload_hyper_parameters)
+
+
+class ModelTemplate(unittest.TestCase):
+
+    def test_reading_mnv2_ssd_256(self):
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml', '1')
+
+    def test_reading_mnv2_ssd_384(self):
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-384x384/template.yaml', '1')
+
+    def test_reading_mnv2_ssd_512(self):
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-512x512/template.yaml', '1')
+
+    def test_reading_mnv2_ssd(self):
+        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_SSD/template.yaml', '1')
+
+    def test_reading_mnv2_atss(self):
+        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_ATSS/template.yaml', '1')
+
+    def test_reading_resnet50_vfnet(self):
+        parse_model_template('./configs/ote/custom-object-detection/resnet50_VFNet/template.yaml', '1')
+
+def test_configuration_yaml():
+    configuration = OTEDetectionConfig(workspace_id=ID(), model_storage_id=ID())
+    configuration_yaml_str = convert(configuration, str)
+    configuration_yaml_converted = yaml.safe_load(configuration_yaml_str)
+    with open(osp.join('mmdet', 'apis', 'ote', 'apis', 'detection', 'configuration.yaml')) as read_file:
+        configuration_yaml_loaded = yaml.safe_load(read_file)
+    del configuration_yaml_converted['algo_backend']
+    assert configuration_yaml_converted == configuration_yaml_loaded
+
+def test_set_values_as_default():
+    template_dir = './configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/'
+    template_file = osp.join(template_dir, 'template.yaml')
+    model_template = parse_model_template(template_file, '1')
+
+    # Here we have to reload parameters manually because
+    # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
+    if not model_template.hyper_parameters.data:
+        reload_hyper_parameters(model_template)
+
+    hyper_parameters = model_template.hyper_parameters.data
+    # value that comes from template.yaml
+    default_value = hyper_parameters['learning_parameters']['batch_size']['default_value']
+    # value that comes from OTEDetectionConfig
+    value = hyper_parameters['learning_parameters']['batch_size']['value']
+    assert value == 5
+    assert default_value == 64
+
+    # after this call value must be equal to default_value
+    set_values_as_default(hyper_parameters)
+    value = hyper_parameters['learning_parameters']['batch_size']['value']
+    assert default_value == value
+    hyper_parameters = create(hyper_parameters)
+    assert default_value == hyper_parameters.learning_parameters.batch_size
+
+class SampleTestCase(unittest.TestCase):
+    root_dir = '/tmp'
+    coco_dir = osp.join(root_dir, 'data/coco')
+    snapshots_dir = osp.join(root_dir, 'snapshots')
+
+    custom_operations = ['ExperimentalDetectronROIFeatureExtractor',
+                         'PriorBox', 'PriorBoxClustered', 'DetectionOutput',
+                         'DeformableConv2D']
+
+    @staticmethod
+    def shorten_annotation(src_path, dst_path, num_images):
+        with open(src_path) as read_file:
+            content = json.load(read_file)
+            selected_indexes = sorted([item['id'] for item in content['images']])
+            selected_indexes = selected_indexes[:num_images]
+            content['images'] = [item for item in content['images'] if
+                                 item['id'] in selected_indexes]
+            content['annotations'] = [item for item in content['annotations'] if
+                                      item['image_id'] in selected_indexes]
+            content['licenses'] = [item for item in content['licenses'] if
+                                   item['id'] in selected_indexes]
+
+        with open(dst_path, 'w') as write_file:
+            json.dump(content, write_file)
+
+    @classmethod
+    def setUpClass(cls):
+        cls.test_on_full = False
+        os.makedirs(cls.coco_dir, exist_ok=True)
+        if not osp.exists(osp.join(cls.coco_dir, 'val2017.zip')):
+            run(f'wget --no-verbose http://images.cocodataset.org/zips/val2017.zip -P {cls.coco_dir}',
+            check=True, shell=True)
+        if not osp.exists(osp.join(cls.coco_dir, 'val2017')):
+            run(f'unzip {osp.join(cls.coco_dir, "val2017.zip")} -d {cls.coco_dir}', check=True, shell=True)
+        if not osp.exists(osp.join(cls.coco_dir, "annotations_trainval2017.zip")):
+            run(f'wget --no-verbose http://images.cocodataset.org/annotations/annotations_trainval2017.zip -P {cls.coco_dir}',
+            check=True, shell=True)
+        if not osp.exists(osp.join(cls.coco_dir, 'annotations/instances_val2017.json')):
+            run(f'unzip -o {osp.join(cls.coco_dir, "annotations_trainval2017.zip")} -d {cls.coco_dir}',
+            check=True, shell=True)
+
+        if cls.test_on_full:
+            cls.shorten_to = 5000
+        else:
+            cls.shorten_to = 100
+
+        cls.shorten_annotation(osp.join(cls.coco_dir, 'annotations/instances_val2017.json'),
+                               osp.join(cls.coco_dir, 'annotations/instances_val2017.json'),
+                               cls.shorten_to)
+
+    def test_sample_on_cpu(self):
+        output = run('export CUDA_VISIBLE_DEVICES=;'
+                     'python mmdet/apis/ote/sample/sample.py '
+                     f'--data-dir {self.coco_dir}/.. '
+                     '--export configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml',
+                     shell=True, check=True)
+        assert output.returncode == 0
+
+    def test_sample_on_gpu(self):
+        output = run('export CUDA_VISIBLE_DEVICES=0;'
+                     'python mmdet/apis/ote/sample/sample.py '
+                     f'--data-dir {self.coco_dir}/.. '
+                     '--export configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml',
+                     shell=True, check=True)
+        assert output.returncode == 0
 
 
 class TestOTEAPI(unittest.TestCase):
@@ -38,11 +171,12 @@ class TestOTEAPI(unittest.TestCase):
     Collection of tests for OTE API and OTE Model Templates
     """
 
-    def init_environment(self, params, number_of_images=500):
+    def init_environment(self, params, model_template, number_of_images=500):
         labels_names = ('rectangle', 'ellipse', 'triangle')
         labels_schema = generate_label_schema(labels_names)
         labels_list = labels_schema.get_labels(False)
-        environment = TaskEnvironment(model=NullModel(), configurable_parameters=params, label_schema=labels_schema)
+        environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema,
+                                      model_template=model_template)
 
         warnings.filterwarnings('ignore', message='.* coordinates .* are out of bounds.*')
         items = []
@@ -67,7 +201,7 @@ class TestOTEAPI(unittest.TestCase):
                 box_shapes.append(Annotation(Box(x1=box[0], y1=box[1], x2=box[2], y2=box[3]),
                                              labels=shape_labels))
 
-            image = Image(name=f'image_{i}', project=NullProject(), numpy=image_numpy)
+            image = Image(name=f'image_{i}', numpy=image_numpy, dataset_storage=NullDatasetStorage())
             image_identifier = ImageIdentifier(image.id)
             annotation = AnnotationScene(
                 kind=AnnotationSceneKind.ANNOTATION,
@@ -92,17 +226,21 @@ class TestOTEAPI(unittest.TestCase):
         return environment, dataset
 
     def setup_configurable_parameters(self, template_dir, num_iters=250):
-        template = load_template(osp.join(template_dir, 'template.yaml'))
-        self.assertEqual(template['task']['base'], 'mmdet.apis.ote.apis.detection.OTEDetectionTask')
-        self.assertEqual(template['task']['openvino'], 'mmdet.apis.ote.apis.detection.OpenVINODetectionTask')
-        self.assertEqual(template['hyper_parameters']['impl'], 'mmdet.apis.ote.apis.detection.OTEDetectionConfig')
-        configurable_parameters = OTEDetectionConfig(workspace_id=ID(), project_id=ID(), task_id=ID())
-        apply_template_configurable_parameters(configurable_parameters, template)
-        configurable_parameters.learning_parameters.num_iters = num_iters
-        configurable_parameters.learning_parameters.num_checkpoints = 1
-        configurable_parameters.postprocessing.result_based_confidence_threshold = False
-        configurable_parameters.postprocessing.confidence_threshold = 0.1
-        return configurable_parameters
+        model_template = parse_model_template(osp.join(template_dir, 'template.yaml'), '1')
+
+        # Here we have to reload parameters manually because
+        # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
+        if not model_template.hyper_parameters.data:
+            reload_hyper_parameters(model_template)
+
+        hyper_parameters = model_template.hyper_parameters.data
+        set_values_as_default(hyper_parameters)
+        hyper_parameters = create(hyper_parameters)
+        hyper_parameters.learning_parameters.num_iters = num_iters
+        hyper_parameters.learning_parameters.num_checkpoints = 1
+        hyper_parameters.postprocessing.result_based_confidence_threshold = False
+        hyper_parameters.postprocessing.confidence_threshold = 0.1
+        return hyper_parameters, model_template
 
     def test_cancel_training_detection(self):
         """
@@ -118,8 +256,9 @@ class TestOTEAPI(unittest.TestCase):
         This test should be finished in under one minute on a workstation.
         """
         template_dir = osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS')
-        configurable_parameters = self.setup_configurable_parameters(template_dir, num_iters=10000)
-        detection_environment, dataset = self.init_environment(configurable_parameters, 250)
+        hyper_parameters, model_template = self.setup_configurable_parameters(template_dir, num_iters=500)
+        detection_environment, dataset = self.init_environment(hyper_parameters, model_template, 250)
+
         detection_task = OTEDetectionTask(task_environment=detection_environment)
 
         executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix='train_thread')
@@ -134,21 +273,24 @@ class TestOTEAPI(unittest.TestCase):
         # Test stopping after some time
         start_time = time.time()
         train_future = executor.submit(detection_task.train, dataset, output_model)
-        time.sleep(10)  # give train_thread some time to initialize the model
+        # give train_thread some time to initialize the model
+        while not detection_task.is_training:
+            time.sleep(10)
         detection_task.cancel_training()
 
         # stopping process has to happen in less than 35 seconds
-        self.assertLess(time.time() - start_time, 35, 'Expected to stop within 35 seconds.')
         train_future.result()
+        self.assertLess(time.time() - start_time, 35, 'Expected to stop within 35 seconds.')
 
-        # Test stopping immediately
+        # Test stopping immediately (as soon as training is started).
         start_time = time.time()
         train_future = executor.submit(detection_task.train, dataset, output_model)
-        time.sleep(1.0)
+        while not detection_task.is_training:
+            time.sleep(0.1)
         detection_task.cancel_training()
 
-        self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
         train_future.result()
+        self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
 
     @staticmethod
     def eval(task: OTEDetectionTask, model: Model, dataset: Dataset) -> Performance:
@@ -177,8 +319,9 @@ class TestOTEAPI(unittest.TestCase):
             difference between the original and the reloaded model is smaller than 1e-4. Ideally there should be no
             difference at all.
         """
-        configurable_parameters = self.setup_configurable_parameters(template_dir, num_iters=150)
-        detection_environment, dataset = self.init_environment(configurable_parameters, 250)
+        hyper_parameters, model_template = self.setup_configurable_parameters(template_dir, num_iters=150)
+        detection_environment, dataset = self.init_environment(hyper_parameters, model_template, 250)
+
         val_dataset = dataset.get_subset(Subset.VALIDATION)
         task = OTEDetectionTask(task_environment=detection_environment)
         self.addCleanup(task._delete_scratch_space)
@@ -199,7 +342,6 @@ class TestOTEAPI(unittest.TestCase):
 
         # Test that labels and configurable parameters are stored in model.data
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
-                               # pickle_module=restricted_pickle_module)
         self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'labels', 'VERSION'])
         self.assertTrue('ellipse' in modelinfo['labels'])
 
@@ -210,7 +352,7 @@ class TestOTEAPI(unittest.TestCase):
                 dataset,
                 detection_environment.get_model_configuration(),
                 ModelOptimizationType.MO,
-                [ModelPrecision.FP32],
+                precision=[ModelPrecision.FP32],
                 optimization_methods=[],
                 optimization_level={},
                 target_device=TargetDevice.UNSPECIFIED,

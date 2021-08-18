@@ -26,19 +26,30 @@ from collections import defaultdict
 from typing import Optional, List, Tuple
 
 import numpy as np
-from sc_sdk.configuration import cfg_helper
+
+from ote_sdk.entities.inference_parameters import InferenceParameters
+from ote_sdk.entities.metrics import (CurveMetric,
+                                      LineChartInfo,
+                                      MetricsGroup,
+                                      Performance,
+                                      ScoreMetric,
+                                      InfoMetric,
+                                      VisualizationType,
+                                      VisualizationInfo)
+from ote_sdk.entities.shapes.box import Box
+from ote_sdk.entities.train_parameters import TrainParameters
+from ote_sdk.entities.label import ScoredLabel
+
+from sc_sdk.configuration import cfg_helper, ModelConfig
 from sc_sdk.configuration.helper.utils import ids_to_strings
 from sc_sdk.entities.annotation import Annotation
 from sc_sdk.entities.datasets import Dataset, Subset
-from sc_sdk.entities.inference_parameters import InferenceParameters
-from sc_sdk.entities.metrics import CurveMetric, LineChartInfo, MetricsGroup, Performance, ScoreMetric, InfoMetric, \
-    VisualizationType, VisualizationInfo
 from sc_sdk.entities.optimized_model import OptimizedModel, ModelPrecision
 from sc_sdk.entities.task_environment import TaskEnvironment
-from sc_sdk.entities.train_parameters import TrainParameters
-from sc_sdk.entities.label import ScoredLabel
+
+
 from sc_sdk.entities.model import Model, ModelStatus, NullModel
-from sc_sdk.entities.shapes.box import Box
+
 from sc_sdk.entities.resultset import ResultSet, ResultsetPurpose
 from sc_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from sc_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
@@ -87,7 +98,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         logger.info(f"Loading OTEDetectionTask.")
 
         self.task_environment = task_environment
-        self.hyperparams = hyperparams = task_environment.get_configurable_parameters(OTEDetectionConfig)
+        self.hyperparams = hyperparams = task_environment.get_hyper_parameters(OTEDetectionConfig)
 
         self.scratch_space = self.hyperparams.algo_backend.scratch_space
         logger.info(f"Scratch space for the task: {self.scratch_space}")
@@ -103,8 +114,9 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.gpu_ids = range(self.world_size)
         logger.warning(f'World size {self.world_size}, rank {self.rank}')
 
+        template_file_path = task_environment.model_template.model_template_path
+
         # Get and prepare mmdet config.
-        template_file_path = hyperparams.algo_backend.template
         base_dir = os.path.abspath(os.path.dirname(template_file_path))
         config_file_path = os.path.join(base_dir, hyperparams.algo_backend.model)
         self.config = Config.fromfile(config_file_path)
@@ -117,8 +129,8 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         # Extra control variables.
         self.training_round_id = 0
-        self.is_training = False
         self.training_work_dir = None
+        self.is_training = False
         self.should_stop = False
         self.time_monitor = None
 
@@ -127,7 +139,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         if model != NullModel():
             # If a model has been trained and saved for the task already, create empty model and load weights here
             buffer = io.BytesIO(model.get_data("weights.pth"))
-            model_data = torch.load(buffer)
+            model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             model = self._create_model(self.config, from_scratch=True)
 
@@ -285,10 +297,10 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         # Create new model if training from scratch.
         old_model = copy.deepcopy(self.model)
-        if train_parameters is not None and train_parameters.train_on_empty_model:
-            logger.info("Training from scratch, creating new model")
-            # FIXME. Isn't it an overkill? Consider calling init_weights instead.
-            self.model = self._create_model(config=config, from_scratch=True)
+        # if train_parameters is not None and train_parameters.train_on_empty_model:
+        #     logger.info("Training from scratch, creating new model")
+        #     # FIXME. Isn't it an overkill? Consider calling init_weights instead.
+        #     self.model = self._create_model(config=config, from_scratch=True)
 
         # Evaluate model performance before training.
         _, initial_performance = self._infer_detector(self.model, config, val_dataset, True)
@@ -302,6 +314,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             self.is_training = False
             self.training_work_dir = None
             self.time_monitor = None
+            self.training_work_dir = None
             return
 
         # Run training.
@@ -309,8 +322,8 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         learning_curves = defaultdict(OTELoggerHook.Curve)
         training_config = prepare_for_training(config, train_dataset, val_dataset,
                                                self.training_round_id, self.time_monitor, learning_curves)
-        mm_train_dataset = build_dataset(training_config.data.train)
         self.training_work_dir = training_config.work_dir
+        mm_train_dataset = build_dataset(training_config.data.train)
         self.is_training = True
         self.model.train()
         train_detector(model=self.model, dataset=mm_train_dataset, cfg=training_config, distributed=True, validate=True)
@@ -364,7 +377,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
     @master_only
     def save_model(self, output_model: Model):
         buffer = io.BytesIO()
-        hyperparams = self.task_environment.get_configurable_parameters(OTEDetectionConfig)
+        hyperparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
         hyperparams_str = ids_to_strings(cfg_helper.convert(hyperparams, dict, enum_to_str=True))
         labels = {label.name: label.color.rgb_tuple for label in self.labels}
         modelinfo = {'model': self.model.state_dict(), 'config': hyperparams_str, 'labels': labels, 'VERSION': 1}
