@@ -426,6 +426,8 @@ def pytest_generate_tests(metafunc):
     metafunc.parametrize(argnames, argvalues, ids=ids, scope='class')
 
 class TestOTETraining:
+    PERFORMANCE_RESULTS = None # it is required for e2e system
+
     DEFAULT_NUM_ITERS = 5
     test_bunches = [
             TestBunch(
