@@ -100,10 +100,8 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.task_environment = task_environment
         self.hyperparams = hyperparams = task_environment.get_hyper_parameters(OTEDetectionConfig)
 
-        # self.scratch_space = self.hyperparams.algo_backend.scratch_space
         self.scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
         logger.info(f"Scratch space created at {self.scratch_space}")
-        # logger.info(f"Scratch space for the task: {self.scratch_space}")
         self.model_name = hyperparams.algo_backend.model_name
         self.labels = task_environment.get_labels(False)
 
@@ -344,11 +342,6 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             self.training_work_dir = None
             self.time_monitor = None
             return
-
-        # Load the best weights and check if model has improved.
-        best_checkpoint_path = os.path.join(training_config.work_dir, 'latest.pth')
-        best_checkpoint = torch.load(best_checkpoint_path)
-        self.model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
         _, final_performance = self._infer_detector(self.model, config, val_dataset, True)
