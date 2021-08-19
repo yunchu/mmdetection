@@ -108,10 +108,14 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         self.labels = task_environment.get_labels(False)
 
         if not torch.distributed.is_initialized():
+            os.environ.setdefault("MASTER_ADDR", "127.0.0.1")
+            os.environ.setdefault("MASTER_PORT", "29500")
+            os.environ.setdefault("WORLD_SIZE", "1")
+            os.environ.setdefault("RANK", "0")
             if torch.cuda.is_available():
                 init_dist(launcher='pytorch')
             else:
-                init_dist_cpu(backend="gloo")
+                init_dist_cpu(launcher='pytorch', backend="gloo")
         self.rank, self.world_size = get_dist_info()
         self.gpu_ids = range(self.world_size)
         logger.warning(f'World size {self.world_size}, rank {self.rank}')
