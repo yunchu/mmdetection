@@ -102,7 +102,6 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         self.scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
         logger.info(f"Scratch space created at {self.scratch_space}")
-        self.model_name = hyperparams.algo_backend.model_name
         self.labels = task_environment.get_labels(False)
 
         if not torch.distributed.is_initialized():
@@ -150,7 +149,6 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             try:
                 model.load_state_dict(model_data['model'])
                 logger.info(f"Loaded model weights from Task Environment")
-                logger.info(f"Model architecture: {self.model_name}")
             except BaseException as ex:
                 raise ValueError("Could not load the saved model. The model file structure is invalid.") \
                     from ex
@@ -158,8 +156,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
             # If there is no trained model yet, create model with pretrained weights as defined in the model config
             # file.
             model = self._create_model(self.config, from_scratch=False)
-            logger.info(f"No trained model in project yet. Created new model with '{self.model_name}' "
-                        f"architecture and general-purpose pretrained weights.")
+            logger.info(f"No trained model in project yet. Created new model with general-purpose pretrained weights.")
         return model
 
     @staticmethod
@@ -416,13 +413,6 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
         :return output List[MetricsGroup]
         """
         output: List[MetricsGroup] = []
-
-        # Model architecture
-        architecture = InfoMetric(name='Model architecture', value=self.model_name)
-        visualization_info_architecture = VisualizationInfo(name="Model architecture",
-                                                            visualisation_type=VisualizationType.TEXT)
-        output.append(MetricsGroup(metrics=[architecture],
-                                   visualization_info=visualization_info_architecture))
 
         # Learning curves
         for key, curve in learning_curves.items():
