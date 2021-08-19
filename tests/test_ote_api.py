@@ -4,7 +4,6 @@ import numpy as np
 import os
 import os.path as osp
 import random
-import tempfile
 import time
 import torch
 import unittest
@@ -274,7 +273,7 @@ class TestOTEAPI(unittest.TestCase):
         start_time = time.time()
         train_future = executor.submit(detection_task.train, dataset, output_model)
         # give train_thread some time to initialize the model
-        while not detection_task.is_training:
+        while not detection_task._is_training:
             time.sleep(10)
         detection_task.cancel_training()
 
@@ -285,7 +284,7 @@ class TestOTEAPI(unittest.TestCase):
         # Test stopping immediately (as soon as training is started).
         start_time = time.time()
         train_future = executor.submit(detection_task.train, dataset, output_model)
-        while not detection_task.is_training:
+        while not detection_task._is_training:
             time.sleep(0.1)
         detection_task.cancel_training()
 
@@ -376,8 +375,8 @@ class TestOTEAPI(unittest.TestCase):
             dataset,
             detection_environment.get_model_configuration(),
             model_status=ModelStatus.NOT_READY)
-        task.hyperparams.learning_parameters.num_iters = 10
-        task.hyperparams.learning_parameters.num_checkpoints = 1
+        task._hyperparams.learning_parameters.num_iters = 10
+        task._hyperparams.learning_parameters.num_checkpoints = 1
         task.train(dataset, new_model)
         self.assertTrue(first_model.model_status)
         self.assertNotEqual(first_model, new_model)
@@ -386,18 +385,18 @@ class TestOTEAPI(unittest.TestCase):
         new_model.model_status = ModelStatus.NOT_IMPROVED
         detection_environment.model = first_model
         task = OTEDetectionTask(detection_environment)
-        self.assertEqual(task.task_environment.model.id, first_model.id)
+        self.assertEqual(task._task_environment.model.id, first_model.id)
 
         print('Reevaluating model.')
         # Performance should be the same after reloading
         performance_after_reloading = self.eval(task, output_model, val_dataset)
         performance_delta = performance_after_reloading.score.value - validation_performance.score.value
-        perf_delta_tolerance = 0.0005
+        perf_delta_tolerance = 0.0
 
-        self.assertLess(np.abs(performance_delta), perf_delta_tolerance,
-                        msg=f'Expected no or very small performance difference after reloading. Performance delta '
-                            f'({validation_performance.score.value} vs {performance_after_reloading.score.value}) was '
-                            f'larger than the tolerance of {perf_delta_tolerance}')
+        self.assertEqual(np.abs(performance_delta), perf_delta_tolerance,
+                         msg=f'Expected no performance difference after reloading. Performance delta '
+                             f'({validation_performance.score.value} vs {performance_after_reloading.score.value}) was '
+                             f'larger than the tolerance of {perf_delta_tolerance}')
 
         print(f'Performance: {validation_performance.score.value:.4f}')
         print(f'Performance after reloading: {performance_after_reloading.score.value:.4f}')
@@ -415,6 +414,7 @@ class TestOTEAPI(unittest.TestCase):
             export_performance = ov_task.evaluate(resultset)
             print(export_performance)
             performance_delta = export_performance.score.value - validation_performance.score.value
+            perf_delta_tolerance = 0.0005
             self.assertLess(np.abs(performance_delta), perf_delta_tolerance,
                         msg=f'Expected no or very small performance difference after export. Performance delta '
                             f'({validation_performance.score.value} vs {export_performance.score.value}) was '
