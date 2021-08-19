@@ -60,8 +60,6 @@ def patch_config(config: Config, work_dir: str, labels: List[Label], random_seed
     if evaluation_metric is not None:
         config.evaluation.save_best = evaluation_metric
     config.evaluation.rule = 'greater'
-    # FIXME. Does if have to be explicitly set for CPU-only mode?
-    # config.evaluation.gpu_collect = False
 
     label_names = [lab.name for lab in labels]
     set_data_classes(config, label_names)
@@ -129,7 +127,6 @@ def config_to_string(config: Config) -> str:
         config_copy.data.train.ote_dataset = None
     else:
         config_copy.data.train.dataset.ote_dataset = None
-    # config_copy.labels = [label.name for label in config.labels]
     return Config(config_copy).pretty_text
 
 
@@ -190,8 +187,6 @@ def set_data_classes(config: Config, label_names: List[str]):
             config.model.roi_head.bbox_head.num_classes = num_classes
     elif 'bbox_head' in config.model:
         config.model.bbox_head.num_classes = num_classes
-    # FIXME. ?
-    # self.config.model.CLASSES = label_names
 
 
 def patch_datasets(config: Config):

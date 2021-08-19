@@ -14,7 +14,6 @@
 
 import copy
 import io
-import logging
 import os
 import shutil
 import tempfile
@@ -32,10 +31,7 @@ from ote_sdk.entities.metrics import (CurveMetric,
                                       LineChartInfo,
                                       MetricsGroup,
                                       Performance,
-                                      ScoreMetric,
-                                      InfoMetric,
-                                      VisualizationType,
-                                      VisualizationInfo)
+                                      ScoreMetric)
 from ote_sdk.entities.shapes.box import Box
 from ote_sdk.entities.train_parameters import TrainParameters
 from ote_sdk.entities.label import ScoredLabel
@@ -61,7 +57,7 @@ from sc_sdk.usecases.tasks.interfaces.export_interface import IExportTask, Expor
 from sc_sdk.usecases.tasks.interfaces.unload_interface import IUnload
 from sc_sdk.logging import logger_factory
 
-from mmcv.parallel import MMDataParallel, MMDistributedDataParallel
+from mmcv.parallel import MMDistributedDataParallel
 from mmcv.runner import load_checkpoint, get_dist_info, init_dist, master_only
 from mmcv.utils import Config
 from mmdet.apis import train_detector, single_gpu_test, multi_gpu_test, export_model
