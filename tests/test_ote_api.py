@@ -70,7 +70,6 @@ def test_configuration_yaml():
     configuration_yaml_converted = yaml.safe_load(configuration_yaml_str)
     with open(osp.join('mmdet', 'apis', 'ote', 'apis', 'detection', 'configuration.yaml')) as read_file:
         configuration_yaml_loaded = yaml.safe_load(read_file)
-    del configuration_yaml_converted['algo_backend']
     assert configuration_yaml_converted == configuration_yaml_loaded
 
 def test_set_values_as_default():
