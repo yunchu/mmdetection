@@ -21,8 +21,8 @@ warnings.filterwarnings('ignore', category=DeprecationWarning, message='.*cEleme
 warnings.filterwarnings('ignore', category=UserWarning, message='.*Nevergrad package could not be imported.*')
 warnings.filterwarnings('ignore', category=UserWarning, message='.*This overload of nonzero is deprecated.*')
 
+from ote_sdk.configuration.helper import create
 from ote_sdk.entities.inference_parameters import InferenceParameters
-from sc_sdk.configuration.helper import create
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
 from sc_sdk.entities.model import Model, ModelStatus, NullModel
