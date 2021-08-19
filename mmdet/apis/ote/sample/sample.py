@@ -52,7 +52,6 @@ def parse_args():
     parser = argparse.ArgumentParser(description='Sample showcasing the new API')
     parser.add_argument('template_file_path', help='path to template file')
     parser.add_argument('--data-dir', default='data')
-    parser.add_argument('--work-dir', default='/tmp/ote-det-scratch')
     parser.add_argument('--export', action='store_true')
     args = parser.parse_args()
     return args

@@ -118,17 +118,5 @@ class OTEDetectionConfig(ModelConfig):
             affects_outcome_of=ModelLifecycle.INFERENCE
         )
 
-    @attrs
-    class __AlgoBackend(ParameterGroup):
-        header = string_attribute("Internal Algo Backend parameters")
-        description = header
-        visible_in_ui = boolean_attribute(False)
-
-        template = string_attribute("template.yaml")
-        model = string_attribute("model.py")
-        model_name = string_attribute("object detection model")
-        scratch_space = string_attribute("/tmp/ote-det-scratch")
-
     learning_parameters = add_parameter_group(__LearningParameters)
-    algo_backend = add_parameter_group(__AlgoBackend)
     postprocessing = add_parameter_group(__Postprocessing)
