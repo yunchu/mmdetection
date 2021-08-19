@@ -109,7 +109,7 @@ class OTEDetectionTask(ITrainingTask, IInferenceTask, IExportTask, IEvaluationTa
 
         # Get and prepare mmdet config.
         base_dir = os.path.abspath(os.path.dirname(template_file_path))
-        config_file_path = os.path.join(base_dir, hyperparams.algo_backend.model)
+        config_file_path = os.path.join(base_dir, 'model.py')
         self._config = Config.fromfile(config_file_path)
         patch_config(self._config, self._scratch_space, self._labels, random_seed=42)
         set_hyperparams(self._config, hyperparams)
