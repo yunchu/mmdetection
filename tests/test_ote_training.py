@@ -260,6 +260,10 @@ class OTETrainingImpl:
             num_checkpoints = 10
         else:
             num_checkpoints = 30
+
+        #### TODO: fixed parameter, delete this
+        self.task.hyperparams.learning_parameters.batch_size = 2
+
         self.task.hyperparams.learning_parameters.num_checkpoints = num_checkpoints
 
         logger.debug('Train model')
