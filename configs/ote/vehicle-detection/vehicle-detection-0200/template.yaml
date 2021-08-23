@@ -28,7 +28,7 @@ hyper_parameters:
   # - Hidden/internal: non-editable by the user. Used to pass some parameters to the Task at its initilization.
   params:
     learning_parameters:
-      batch_size: 120 # original batch siaze 185
+      batch_size: 1 # original batch siaze 185/90
       learning_rate: 0.05
       num_iters: 20
     algo_backend:
