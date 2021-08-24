@@ -262,7 +262,7 @@ class OTETrainingImpl:
         params = create(hyper_parameters)
         logger.debug('Set hyperparameters')
         params.learning_parameters.num_iters = self.num_training_iters
-        if self.num_training_iters < 10:
+        if self.num_training_iters < 20:
             num_checkpoints = 2
         elif self.num_training_iters < 1000:
             num_checkpoints = 10
@@ -440,7 +440,7 @@ def pytest_generate_tests(metafunc):
 class TestOTETraining:
     PERFORMANCE_RESULTS = None # it is required for e2e system
 
-    DEFAULT_NUM_ITERS = 5
+    DEFAULT_NUM_ITERS = 10
     test_bunches = [
 #            TestBunch(
 #                model_name=[
