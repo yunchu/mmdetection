@@ -1,34 +1,36 @@
 import copy
-import importlib
 import itertools
 import logging
 import os
 import os.path as osp
 import pytest
-import sys
 import yaml
 
 from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
 
+from ote_sdk.configuration.helper import create
+from ote_sdk.entities.inference_parameters import InferenceParameters
+from ote_sdk.entities.metrics import Performance, ScoreMetric
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
-from sc_sdk.entities.id import ID
-from sc_sdk.entities.inference_parameters import InferenceParameters
-from sc_sdk.entities.metrics import Performance, ScoreMetric
 from sc_sdk.entities.model import Model, ModelStatus, NullModel
 from sc_sdk.entities.model_storage import NullModelStorage
-from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
+from sc_sdk.entities.model_template import parse_model_template
+from sc_sdk.entities.optimized_model import (ModelOptimizationType,
+                                             ModelPrecision, OptimizedModel,
+                                             TargetDevice)
 from sc_sdk.entities.project import NullProject
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
 from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
-from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
-from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
-from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, get_task_class, load_template
+from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
+from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
+                                                     get_task_class,
+                                                     reload_hyper_parameters)
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
 from e2e_test_system import e2e_pytest_performance, DataCollector
@@ -215,9 +217,11 @@ class OTETrainingImpl:
         self.copy_hyperparams = None
 
     @staticmethod
-    def _create_environment_and_task(params, labels_schema, template):
-        environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema)
-        task_impl_path = template['task']['base']
+    def _create_environment_and_task(params, labels_schema, model_template):
+        environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema,
+                                      model_template=model_template)
+        logger.info('Create base Task')
+        task_impl_path = model_template.entrypoints.base
         task_cls = get_task_class(task_impl_path)
         task = task_cls(task_environment=environment)
         return environment, task
@@ -227,8 +231,6 @@ class OTETrainingImpl:
         print(f'Using for train annotation file {self.dataset_params.annotations_train}')
         print(f'Using for val annotation file {self.dataset_params.annotations_val}')
 
-        logger.debug('Load model template')
-        self.template = load_template(self.template_file_path)
 
         self.dataset = MMDatasetAdapter(
             train_ann_file=self.dataset_params.annotations_train,
@@ -245,16 +247,22 @@ class OTETrainingImpl:
         print(f'train dataset: {len(self.dataset.get_subset(Subset.TRAINING))} items')
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
+        logger.debug('Load model template')
+        self.model_template = parse_model_template(self.template_file_path, '1')
+
+        # Here we have to reload parameters manually because
+        # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
+        if not self.model_template.hyper_parameters.data:
+            reload_hyper_parameters(self.model_template)
+
+        hyper_parameters = self.model_template.hyper_parameters.data
+        set_values_as_default(hyper_parameters)
 
         logger.debug('Setup environment')
-        params = OTEDetectionConfig(workspace_id=ID(), model_storage_id=ID())
-        apply_template_configurable_parameters(params, self.template)
-        self.environment, self.task = self._create_environment_and_task(params,
-                                                                        self.labels_schema,
-                                                                        self.template)
+        params = create(hyper_parameters)
         logger.debug('Set hyperparameters')
-        self.task.hyperparams.learning_parameters.num_iters = self.num_training_iters
-        if self.num_training_iters < 10:
+        params.learning_parameters.num_iters = self.num_training_iters
+        if self.num_training_iters < 20:
             num_checkpoints = 2
         elif self.num_training_iters < 1000:
             num_checkpoints = 10
@@ -262,9 +270,13 @@ class OTETrainingImpl:
             num_checkpoints = 30
 
         #### TODO: fixed parameter, delete this
-        self.task.hyperparams.learning_parameters.batch_size = 2
+        params.learning_parameters.batch_size = 2
 
-        self.task.hyperparams.learning_parameters.num_checkpoints = num_checkpoints
+        params.learning_parameters.num_checkpoints = num_checkpoints
+
+        self.environment, self.task = self._create_environment_and_task(params,
+                                                                        self.labels_schema,
+                                                                        self.model_template)
 
         logger.debug('Train model')
         self.output_model = Model(
@@ -274,7 +286,7 @@ class OTETrainingImpl:
             self.environment.get_model_configuration(),
             model_status=ModelStatus.NOT_READY)
 
-        self.copy_hyperparams = deepcopy(self.task.hyperparams)
+        self.copy_hyperparams = deepcopy(self.task._hyperparams)
 
         self.task.train(self.dataset, self.output_model)
         logger.info(f'performance={self.output_model.performance}')
@@ -386,7 +398,7 @@ class OTETrainingImpl:
             raise RuntimeError('Export was not successful for the OTETrainingImpl instance')
 
         logger.debug('Create OpenVINO Task')
-        openvino_task_impl_path = self.template['task']['openvino']
+        openvino_task_impl_path = self.model_template.entrypoints.openvino
         openvino_task_cls = get_task_class(openvino_task_impl_path)
         self.openvino_task = openvino_task_cls(self.environment_for_export)
 
@@ -432,29 +444,29 @@ def pytest_generate_tests(metafunc):
 class TestOTETraining:
     PERFORMANCE_RESULTS = None # it is required for e2e system
 
-    DEFAULT_NUM_ITERS = 5
+    DEFAULT_NUM_ITERS = 10
     test_bunches = [
-            TestBunch(
-                model_name=[
-                    'face-detection-0200',
-                    'face-detection-0202',
-                    'face-detection-0204',
-                    'face-detection-0205',
-                    'face-detection-0206',
-                    'face-detection-0207',
-                ],
-                dataset_name='airport_faces',
-                num_training_iters=None,
-                usecase='precommit',
-            ),
-            TestBunch(
-                model_name=[
-                    'horizontal-text-detection-0001',
-                ],
-                dataset_name='horizontal_text_detection',
-                num_training_iters=None,
-                usecase='precommit',
-            ),
+#            TestBunch(
+#                model_name=[
+#                    'face-detection-0200',
+#                    'face-detection-0202',
+#                    'face-detection-0204',
+#                    'face-detection-0205',
+#                    'face-detection-0206',
+#                    'face-detection-0207',
+#                ],
+#                dataset_name='airport_faces',
+#                num_training_iters=None,
+#                usecase='precommit',
+#            ),
+#            TestBunch(
+#                model_name=[
+#                    'horizontal-text-detection-0001',
+#                ],
+#                dataset_name='horizontal_text_detection',
+#                num_training_iters=None,
+#                usecase='precommit',
+#            ),
             TestBunch(
                 model_name=[
                    'mobilenet_v2-2s_ssd-256x256',

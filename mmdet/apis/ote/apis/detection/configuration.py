@@ -12,38 +12,15 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-import attr
 from attr import attrs
-from sc_sdk.configuration import ModelConfig, ModelLifecycle, UIRules
-from sc_sdk.configuration.config_element_type import ElementCategory
-from sc_sdk.configuration.elements import (ParameterGroup, add_parameter_group,
-                                           configurable_boolean,
-                                           configurable_float,
-                                           configurable_integer,
-                                           string_attribute,
-                                           boolean_attribute)
-from sc_sdk.configuration.elements.primitive_parameters import set_common_metadata
-from sc_sdk.configuration.ui_rules import NullUIRules, UIRules
-
-
-class StringAttr:
-    category = ElementCategory.PRIMITIVES
-
-
-def configurable_str(default_value: str,
-                     header: str,
-                     description: str = 'Default integer description',
-                     warning: str = None,
-                     editable: bool = True,
-                     visible_in_ui: bool = True,
-                     affects_outcome_of: ModelLifecycle = ModelLifecycle.NONE,
-                     ui_rules: UIRules = NullUIRules()) -> int:
-    metadata = set_common_metadata(default_value=default_value, header=header, description=description, warning=warning,
-                                   editable=editable, visible_in_ui=visible_in_ui, ui_rules=ui_rules,
-                                   affects_outcome_of=affects_outcome_of, type=StringAttr)
-    return attr.ib(default=default_value,
-                   type=int,
-                   metadata=metadata)
+from ote_sdk.configuration.elements import (ParameterGroup,
+                                            add_parameter_group,
+                                            boolean_attribute,
+                                            configurable_boolean,
+                                            configurable_float,
+                                            configurable_integer,
+                                            string_attribute)
+from sc_sdk.configuration import ModelConfig, ModelLifecycle
 
 
 @attrs
@@ -144,10 +121,10 @@ class OTEDetectionConfig(ModelConfig):
         description = header
         visible_in_ui = boolean_attribute(False)
 
-        template = configurable_str("template.yaml", "", editable=False, visible_in_ui=False)
-        model = configurable_str("model.py", "", editable=False, visible_in_ui=False)
-        model_name = configurable_str("object detection model", "", editable=False, visible_in_ui=False)
-        data_pipeline = configurable_str("ote_data_pipeline.py", "", editable=False, visible_in_ui=False)
+        template = string_attribute("template.yaml")
+        model = string_attribute("model.py")
+        model_name = string_attribute("object detection model")
+        data_pipeline = string_attribute("ote_data_pipeline.py")
 
     learning_parameters = add_parameter_group(__LearningParameters)
     algo_backend = add_parameter_group(__AlgoBackend)

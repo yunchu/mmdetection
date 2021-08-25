@@ -15,23 +15,26 @@
 import argparse
 import os.path as osp
 import sys
-
+from ote_sdk.configuration.helper import create
+from ote_sdk.entities.inference_parameters import InferenceParameters
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.datasets import Subset
-from sc_sdk.entities.id import ID
-from sc_sdk.entities.inference_parameters import InferenceParameters
 from sc_sdk.entities.model import Model, ModelStatus, NullModel
 from sc_sdk.entities.model_storage import NullModelStorage
-from sc_sdk.entities.optimized_model import ModelOptimizationType, ModelPrecision, OptimizedModel, TargetDevice
+from sc_sdk.entities.model_template import parse_model_template
+from sc_sdk.entities.optimized_model import (ModelOptimizationType,
+                                             ModelPrecision, OptimizedModel,
+                                             TargetDevice)
 from sc_sdk.entities.project import NullProject
 from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.entities.task_environment import TaskEnvironment
 from sc_sdk.logging import logger_factory
 from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
-from mmdet.apis.ote.apis.detection.config_utils import apply_template_configurable_parameters
-from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
-from mmdet.apis.ote.apis.detection.ote_utils import generate_label_schema, get_task_class, load_template
+from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
+from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
+                                                     get_task_class,
+                                                     reload_hyper_parameters)
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
 logger = logger_factory.get_logger('Sample')
@@ -47,9 +50,6 @@ def parse_args():
 
 
 def main(args):
-    logger.info('Load model template')
-    template = load_template(args.template_file_path)
-
     logger.info('Initialize dataset')
     dataset = MMDatasetAdapter(
         train_ann_file=osp.join(args.data_dir, 'coco/annotations/instances_val2017.json'),
@@ -67,18 +67,27 @@ def main(args):
     logger.info(f'Train dataset: {len(dataset.get_subset(Subset.TRAINING))} items')
     logger.info(f'Validation dataset: {len(dataset.get_subset(Subset.VALIDATION))} items')
 
+    logger.info('Load model template')
+    model_template = parse_model_template(args.template_file_path, '1')
+
+    # Here we have to reload parameters manually because
+    # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
+    if not model_template.hyper_parameters.data:
+        reload_hyper_parameters(model_template)
+
+    hyper_parameters = model_template.hyper_parameters.data
+    set_values_as_default(hyper_parameters)
+
     logger.info('Setup environment')
-    params = OTEDetectionConfig(workspace_id=ID(), model_storage_id=ID())
-    apply_template_configurable_parameters(params, template)
-    environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema)
+    params = create(hyper_parameters)
+    logger.info('Set hyperparameters')
+    params.learning_parameters.num_iters = 10
+    environment = TaskEnvironment(model=NullModel(), hyper_parameters=params, label_schema=labels_schema, model_template=model_template)
 
     logger.info('Create base Task')
-    task_impl_path = template['task']['base']
+    task_impl_path = model_template.entrypoints.base
     task_cls = get_task_class(task_impl_path)
     task = task_cls(task_environment=environment)
-
-    logger.info('Set hyperparameters')
-    task.hyperparams.learning_parameters.num_iters = 1000
 
     logger.info('Train model')
     output_model = Model(
@@ -122,7 +131,7 @@ def main(args):
 
         logger.info('Create OpenVINO Task')
         environment.model = exported_model
-        openvino_task_impl_path = template['task']['openvino']
+        openvino_task_impl_path = model_template.entrypoints.openvino
         openvino_task_cls = get_task_class(openvino_task_impl_path)
         openvino_task = openvino_task_cls(environment)
 
