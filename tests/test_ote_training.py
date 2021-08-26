@@ -446,27 +446,27 @@ class TestOTETraining:
 
     DEFAULT_NUM_ITERS = 10
     test_bunches = [
-#            TestBunch(
-#                model_name=[
-#                    'face-detection-0200',
-#                    'face-detection-0202',
-#                    'face-detection-0204',
-#                    'face-detection-0205',
-#                    'face-detection-0206',
-#                    'face-detection-0207',
-#                ],
-#                dataset_name='airport_faces',
-#                num_training_iters=None,
-#                usecase='precommit',
-#            ),
-#            TestBunch(
-#                model_name=[
-#                    'horizontal-text-detection-0001',
-#                ],
-#                dataset_name='horizontal_text_detection',
-#                num_training_iters=None,
-#                usecase='precommit',
-#            ),
+           TestBunch(
+               model_name=[
+                   'face-detection-0200',
+                   'face-detection-0202',
+                   'face-detection-0204',
+                   'face-detection-0205',
+                   'face-detection-0206',
+                   'face-detection-0207',
+               ],
+               dataset_name='airport_faces',
+               num_training_iters=None,
+               usecase='precommit',
+           ),
+           TestBunch(
+               model_name=[
+                   'horizontal-text-detection-0001',
+               ],
+               dataset_name='horizontal_text_detection',
+               num_training_iters=None,
+               usecase='precommit',
+           ),
             TestBunch(
                 model_name=[
                    'mobilenet_v2-2s_ssd-256x256',
