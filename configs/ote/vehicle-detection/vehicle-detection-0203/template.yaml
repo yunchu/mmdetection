@@ -62,7 +62,7 @@ training_targets:
   - GPU
 
 # Inference options. Defined by OpenVINO capabilities, not Algo Backend or Platform.
-inference_targetы:
+inference_targets:
   - CPU
   - GPU
   - VPU
