@@ -31,20 +31,12 @@ hyper_parameters:
   base_path: "configuration.yaml"
   parameter_overrides:
     learning_parameters:
-<<<<<<< HEAD
-      batch_size: 1 # Original batch size 10
-      learning_rate: 0.01
-      learning_rate_warmup_iters: 200
-    algo_backend:
-      model: model.py
-=======
       batch_size:
         default_value: 10
       learning_rate:
         default_value: 0.01
       learning_rate_warmup_iters:
         default_value: 200
->>>>>>> origin/lb/integrate_e2e_to_sc_sdk_tests_ver3
 
 # # Available model optimizations and their configuration.
 # optimization:

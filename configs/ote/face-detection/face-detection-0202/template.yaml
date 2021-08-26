@@ -1,58 +1,61 @@
 # Description.
 name: face-detection-0202
-domain: Object Detection
+task_type: DETECTION
+task_family: VISION
+instantiation: CLASS
 summary: Face Detection based on MobileNetV2 (SSD).
 
 # Algo backend.
 # Would be better to have something more precise and self-contained, e.g.:  docker image or path to Python venv activation script?
 framework: OTEDetection v2.9.1
 
+dependencies:
+- source: ../../../../mmdet/apis/ote/apis/detection/configuration.yaml
+  destination: configuration.yaml
+
 # Should be revisited?
-applications:
+application:
   ~
 
 # Optional? requirements to the dataset. Should be revisited?
-dataset_requirements:
-  ~
+# dataset_requirements:
+#   ~
 
 # Task implementation.
-task:
+entrypoints:
   base: mmdet.apis.ote.apis.detection.OTEDetectionTask
   openvino: mmdet.apis.ote.apis.detection.OpenVINODetectionTask
 
 # Task and hyperparameters.
 hyper_parameters:
-  impl: mmdet.apis.ote.apis.detection.OTEDetectionConfig
-  # Would be good to have different groups of parameters:
-  # - Basic: Shown to the user in the first place and editable by him.
-  # - Advanced: Editable by the user used the "advanced" section.
-  # - Hidden/internal: non-editable by the user. Used to pass some parameters to the Task at its initilization.
-  params:
+  base_path: configuration.yaml
+  parameter_overrides:
     learning_parameters:
-      batch_size: 1 # Original batch size 32
-      learning_rate: 0.05
-      num_iters: 70
-    algo_backend:
-      model: model.py
+      batch_size:
+        default_value: 32
+      learning_rate:
+        default_value: 0.05
+      num_iters:
+        default_value: 70
 
 # Available model optimizations and their configuration.
-optimization:
-  output_format:
-    onnx:
-      default: true
-    openvino:
-      default: true
-      input_format: BGR
-      normalize_input: true
-      precision: FP32
-      pot: ~
-  nncf:
-    quantization:
-      config: compression_config.json
-      default: false
-    sparsity:
-      config: compression_config.json
-      default: false
+# optimization:
+#   output_format:
+#     onnx:
+#       default: true
+#     openvino:
+#       default: true
+#       input_format: BGR
+#       normalize_input: true
+#       precision: FP32
+#       pot: ~
+#   nncf:
+#     quantization:
+#       config: compression_config.json
+#       default: false
+#     sparsity:
+#       config: compression_config.json
+#       default: false
 
 # Training resources.
 max_nodes: 1
@@ -61,38 +64,38 @@ training_targets:
   - CPU
 
 # Inference options. Defined by OpenVINO capabilities, not Algo Backend or Platform.
-inference_target:
+inference_targets:
   - CPU
-  - iGPU
+  - GPU
   - VPU
 
 # Some meta information, which may be used for model recommendation. In general, metrics are non-static, hence has to be updated.
-metrics:
-- display_name: AP @ [IoU=0.50:0.95]
-  key: ap
-  unit: '%'
-  value: 20.3
-- display_name: AP for faces > 64x64
-  key: ap_64x64
-  unit: '%'
-  value: 91.938
-- display_name: WiderFace Easy
-  key: widerface_e
-  unit: '%'
-  value: 89.382
-- display_name: WiderFace Medium
-  key: widerface_m
-  unit: '%'
-  value: 83.919
-- display_name: WiderFace Hard
-  key: widerface_h
-  unit: '%'
-  value: 50.189
-- display_name: Size
-  key: size
-  unit: Mp
-  value: 1.83
-- display_name: Complexity
-  key: complexity
-  unit: GFLOPs
-  value: 1.84
+# metrics:
+# - display_name: AP @ [IoU=0.50:0.95]
+#   key: ap
+#   unit: '%'
+#   value: 20.3
+# - display_name: AP for faces > 64x64
+#   key: ap_64x64
+#   unit: '%'
+#   value: 91.938
+# - display_name: WiderFace Easy
+#   key: widerface_e
+#   unit: '%'
+#   value: 89.382
+# - display_name: WiderFace Medium
+#   key: widerface_m
+#   unit: '%'
+#   value: 83.919
+# - display_name: WiderFace Hard
+#   key: widerface_h
+#   unit: '%'
+#   value: 50.189
+# - display_name: Size
+#   key: size
+#   unit: Mp
+#   value: 1.83
+# - display_name: Complexity
+#   key: complexity
+#   unit: GFLOPs
+#   value: 1.84
