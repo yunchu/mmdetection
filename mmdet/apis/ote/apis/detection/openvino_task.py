@@ -17,19 +17,21 @@ from typing import Any, Dict, Tuple, List, Optional, Union
 import cv2
 import numpy as np
 
-from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind
+from ote_sdk.entities.id import ID
+from ote_sdk.entities.inference_parameters import InferenceParameters
+from ote_sdk.entities.label import ScoredLabel
+from ote_sdk.entities.shapes.box import Box
+from ote_sdk.entities.annotation import Annotation, AnnotationSceneKind
+from sc_sdk.entities.annotation import AnnotationScene
 from sc_sdk.entities.datasets import Dataset
-from sc_sdk.usecases.evaluation.metrics_helper import MetricsHelper
+from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from sc_sdk.usecases.exportable_code.inference import BaseOpenVINOInferencer
-from sc_sdk.entities.id import ID
-from sc_sdk.entities.inference_parameters import InferenceParameters
-from sc_sdk.entities.label import Label, ScoredLabel
+from sc_sdk.entities.label import Label
 from sc_sdk.entities.media_identifier import ImageIdentifier
 from sc_sdk.entities.resultset import ResultSet
-from sc_sdk.entities.shapes.box import Box
-from sc_sdk.entities.task_environment import TaskEnvironment
-from sc_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
-from sc_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
+from ote_sdk.entities.task_environment import TaskEnvironment
+from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
+from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 
 from .configuration import OTEDetectionConfig
 
@@ -159,7 +161,7 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
 class OpenVINODetectionTask(IInferenceTask, IEvaluationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
-        self.hparams = self.task_environment.get_configurable_parameters(OTEDetectionConfig)
+        self.hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
         self.model = self.task_environment.model
         self.inferencer = self.load_inferencer()
 

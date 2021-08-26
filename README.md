@@ -2,7 +2,7 @@
 
 ![](https://img.shields.io/badge/python-3.6%2B-green)
 ![](https://img.shields.io/badge/pytorch-1.7.1%2B-orange)
-![](https://img.shields.io/badge/openvino-2021.3-blue)
+![](https://img.shields.io/badge/openvino-2021.4-blue)
 ![](https://img.shields.io/badge/onnxruntime-1.1.2%2B-yellow)
 
 
@@ -22,11 +22,6 @@ Please see [getting_started.md](docs/getting_started.md) for the basic usage. Th
 
 This project allows making compression of the models by [NNCF](https://github.com/openvinotoolkit/nncf_pytorch) framework.
 
-At the moment the following compression methods are supported:
-* int8 quantization
-* sparsity
-* filter pruning
-
 See details in [nncf_compression.md](docs/nncf_compression.md).
 
 ## Model Zoo
@@ -39,4 +34,4 @@ We appreciate all contributions to improve this project. Please refer to [CONTRI
 
 ## Contact
 
-This repo is currently maintained by Ilya Krylov ([@Ilya-Krylov](https://github.com/Ilya-Krylov)), Pavel Druzhkov ([@druzhkov-paul](https://github.com/druzhkov-paul)) and Alexander Dokuchaev ([@AlexanderDokuchaev](https://github.com/AlexanderDokuchaev)), Dmitry Sidnev ([@DmitriySidnev](https://github.com/DmitriySidnev)).
+This repo is currently maintained by Ilya Krylov ([@Ilya-Krylov](https://github.com/Ilya-Krylov)), Pavel Druzhkov ([@druzhkov-paul](https://github.com/druzhkov-paul)) and Dmitry Sidnev ([@DmitriySidnev](https://github.com/DmitriySidnev)).

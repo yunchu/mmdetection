@@ -18,11 +18,15 @@ from copy import deepcopy
 from typing import List
 
 import numpy as np
-from sc_sdk.entities.annotation import Annotation, AnnotationScene, AnnotationSceneKind, NullMediaIdentifier
+
+from ote_sdk.entities.label import ScoredLabel
+from ote_sdk.entities.shapes.box import Box
+
+from ote_sdk.entities.annotation import Annotation, AnnotationSceneKind
+from sc_sdk.entities.annotation import AnnotationScene, NullMediaIdentifier
 from sc_sdk.entities.datasets import Dataset, DatasetItem, NullDataset, Subset
+from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.image import Image
-from sc_sdk.entities.label import ScoredLabel
-from sc_sdk.entities.shapes.box import Box
 
 from mmdet.datasets import CocoDataset
 from mmdet.datasets.builder import DATASETS
@@ -259,7 +263,7 @@ class MMDatasetAdapter(Dataset):
         if self.ann_files[subset] is None:
             return False
         from mmdet.datasets.pipelines import LoadImageFromFile, LoadAnnotations
-        pipeline = [LoadImageFromFile(), LoadAnnotations(with_bbox=True)]
+        pipeline = [dict(type='LoadImageFromFile'), dict(type='LoadAnnotations', with_bbox=True)]
         self.coco_dataset = CocoDataset(ann_file=self.ann_files[subset],
                                         pipeline=pipeline,
                                         data_root=self.data_roots[subset],
@@ -283,7 +287,7 @@ class MMDatasetAdapter(Dataset):
 
         shapes = [create_gt_box(*coords, self.labels[label_id]) for coords, label_id in zip(bboxes, labels)]
 
-        image = Image(name=None, project=None, numpy=item['img'])
+        image = Image(name=None, numpy=item['img'], dataset_storage=NullDatasetStorage())
         annotation_scene = AnnotationScene(kind=AnnotationSceneKind.ANNOTATION,
                                            media_identifier=NullMediaIdentifier(),
                                            annotations=shapes)
