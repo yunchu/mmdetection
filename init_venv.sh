@@ -65,8 +65,8 @@ if [ -e "$CUDA_HOME" ]; then
 fi
 
 # install PyTorch and MMCV.
-export TORCH_VERSION=1.8.1
-export TORCHVISION_VERSION=0.9.1
+export TORCH_VERSION=1.9.0
+export TORCHVISION_VERSION=0.10.0
 export MMCV_VERSION=1.3.0
 
 if [[ -z ${CUDA_VERSION} ]]; then
@@ -75,8 +75,8 @@ else
   # Remove dots from CUDA version string, if any.
   CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
   echo "Using CUDA_VERSION ${CUDA_VERSION}"
-  if [[ "${CUDA_VERSION_CODE}" != "111" ]] && [[ "${CUDA_VERSION_CODE}" != "102" ]] ; then
-    echo "CUDA version must be either 10.2 or 11.1"
+  if [[ "${CUDA_VERSION_CODE}" != "111" && "${CUDA_VERSION_CODE}" != "110" && "${CUDA_VERSION_CODE}" != "102" ]] ; then
+    echo "CUDA version must be either 10.2 or 11.1 or 11.0"
     exit 1
   fi
   if [[ "${CUDA_VERSION_CODE}" == "102" ]] ; then
@@ -84,9 +84,9 @@ else
       echo "if CUDA version is 10.2, then PyTorch must be either 1.8.1 or 1.9.0"
       exit 1
     fi
-  elif [[ "${CUDA_VERSION_CODE}" == "111" ]] ; then
+  elif [[ "${CUDA_VERSION_CODE}" == "111" || "${CUDA_VERSION_CODE}" == "110" ]] ; then
     if [[ "${TORCH_VERSION}" != "1.9.0" ]]; then
-      echo "if CUDA version is 11.1, then PyTorch must be 1.9.0"
+      echo "if CUDA version is 11.1 or 11.0, then PyTorch must be 1.9.0"
       exit 1
     fi
   fi
