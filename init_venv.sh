@@ -89,6 +89,9 @@ else
       echo "if CUDA version is 11.1 or 11.0, then PyTorch must be 1.9.0"
       exit 1
     fi
+    if [[ "${CUDA_VERSION_CODE}" == "110" ]]; then #TODO: IT IS A RUDE HACK! FIX IT!
+      CUDA_VERSION_CODE=111
+    fi
   fi
 fi
 
