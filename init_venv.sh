@@ -37,7 +37,7 @@ if [[ -e ${venv_dir} ]]; then
   echo
   echo "Virtualenv already exists. Use command to start working:"
   echo "$ . ${venv_dir}/bin/activate"
-  exit
+  echo
 fi
 
 # Create virtual environment
