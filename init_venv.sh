@@ -100,19 +100,19 @@ pip install wheel -c ${CONSTRAINTS_FILE} || exit 1
 pip install --upgrade setuptools -c ${CONSTRAINTS_FILE} || exit 1
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
-  echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
-  echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
   pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html \
           -c ${CONSTRAINTS_FILE} || exit 1
+  echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
 elif [[ $CUDA_VERSION_CODE == "102" ]]; then
-  echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
-  echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
   pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -c ${CONSTRAINTS_FILE} || exit 1
-else
   echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
   echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
+else
   pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/torch_stable.html \
           -c ${CONSTRAINTS_FILE} || exit 1
+  echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
+  echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
 fi
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
