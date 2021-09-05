@@ -162,6 +162,7 @@ class SampleTestCase(unittest.TestCase):
                                osp.join(cls.coco_dir, 'annotations/instances_val2017.json'),
                                cls.shorten_to)
 
+    @pytest.mark.skip(reason="Temporary skip on CI -- cause 'Connection timed out' error")
     @e2e_pytest_api
     def test_sample_on_cpu(self):
         output = run('export CUDA_VISIBLE_DEVICES=;'
@@ -171,6 +172,7 @@ class SampleTestCase(unittest.TestCase):
                      shell=True, check=True)
         assert output.returncode == 0
 
+    @pytest.mark.skip(reason="Temporary skip on CI -- cause 'Connection timed out' error")
     @e2e_pytest_api
     def test_sample_on_gpu(self):
         output = run('export CUDA_VISIBLE_DEVICES=0;'
