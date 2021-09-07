@@ -268,6 +268,10 @@ class OTETrainingImpl:
             num_checkpoints = 10
         else:
             num_checkpoints = 30
+
+        #### TODO: fixed parameter, delete this
+        params.learning_parameters.batch_size = 2
+
         params.learning_parameters.num_checkpoints = num_checkpoints
 
         self.environment, self.task = self._create_environment_and_task(params,
@@ -442,35 +446,35 @@ class TestOTETraining:
 
     DEFAULT_NUM_ITERS = 10
     test_bunches = [
-#            TestBunch(
-#                model_name=[
-#                    'face-detection-0200',
-#                    'face-detection-0202',
-#                    'face-detection-0204',
-#                    'face-detection-0205',
-#                    'face-detection-0206',
-#                    'face-detection-0207',
-#                ],
-#                dataset_name='airport_faces',
-#                num_training_iters=None,
-#                usecase='precommit',
-#            ),
-#            TestBunch(
-#                model_name=[
-#                    'horizontal-text-detection-0001',
-#                ],
-#                dataset_name='horizontal_text_detection',
-#                num_training_iters=None,
-#                usecase='precommit',
-#            ),
+           TestBunch(
+               model_name=[
+                   'face-detection-0200',
+                   'face-detection-0202',
+                   'face-detection-0204',
+                   'face-detection-0205',
+                   'face-detection-0206',
+                   'face-detection-0207',
+               ],
+               dataset_name='airport_faces',
+               num_training_iters=None,
+               usecase='precommit',
+           ),
+           TestBunch(
+               model_name=[
+                   'horizontal-text-detection-0001',
+               ],
+               dataset_name='horizontal_text_detection',
+               num_training_iters=None,
+               usecase='precommit',
+           ),
             TestBunch(
                 model_name=[
-                    'mobilenet_v2-2s_ssd-256x256',
-#                    'mobilenet_v2-2s_ssd-384x384',
-#                    'mobilenet_v2-2s_ssd-512x512',
-#                    'mobilenetV2_ATSS',
-#                    'mobilenetV2_SSD',
-#                    'resnet50_VFNet'
+                   'mobilenet_v2-2s_ssd-256x256',
+                   'mobilenet_v2-2s_ssd-384x384',
+                   'mobilenet_v2-2s_ssd-512x512',
+                   'mobilenetV2_ATSS',
+                   'mobilenetV2_SSD',
+                   'resnet50_VFNet'
                 ],
                 dataset_name='vitens_tiled_shortened_500_A',
                 num_training_iters=None,
@@ -478,16 +482,37 @@ class TestOTETraining:
             ),
             TestBunch(
                 model_name=[
-                    'mobilenet_v2-2s_ssd-256x256',
-#                    'mobilenet_v2-2s_ssd-384x384',
-#                    'mobilenet_v2-2s_ssd-512x512',
-#                    'mobilenetV2_ATSS',
-#                    'mobilenetV2_SSD',
-#                    'resnet50_VFNet'
+                    'person-detection-0200',
+                    'person-detection-0201',
+                    'person-detection-0202',
+                    'person-detection-0203'
                 ],
-                dataset_name='bbcd',
-                num_training_iters=350,
-                usecase='reallife',
+                dataset_name='airport_person',
+                num_training_iters=None,
+                usecase='precommit',
+            ),
+            TestBunch(
+                model_name=[
+                    'person-vehicle-bike-detection-2000',
+                    'person-vehicle-bike-detection-2001',
+                    'person-vehicle-bike-detection-2002',
+                    'person-vehicle-bike-detection-2003',
+                    'person-vehicle-bike-detection-2004'
+                ],
+                dataset_name='airport_example',
+                num_training_iters=None,
+                usecase='precommit',
+            ),
+            TestBunch(
+                model_name=[
+                    'vehicle-detection-0200',
+                    'vehicle-detection-0201',
+                    'vehicle-detection-0202',
+                    'vehicle-detection-0203',
+                ],
+                dataset_name='vehicle_detection',
+                num_training_iters=None,
+                usecase='precommit',
             ),
     ]
 
