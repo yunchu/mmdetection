@@ -282,7 +282,9 @@ class EarlyStoppingHook(Hook):
             return
 
         if runner.rank == 0:
+            print('||||| ', runner.log_buffer.output)
             if self.key_indicator not in runner.log_buffer.output:
+                # key_score = 0
                 raise KeyError(
                     f'metric {self.key_indicator} does not exist in buffer. Please check '
                     f'{self.key_indicator} is cached in evaluation output buffer'
@@ -464,3 +466,114 @@ class ReduceLROnPlateauLrUpdaterHook(LrUpdaterHook):
                 logger=runner.logger)
             self.current_lr = max(self.current_lr * self.factor, self.min_lr)
         return self.current_lr
+
+
+# @HOOKS.register_module()
+class ClusterAnchorBoxesHook(Hook):
+    """ Cluster anchor boxes based on the object statistics from the training dataset
+    and the number of anchors for each head.
+
+    :param group_as:
+    :param min_box_size:
+
+    """
+
+    def __init__(self,
+                 group_as: list = [4, 5],
+                 min_box_size: list = [0, 0]):
+        super().__init__()
+        self.group_as = group_as
+        self.min_box_size = min_box_size
+
+    def before_run(self, runner):
+        wh_stats = self._get_sizes_from_config(runner)
+
+        pass
+
+    def _get_sizes_from_config(runner, min_box_size, update_config):
+        from tqdm import tqdm
+        from mmdet.datasets import build_dataloader
+        dataset = runner.data_loader.dataset
+        #TODO: Get target image wh as a img_scale of test_pipeline
+        target_image_wh = (864, 864)
+
+        # if dataset.type == 'CocoDataset':
+        #     annotation_paths = [dataset.ann_file]
+        #     roots = [dataset.img_prefix]
+        #     sizes = []
+        #     for annotation_path, root in zip(annotation_paths, roots):
+        #         sizes.extend(get_sizes_from_coco(annotation_path, root, target_image_wh, min_box_size))
+        #     return sizes
+
+        #TODO: Avoid creating other dataloader
+        data_loader = build_dataloader(
+            dataset,
+            imgs_per_gpu=1,
+            workers_per_gpu=4,
+            dist=False,
+            shuffle=False)
+
+        print('Collecting statistics...')
+        wh_stats = []
+        for data_batch in tqdm(iter(data_loader)):
+            boxes = data_batch['gt_bboxes'].data[0][0].numpy()
+            for box in boxes:
+                w = box[2] - box[0] + 1
+                h = box[3] - box[1] + 1
+                if w > min_box_size[0] and h > min_box_size[1]:
+                    wh_stats.append((w, h))
+
+        return wh_stats
+
+    # def get_sizes_from_coco(annotation_path, root, target_image_wh, min_box_size):
+    #     import imagesize
+    #     with open(annotation_path) as f:
+    #         content = json.load(f)
+    #
+    #     images_wh = {}
+    #     wh_stats = []
+    #     for image_info in tqdm(content['images']):
+    #         image_path = os.path.join(root, image_info['file_name'])
+    #         images_wh[image_info['id']] = imagesize.get(image_path)
+    #
+    #     for ann in content['annotations']:
+    #         w, h = ann['bbox'][2:4]
+    #         image_wh = images_wh[ann['image_id']]
+    #         w, h = w / image_wh[0], h / image_wh[1]
+    #         w, h = w * target_image_wh[0], h * target_image_wh[1]
+    #         if w > min_box_size[0] and h > min_box_size[1]:
+    #             wh_stats.append((w, h))
+    #
+    #     return wh_stats
+
+    def _check_head(self, runner):
+        pass
+        # """Check whether the `num_classes` in head matches the length of
+        # `CLASSES` in `dataset`.
+        # Args:
+        #     runner (obj:`EpochBasedRunner`): Epoch based Runner.
+        # """
+        # model = runner.model
+        # dataset = runner.data_loader.dataset
+        # if dataset.CLASSES is None:
+        #     runner.logger.warning(
+        #         f'Please set `CLASSES` '
+        #         f'in the {dataset.__class__.__name__} and'
+        #         f'check if it is consistent with the `num_classes` '
+        #         f'of head')
+        # else:
+        #     assert type(dataset.CLASSES) is not str, \
+        #         (f'`CLASSES` in {dataset.__class__.__name__}'
+        #          f'should be a tuple of str.'
+        #          f'Add comma if number of classes is 1 as '
+        #          f'CLASSES = ({dataset.CLASSES},)')
+        #     for name, module in model.named_modules():
+        #         if hasattr(module, 'num_classes') and not isinstance(
+        #                 module, (RPNHead, VGG, FusedSemanticHead, GARPNHead)):
+        #             assert module.num_classes == len(dataset.CLASSES), \
+        #                 (f'The `num_classes` ({module.num_classes}) in '
+        #                  f'{module.__class__.__name__} of '
+        #                  f'{model.__class__.__name__} does not matches '
+        #                  f'the length of `CLASSES` '
+        #                  f'{len(dataset.CLASSES)}) in '
+        #                  f'{dataset.__class__.__name__}')
