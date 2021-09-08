@@ -11,30 +11,38 @@ import unittest
 import warnings
 import yaml
 from concurrent.futures import ThreadPoolExecutor
+
 from ote_sdk.configuration.helper import convert, create
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneKind
 from ote_sdk.entities.id import ID
 from ote_sdk.entities.metrics import Performance
-from ote_sdk.entities.model_template import parse_model_template
+from ote_sdk.entities.model_template import parse_model_template, TargetDevice
+from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.shapes.box import Box
 from ote_sdk.entities.shapes.ellipse import Ellipse
 from ote_sdk.entities.shapes.polygon import Polygon
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.entities.train_parameters import TrainParameters
+from ote_sdk.entities.model import (ModelPrecision,
+                                    ModelStatus,
+                                    ModelOptimizationType,
+                                    OptimizationMethod)
+from ote_sdk.entities.resultset import ResultSetEntity
+from ote_sdk.usecases.tasks.interfaces.export_interface import (
+    ExportType,
+    IExportTask,
+    )
+from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
+
 from sc_sdk.entities.annotation import AnnotationScene
 from sc_sdk.entities.dataset_item import DatasetItem
 from sc_sdk.entities.datasets import Dataset, NullDatasetStorage, Subset
 from sc_sdk.entities.image import Image
 from sc_sdk.entities.media_identifier import ImageIdentifier
 from sc_sdk.entities.model import Model, ModelStatus, NullModelStorage
-from sc_sdk.entities.optimized_model import (ModelOptimizationType,
-                                             ModelPrecision, OptimizedModel,
-                                             TargetDevice)
-from sc_sdk.entities.resultset import ResultSet
 from sc_sdk.tests.test_helpers import generate_random_annotated_image
-from sc_sdk.usecases.tasks.interfaces.export_interface import (ExportType,
-                                                               IExportTask)
 from sc_sdk.utils.project_factory import NullProject
+
 from subprocess import run
 from typing import Optional
 
@@ -51,27 +59,27 @@ class ModelTemplate(unittest.TestCase):
 
     @e2e_pytest_api
     def test_reading_mnv2_ssd_256(self):
-        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml')
 
     @e2e_pytest_api
     def test_reading_mnv2_ssd_384(self):
-        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-384x384/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-384x384/template.yaml')
 
     @e2e_pytest_api
     def test_reading_mnv2_ssd_512(self):
-        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-512x512/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-512x512/template.yaml')
 
     @e2e_pytest_api
     def test_reading_mnv2_ssd(self):
-        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_SSD/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_SSD/template.yaml')
 
     @e2e_pytest_api
     def test_reading_mnv2_atss(self):
-        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_ATSS/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/mobilenetV2_ATSS/template.yaml')
 
     @e2e_pytest_api
     def test_reading_resnet50_vfnet(self):
-        parse_model_template('./configs/ote/custom-object-detection/resnet50_VFNet/template.yaml', '1')
+        parse_model_template('./configs/ote/custom-object-detection/resnet50_VFNet/template.yaml')
 
 @e2e_pytest_api
 def test_configuration_yaml():
@@ -88,7 +96,7 @@ def test_configuration_yaml():
 def test_set_values_as_default():
     template_dir = './configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/'
     template_file = osp.join(template_dir, 'template.yaml')
-    model_template = parse_model_template(template_file, '1')
+    model_template = parse_model_template(template_file)
 
     hyper_parameters = model_template.hyper_parameters.data
     # value that comes from template.yaml
@@ -105,7 +113,7 @@ def test_set_values_as_default():
     hyper_parameters = create(hyper_parameters)
     assert default_value == hyper_parameters.learning_parameters.batch_size
 
-class SampleTestCase(unittest.TestCase):
+class Sample(unittest.TestCase):
     root_dir = '/tmp'
     coco_dir = osp.join(root_dir, 'data/coco')
     snapshots_dir = osp.join(root_dir, 'snapshots')
@@ -176,7 +184,7 @@ class SampleTestCase(unittest.TestCase):
         assert output.returncode == 0
 
 
-class TestOTEAPI(unittest.TestCase):
+class API(unittest.TestCase):
     """
     Collection of tests for OTE API and OTE Model Templates
     """
@@ -236,7 +244,7 @@ class TestOTEAPI(unittest.TestCase):
         return environment, dataset
 
     def setup_configurable_parameters(self, template_dir, num_iters=250):
-        model_template = parse_model_template(osp.join(template_dir, 'template.yaml'), '1')
+        model_template = parse_model_template(osp.join(template_dir, 'template.yaml'))
 
         hyper_parameters = model_template.hyper_parameters.data
         set_values_as_default(hyper_parameters)
@@ -333,7 +341,7 @@ class TestOTEAPI(unittest.TestCase):
         result_dataset = task.infer(dataset.with_empty_annotations())
         end_time = time.time()
         print(f'{len(dataset)} analysed in {end_time - start_time} seconds')
-        result_set = ResultSet(
+        result_set = ResultSetEntity(
             model=model,
             ground_truth_dataset=dataset,
             prediction_dataset=result_dataset
@@ -341,19 +349,20 @@ class TestOTEAPI(unittest.TestCase):
         performance = task.evaluate(result_set)
         return performance
 
-    def train_and_eval(self, template_dir):
-        """
-        Run training, analysis, evaluation and model optimization
+    def check_threshold(self, reference, value, delta_tolerance, message=''):
+        delta = value.score.value - reference.score.value
+        self.assertLessEqual(
+            np.abs(delta),
+            delta_tolerance,
+            msg=message +
+                f' (reference metric: {reference.score.value}, '
+                f'actual value: {value.score.value}, '
+                f'delta tolerance threshold: {delta_tolerance})'
+            )
 
-        Flow of the test:
-        - Creates a randomly annotated project with a small dataset containing 3 classes:
-            ['rectangle', 'triangle', 'circle'].
-        - Trains a model for 10 epochs. Asserts that validation F-measure is larger than the threshold and
-            also that OpenVINO optimization runs successfully.
-        - Reloads the model in the task and recompute the performance. Asserts that the performance
-            difference between the original and the reloaded model is smaller than 1e-4. Ideally there should be no
-            difference at all.
-        """
+    def end_to_end(self, template_dir, quality_score_threshold=0.5, reload_perf_delta_tolerance=0.0,
+        export_perf_delta_tolerance=0.0005, pot_perf_delta_tolerance=0.1):
+
         hyper_parameters, model_template = self.setup_configurable_parameters(template_dir, num_iters=150)
         detection_environment, dataset = self.init_environment(hyper_parameters, model_template, 250)
 
@@ -363,7 +372,7 @@ class TestOTEAPI(unittest.TestCase):
 
         print('Task initialized, model training starts.')
         # Train the task.
-        # train_task checks that the task returns an OptimizedModel and that
+        # train_task checks that the task returns an Model and that
         # validation f-measure is higher than the threshold, which is a pretty low bar
         # considering that the dataset is so easy
         output_model = Model(
@@ -380,15 +389,15 @@ class TestOTEAPI(unittest.TestCase):
         self.assertTrue('ellipse' in modelinfo['labels'])
 
         if isinstance(task, IExportTask):
-            exported_model = OptimizedModel(
+            exported_model = Model(
                 NullProject(),
                 NullModelStorage(),
                 dataset,
                 detection_environment.get_model_configuration(),
-                ModelOptimizationType.MO,
+                optimization_type=ModelOptimizationType.MO,
                 precision=[ModelPrecision.FP32],
                 optimization_methods=[],
-                optimization_level={},
+                optimization_objectives={},
                 target_device=TargetDevice.UNSPECIFIED,
                 performance_improvement={},
                 model_size_reduction=1.,
@@ -397,10 +406,9 @@ class TestOTEAPI(unittest.TestCase):
 
         # Run inference
         validation_performance = self.eval(task, output_model, val_dataset)
-        print(f'Evaluated model to have a performance of {validation_performance}')
-        score_threshold = 0.5
-        self.assertGreater(validation_performance.score.value, score_threshold,
-            f'Expected F-measure to be higher than {score_threshold}')
+        print(f'Performance: {validation_performance.score.value:.4f}')
+        self.assertGreater(validation_performance.score.value, quality_score_threshold,
+            f'Expected F-measure to be higher than {quality_score_threshold}')
 
         print('Reloading model.')
         first_model = output_model
@@ -425,56 +433,66 @@ class TestOTEAPI(unittest.TestCase):
         print('Reevaluating model.')
         # Performance should be the same after reloading
         performance_after_reloading = self.eval(task, output_model, val_dataset)
-        performance_delta = performance_after_reloading.score.value - validation_performance.score.value
-        perf_delta_tolerance = 0.0
-
-        self.assertEqual(np.abs(performance_delta), perf_delta_tolerance,
-                         msg=f'Expected no performance difference after reloading. Performance delta '
-                             f'({validation_performance.score.value} vs {performance_after_reloading.score.value}) was '
-                             f'larger than the tolerance of {perf_delta_tolerance}')
-
-        print(f'Performance: {validation_performance.score.value:.4f}')
         print(f'Performance after reloading: {performance_after_reloading.score.value:.4f}')
-        print(f'Performance delta after reloading: {performance_delta:.6f}')
+        self.check_threshold(validation_performance, performance_after_reloading, reload_perf_delta_tolerance,
+            'Too big performance difference after model reload.')
 
         if isinstance(task, IExportTask):
             detection_environment.model = exported_model
             ov_task = OpenVINODetectionTask(detection_environment)
             predicted_validation_dataset = ov_task.infer(val_dataset.with_empty_annotations())
-            resultset = ResultSet(
+            resultset = ResultSetEntity(
                 model=output_model,
                 ground_truth_dataset=val_dataset,
                 prediction_dataset=predicted_validation_dataset,
             )
             export_performance = ov_task.evaluate(resultset)
-            print(export_performance)
-            performance_delta = export_performance.score.value - validation_performance.score.value
-            perf_delta_tolerance = 0.0005
-            self.assertLess(np.abs(performance_delta), perf_delta_tolerance,
-                        msg=f'Expected no or very small performance difference after export. Performance delta '
-                            f'({validation_performance.score.value} vs {export_performance.score.value}) was '
-                            f'larger than the tolerance of {perf_delta_tolerance}')
+            print(f'Performance of exported model: {export_performance.score.value:.4f}')
+            self.check_threshold(validation_performance, export_performance, export_perf_delta_tolerance,
+                'Too big performance difference after OpenVINO export.')
+
+            print('Run POT optimization.')
+            optimized_model = Model(
+                NullProject(),
+                NullModelStorage(),
+                dataset,
+                detection_environment.get_model_configuration(),
+                optimization_type=ModelOptimizationType.POT,
+                optimization_methods=OptimizationMethod.QUANTIZATION,
+                optimization_objectives={},
+                precision=[ModelPrecision.INT8],
+                target_device=TargetDevice.CPU,
+                performance_improvement={},
+                model_size_reduction=1.,
+                model_status=ModelStatus.NOT_READY)
+            ov_task.optimize(OptimizationType.POT, dataset, optimized_model, OptimizationParameters())
+
+            pot_performance = self.eval(ov_task, optimized_model, val_dataset)
+            print(f'Performance of optimized model: {pot_performance.score.value:.4f}')
+            self.check_threshold(validation_performance, pot_performance, pot_perf_delta_tolerance,
+                'Too big performance difference after POT optimization.')
 
     @e2e_pytest_api
     def test_training_custom_mobilenetssd_256(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-256x256'))
 
     @e2e_pytest_api
     def test_training_custom_mobilenetssd_384(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-384x384'))
 
     @e2e_pytest_api
     def test_training_custom_mobilenetssd_512(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenet_v2-2s_ssd-512x512'))
 
     @e2e_pytest_api
     def test_training_custom_mobilenet_atss(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS'))
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS'))
 
     @e2e_pytest_api
     def test_training_custom_mobilenet_ssd(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_SSD'))
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_SSD'))
 
     @e2e_pytest_api
-    def test_training_custom_mobilenet_vfnet(self):
-        self.train_and_eval(osp.join('configs', 'ote', 'custom-object-detection', 'resnet50_VFNet'))
+    def test_training_custom_resnet_vfnet(self):
+        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'resnet50_VFNet'),
+                        export_perf_delta_tolerance=0.01)
