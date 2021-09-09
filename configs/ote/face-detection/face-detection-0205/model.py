@@ -1,16 +1,15 @@
-_base_ = [
-    './coco_data_pipeline.py'
-]
 # model settings
+input_size = 416
 width_mult = 1.0
 model = dict(
     type='FCOS',
-    pretrained=True,
     backbone=dict(
         type='mobilenetv2_w1',
         out_indices=(3, 4, 5),
         frozen_stages=-1,
-        norm_eval=False),
+        norm_eval=False,
+        pretrained=True,
+    ),
     neck=dict(
         type='FPN',
         in_channels=[int(width_mult * 32), int(width_mult * 96), int(width_mult * 320)],
@@ -36,12 +35,13 @@ model = dict(
         loss_bbox=dict(type='IoULoss', loss_weight=1.0),
         loss_centerness=dict(
             type='CrossEntropyLoss', use_sigmoid=True, loss_weight=1.0)),
+    # model training and testing settings
     train_cfg=dict(
         assigner=dict(
             type='MaxIoUAssigner',
             pos_iou_thr=0.4,
             neg_iou_thr=0.4,
-            min_pos_iou=0.0,
+            min_pos_iou=0.,
             ignore_iof_thr=-1,
             gt_max_assign_all=False),
         smoothl1_beta=1.,
@@ -56,7 +56,73 @@ model = dict(
         min_bbox_size=0,
         score_thr=0.02,
         max_per_img=200))
-evaluation = dict(interval=1000, metric='mAP')
+# training and testing settings
+cudnn_benchmark = True
+# dataset settings
+dataset_type = 'CocoDataset'
+data_root = 'data/WIDERFace/'
+img_norm_cfg = dict(mean=[0, 0, 0], std=[255, 255, 255], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadImageFromFile', to_float32=True),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(
+        type='PhotoMetricDistortion',
+        brightness_delta=32,
+        contrast_range=(0.5, 1.5),
+        saturation_range=(0.5, 1.5),
+        hue_delta=18),
+    dict(
+        type='MinIoURandomCrop',
+        min_ious=(0.1, 0.3, 0.5, 0.7, 0.9),
+        min_crop_size=0.1),
+    dict(type='Resize', img_scale=(input_size, input_size), keep_ratio=False),
+    dict(type='Normalize', **img_norm_cfg),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels']),
+]
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(input_size, input_size),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=False),
+            dict(type='Normalize', **img_norm_cfg),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img']),
+        ])
+]
+data = dict(
+    samples_per_gpu=32,
+    workers_per_gpu=4,
+    train=dict(
+        type='RepeatDataset',
+        times=2,
+        dataset=dict(
+            type=dataset_type,
+            classes=('face',),
+            ann_file=data_root + '/train.json',
+            min_size=10,
+            img_prefix=data_root,
+            pipeline=train_pipeline
+        )
+    ),
+    val=dict(
+        type=dataset_type,
+        classes=('face',),
+        ann_file=data_root + '/val.json',
+        img_prefix=data_root,
+        test_mode=True,
+        pipeline=test_pipeline),
+    test=dict(
+        type=dataset_type,
+        classes=('face',),
+        ann_file=data_root + '/val.json',
+        img_prefix=data_root,
+        test_mode=True,
+        pipeline=test_pipeline))
 # optimizer
 optimizer = dict(type='SGD', lr=0.05, momentum=0.9, weight_decay=0.0005)
 optimizer_config = dict()
@@ -66,7 +132,7 @@ lr_config = dict(
     warmup='linear',
     warmup_iters=1200,
     warmup_ratio=1.0 / 3,
-    step=[40000, 55000, 65000])
+    step=[40, 55, 65])
 checkpoint_config = dict(interval=1)
 # yapf:disable
 log_config = dict(
@@ -77,11 +143,10 @@ log_config = dict(
     ])
 # yapf:enable
 # runtime settings
+total_epochs = 70
 dist_params = dict(backend='nccl')
-runner = dict(type='IterBasedRunner', max_iters=10000)
 log_level = 'INFO'
 work_dir = 'outputs/face-detection-0205'
-load_from = 'https://storage.openvinotoolkit.org/repositories/openvino_training_extensions/models/object_detection/v2/face-detection-0205-retrained.pth'
+load_from = None
 resume_from = None
 workflow = [('train', 1)]
-cudnn_benchmark = True
