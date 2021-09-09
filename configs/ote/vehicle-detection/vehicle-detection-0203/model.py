@@ -1,7 +1,3 @@
-_base_ = [
-    './coco_data_pipeline.py'
-]
-# model settings
 model = dict(
     type='CascadeRCNN',
     pretrained='torchvision://resnet18',
@@ -178,32 +174,88 @@ model = dict(
             min_bbox_size=0),
         rcnn=dict(
             score_thr=0.05, nms=dict(type='nms', iou_threshold=0.5), max_per_img=100)))
-evaluation = dict(interval=1000, metric='mAP')
-# optimizer
+dataset_type = 'CocoDataset'
+img_norm_cfg = dict(
+    mean=[123.675, 116.28, 103.53], std=[58.395, 57.12, 57.375], to_rgb=True)
+train_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(type='LoadAnnotations', with_bbox=True),
+    dict(type='Resize', img_scale=(1333, 800), keep_ratio=False),
+    dict(type='RandomFlip', flip_ratio=0.5),
+    dict(
+        type='Normalize',
+        mean=[123.675, 116.28, 103.53],
+        std=[58.395, 57.12, 57.375],
+        to_rgb=True),
+    dict(type='Pad', size_divisor=32),
+    dict(type='DefaultFormatBundle'),
+    dict(type='Collect', keys=['img', 'gt_bboxes', 'gt_labels'])
+]
+test_pipeline = [
+    dict(type='LoadImageFromFile'),
+    dict(
+        type='MultiScaleFlipAug',
+        img_scale=(1344, 800),
+        flip=False,
+        transforms=[
+            dict(type='Resize', keep_ratio=False),
+            dict(type='RandomFlip'),
+            dict(
+                type='Normalize',
+                mean=[123.675, 116.28, 103.53],
+                std=[58.395, 57.12, 57.375],
+                to_rgb=True),
+            dict(type='Pad', size_divisor=32),
+            dict(type='ImageToTensor', keys=['img']),
+            dict(type='Collect', keys=['img'])
+        ])
+]
+data = dict(
+    samples_per_gpu=2,
+    workers_per_gpu=2,
+    train=dict(
+        type='RepeatDataset',
+        times=5,
+        dataset=dict(
+            type=dataset_type,
+            classes=('ignored', 'vehicle',),
+            ann_file='data/annotations/instances_train2017car.json',
+            img_prefix='data/train2017',
+            min_size=20,
+            pipeline=train_pipeline)),
+    val=dict(
+        type=dataset_type,
+        classes=('ignored', 'vehicle',),
+        ann_file='data/annotations/instances_val2017car.json',
+        img_prefix='data/val2017',
+        test_mode=True,
+        pipeline=test_pipeline),
+    test=dict(
+        type=dataset_type,
+        classes=('ignored', 'vehicle',),
+        ann_file='data/annotations/instances_val2017car.json',
+        img_prefix='data/val2017',
+        test_mode=True,
+        pipeline=test_pipeline))
+evaluation = dict(interval=1, metric='bbox')
 optimizer = dict(type='SGD', lr=0.02, momentum=0.9, weight_decay=0.0001)
 optimizer_config = dict(grad_clip=dict(max_norm=35, norm_type=2))
-# learning policy
 lr_config = dict(
     policy='step',
     warmup='linear',
     warmup_iters=500,
     warmup_ratio=0.3333333333333333,
-    step=[8000, 11000])
+    step=[8, 11])
 checkpoint_config = dict(interval=1)
-# yapf:disable
 log_config = dict(
     interval=50,
-    hooks=[
-        dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
-    ])
-# yapf:enable
-# runtime settings
+    hooks=[dict(type='TextLoggerHook'),
+           dict(type='TensorboardLoggerHook')])
+total_epochs = 12
 dist_params = dict(backend='nccl')
-runner = dict(type='IterBasedRunner', max_iters=13000)
 log_level = 'INFO'
-work_dir = 'outputs/vehicle-detection-0203'
-load_from = 'https://download.01.org/opencv/openvino_training_extensions/models/object_detection/v3/vehicle-detection-0203.pth'
+work_dir = './cascade_r50'
+load_from = None
 resume_from = None
 workflow = [('train', 1)]
-cudnn_benchmark = True
+gpu_ids = range(0, 1)
