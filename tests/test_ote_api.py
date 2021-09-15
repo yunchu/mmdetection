@@ -65,6 +65,51 @@ from mmdet.datasets.custom import CustomDataset
 from mmdet.datasets.pipelines import Compose
 
 
+class Collect:
+
+    def __init__(self,
+                 keys):
+        self.keys = keys
+
+    def __call__(self, results):
+        data = {}
+        for key in self.keys:
+            data[key] = results[key]
+        return data
+
+
+class LoadImageFromOTEDataset:
+    def __init__(self, to_float32: bool = False):
+        self.to_float32 = to_float32
+
+    def __call__(self, results):
+        dataset_item = results['dataset_item']
+        img = dataset_item.numpy
+        shape = img.shape
+
+        assert img.shape[0] == results['height'], f"{img.shape[0]} != {results['height']}"
+        assert img.shape[1] == results['width'], f"{img.shape[1]} != {results['width']}"
+
+        filename = f"Dataset {results['dataset_id']}: Index {results['index']}"
+        results['filename'] = filename
+        results['ori_filename'] = filename
+        results['img'] = img
+        results['img_shape'] = shape
+        results['ori_shape'] = shape
+        # Set initial values for default meta_keys
+        results['pad_shape'] = shape
+        num_channels = 1 if len(shape) < 3 else shape[2]
+        results['img_norm_cfg'] = dict(
+            mean=np.zeros(num_channels, dtype=np.float32),
+            std=np.ones(num_channels, dtype=np.float32),
+            to_rgb=False)
+        results['img_fields'] = ['img']
+
+        if self.to_float32:
+            results['img'] = results['img'].astype(np.float32)
+
+        return results
+
 class OTEDataset2(Dataset):
 
     class _DataInfoProxy:
@@ -95,23 +140,24 @@ class OTEDataset2(Dataset):
 
             return data_info
 
-    def __init__(self, ote_dataset: Dataset, pipeline, classes=None):
+    def __init__(self, ote_dataset: Dataset, classes=None):
         self.data_infos = OTEDataset2._DataInfoProxy(ote_dataset, classes)
-        self.pipeline = Compose(pipeline)
-
+        self.transforms = []
+        self.transforms.append(LoadImageFromOTEDataset(to_float32=True))
+        self.transforms.append(Collect(keys=['img']))
 
     def __len__(self):
         return len(self.data_infos)
 
     def __getitem__(self, idx):
         data = deepcopy(self.data_infos[idx])
-        data = self.pipeline(data)
+        for t in self.transforms:
+            data = t(data)
+            if data is None:
+                return None
         return data
 
 class API(unittest.TestCase):
-    """
-    Collection of tests for OTE API and OTE Model Templates
-    """
 
     def body(self, save_to_repos):
         model_template = parse_model_template('configs/ote/custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml')
@@ -185,24 +231,15 @@ class API(unittest.TestCase):
         dataset = Dataset(NullDatasetStorage(), items)
         train_dataset = dataset.get_subset(Subset.TRAINING)
 
-
-        pipeline = [
-                {'type': 'LoadImageFromOTEDataset', 'to_float32': True},
-                {'type': 'RandomFlip', 'flip_ratio': 0.0},
-                {'type': 'DefaultFormatBundle'},
-                {'type': 'Collect', 'keys': ['img']}
-            ]
-
         classes = ['rectangle', 'ellipse', 'triangle']
 
-        mm_train_dataset = OTEDataset2(train_dataset, pipeline, classes)
+        mm_train_dataset = OTEDataset2(train_dataset, classes)
 
         items = []
         i = 0
         for a in range(100):
             for item in mm_train_dataset:
-                a = item.keys()
-                items.append(a)
+                items.append(item)
                 print(i)
                 i += 1
 
