@@ -89,47 +89,24 @@ class OTEDataset2(Dataset):
                 in the image
             """
 
-            dataset = self.ote_dataset
-            item = dataset[index]
-
-            height, width = item.height, item.width
-
-            data_info = dict(dataset_item=item, width=width, height=height, dataset_id=dataset.id, index=index,
-                            ann_info=dict(label_list=self.CLASSES))
+            item = self.ote_dataset[index]
+            data_info = dict(dataset_item=item, width=item.width, height=item.height, dataset_id=self.ote_dataset.id, index=index,
+                             ann_info=dict(label_list=self.CLASSES))
 
             return data_info
 
-    def __init__(self, ote_dataset: Dataset, pipeline, classes=None, test_mode: bool = False):
-        self.ote_dataset = ote_dataset
-        self.test_mode = test_mode
-        self.CLASSES = classes
-
-        # Instead of using list data_infos as in CustomDataset, this implementation of dataset
-        # uses a proxy class with overriden __len__ and __getitem__; this proxy class
-        # forwards data access operations to ote_dataset.
-        # Note that list `data_infos` cannot be used here, since OTE dataset class does not have interface to
-        # get only annotation of a data item, so we would load the whole data item (including image)
-        # even if we need only checking aspect ratio of the image; due to it
-        # this implementation of dataset does not uses such tricks as skipping images with wrong aspect ratios or
-        # small image size, since otherwise reading the whole dataset during initialization will be required.
-        self.data_infos = OTEDataset2._DataInfoProxy(ote_dataset, self.CLASSES)
-
-        self.proposals = None  # Attribute expected by mmdet but not used for OTE datasets
-
+    def __init__(self, ote_dataset: Dataset, pipeline, classes=None):
+        self.data_infos = OTEDataset2._DataInfoProxy(ote_dataset, classes)
         self.pipeline = Compose(pipeline)
+
 
     def __len__(self):
         return len(self.data_infos)
 
     def __getitem__(self, idx):
-        assert self.test_mode is False
-        data = self.prepare_train_img(idx)
-        assert data is not None
+        data = deepcopy(self.data_infos[idx])
+        data = self.pipeline(data)
         return data
-
-    def prepare_train_img(self, idx: int) -> dict:
-        item = deepcopy(self.data_infos[idx])
-        return self.pipeline(item)
 
 class API(unittest.TestCase):
     """
@@ -234,6 +211,6 @@ class API(unittest.TestCase):
     def test_save_to_repos_true(self):
         self.body(save_to_repos=True)
 
-    # @e2e_pytest_api
-    # def test_save_to_repos_false(self):
-    #     self.body(save_to_repos=False)
+    @e2e_pytest_api
+    def test_save_to_repos_false(self):
+        self.body(save_to_repos=False)
