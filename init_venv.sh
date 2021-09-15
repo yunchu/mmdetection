@@ -65,13 +65,8 @@ if [ -e "$CUDA_HOME" ]; then
 fi
 
 # install PyTorch and MMCV.
-<<<<<<< HEAD
-export TORCH_VERSION=1.9.0
-export TORCHVISION_VERSION=0.10.0
-=======
 export TORCH_VERSION=1.8.1
 export TORCHVISION_VERSION=0.9.1
->>>>>>> dp/nous_sdk_api
 export MMCV_VERSION=1.3.0
 
 if [[ -z ${CUDA_VERSION} ]]; then
