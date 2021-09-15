@@ -3,8 +3,6 @@ import random
 import unittest
 from copy import deepcopy
 
-from torch.utils.data import Dataset
-
 from ote_sdk.entities.annotation import AnnotationSceneKind
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.model_template import parse_model_template
@@ -61,7 +59,7 @@ class LoadImageFromOTEDataset:
 
         return results
 
-class OTEDataset2(Dataset):
+class OTEDataset2:
 
     class _DataInfoProxy:
         """
