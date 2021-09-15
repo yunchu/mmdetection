@@ -3,12 +3,14 @@ import random
 import unittest
 from copy import deepcopy
 
+import numpy as np
+
 from ote_sdk.entities.annotation import AnnotationSceneKind
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.model_template import parse_model_template
 from ote_sdk.tests.test_helpers import generate_random_annotated_image
 
-from sc_sdk.entities.annotation import AnnotationScene
+from sc_sdk.entities.annotation import AnnotationScene, NullAnnotationScene
 from sc_sdk.entities.dataset_item import DatasetItem
 from sc_sdk.entities.datasets import Dataset, NullDatasetStorage
 from sc_sdk.entities.image import Image
@@ -33,38 +35,12 @@ from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.image import Image
 
 
-class Collect:
-
-    def __init__(self,
-                 keys):
-        self.keys = keys
-
-    def __call__(self, results):
-        data = {}
-        for key in self.keys:
-            data[key] = results[key]
-        return data
-
-
-class LoadImageFromOTEDataset:
-
-    def __call__(self, results):
-        dataset_item = results['dataset_item']
-        img = dataset_item.numpy
-
-        assert img.shape[0] == results['height'], f"{img.shape[0]} != {results['height']}"
-        assert img.shape[1] == results['width'], f"{img.shape[1]} != {results['width']}"
-
-        results['img'] = img
-
-        return results
-
 class OTEDataset2:
 
     def __init__(self, ote_dataset: Dataset, classes=None):
         self.ote_dataset = ote_dataset
         self.CLASSES = classes
-        self.transforms = [LoadImageFromOTEDataset(), Collect(keys=['img'])]
+        self.keys = ['img']
 
     def __len__(self):
             return len(self.ote_dataset)
@@ -74,11 +50,19 @@ class OTEDataset2:
         data_info = dict(dataset_item=item, width=item.width, height=item.height)
 
         data = deepcopy(data_info)
-        for t in self.transforms:
-            data = t(data)
-            if data is None:
-                return None
-        return data
+
+        dataset_item = data['dataset_item']
+        img = dataset_item.numpy
+
+        assert img.shape[0] == data['height']
+        assert img.shape[1] == data['width']
+
+        data['img'] = img
+
+        new_data = {}
+        new_data['img'] = data['img']
+
+        return new_data
 
 class API(unittest.TestCase):
 
@@ -87,14 +71,7 @@ class API(unittest.TestCase):
         workspace = WorkspaceRepo().get_default_workspace()
 
         number_of_images = 200
-        max_shapes = 10
-        min_size_shape = 50
-        max_size_shape = 100
-        random_seed = 42
         classes = ['rectangle', 'ellipse', 'triangle']
-
-        image_width = lambda : random.randrange(200, 500)
-        image_height = lambda : random.randrange(200, 500)
 
         project = ProjectFactory.create_project_single_task(
             name="name",
@@ -105,49 +82,21 @@ class API(unittest.TestCase):
             workspace=workspace,
         )
 
-        labels = project.get_labels()
-
         items = []
 
         for i in range(0, number_of_images):
-            name = f"image {i}"
-
-            image_numpy, annotations = generate_random_annotated_image(
-                image_width=image_width(),
-                image_height=image_height(),
-                labels=labels,
-                max_shapes=max_shapes,
-                min_size=min_size_shape,
-                max_size=max_size_shape,
-                random_seed=random_seed,
-            )
+            image_numpy = (np.random.rand(random.randrange(200, 500), random.randrange(200, 500), 3) * 225).astype(np.uint8)
             image = Image(
-                name=name, dataset_storage=project.dataset_storage, numpy=image_numpy
+                name=f"image {i}", dataset_storage=project.dataset_storage, numpy=image_numpy
             )
-            image_identifier = ImageIdentifier(image.id)
-
-            annotation_scene = AnnotationScene(
-                kind=AnnotationSceneKind.ANNOTATION,
-                media_identifier=image_identifier,
-                annotations=annotations,
-            )
-            items.append(DatasetItem(media=image, annotation_scene=annotation_scene))
+            items.append(DatasetItem(media=image, annotation_scene=NullAnnotationScene()))
 
         if save_to_repos:
             for i, item in enumerate(items):
                 ImageRepo(project.dataset_storage).save(item.media)
 
-        rng = random.Random()
-        rng.shuffle(items)
         for i, _ in enumerate(items):
-            subset_region = i / number_of_images
-            if subset_region >= 0.8:
-                subset = Subset.TESTING
-            elif subset_region >= 0.6:
-                subset = Subset.VALIDATION
-            else:
-                subset = Subset.TRAINING
-            items[i].subset = subset
+            items[i].subset = Subset.TRAINING
 
         dataset = Dataset(NullDatasetStorage(), items)
         train_dataset = dataset.get_subset(Subset.TRAINING)
