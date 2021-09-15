@@ -14,6 +14,7 @@
 
 import colorsys
 import importlib
+import numpy as np
 import os
 import random
 import subprocess
@@ -21,13 +22,11 @@ import tempfile
 import yaml
 from typing import Optional
 
-import numpy as np
+from ote_sdk.entities.label import Color, LabelEntity
+from ote_sdk.entities.label_schema import LabelGroup, LabelGroupType, LabelSchemaEntity
 from ote_sdk.entities.train_parameters import UpdateProgressCallback
-from ote_sdk.entities.label import Color
-from sc_sdk.entities.label import Label
-from ote_sdk.entities.label_schema import LabelGroup, LabelGroupType
-from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
-from sc_sdk.entities.label_schema import LabelSchema
+from ote_sdk.usecases.reporting.time_monitor_callback import \
+    TimeMonitorCallback
 
 
 class ColorPalette:
@@ -74,12 +73,12 @@ class ColorPalette:
 def generate_label_schema(label_names):
     label_domain = "detection"
     colors = ColorPalette(len(label_names)) if len(label_names) > 0 else []
-    not_empty_labels = [Label(name=name, color=colors[i], domain=label_domain, id=i) for i, name in
+    not_empty_labels = [LabelEntity(name=name, color=colors[i], domain=label_domain, id=i) for i, name in
                         enumerate(label_names)]
-    emptylabel = Label(name=f"Empty label", color=Color(42, 43, 46),
+    emptylabel = LabelEntity(name=f"Empty label", color=Color(42, 43, 46),
                        is_empty=True, domain=label_domain, id=len(not_empty_labels))
 
-    label_schema = LabelSchema()
+    label_schema = LabelSchemaEntity()
     exclusive_group = LabelGroup(name="labels", labels=not_empty_labels, group_type=LabelGroupType.EXCLUSIVE)
     empty_group = LabelGroup(name="empty", labels=[emptylabel], group_type=LabelGroupType.EMPTY_LABEL)
     label_schema.add_group(exclusive_group)
@@ -99,28 +98,24 @@ def get_task_class(path):
     return getattr(module, class_name)
 
 
-def reload_hyper_parameters(model_template):
-    """ This function copies template.yaml file and its configuration.yaml dependency to temporal folder.
-        Then it re-loads hyper parameters from copied template.yaml file.
-        This function should not be used in general case, it is assumed that
-        the 'configuration.yaml' should be in the same folder as 'template.yaml' file.
-    """
-
-    template_file = model_template.model_template_path
-    template_dir = os.path.dirname(template_file)
-    temp_folder = tempfile.mkdtemp()
-    conf_yaml = [dep.source for dep in model_template.dependencies if dep.destination == model_template.hyper_parameters.base_path][0]
-    conf_yaml = os.path.join(template_dir, conf_yaml)
-    subprocess.run(f'cp {conf_yaml} {temp_folder}', check=True, shell=True)
-    subprocess.run(f'cp {template_file} {temp_folder}', check=True, shell=True)
-    model_template.hyper_parameters.load_parameters(os.path.join(temp_folder, 'template.yaml'))
-    assert model_template.hyper_parameters.data
-
-
 class TrainingProgressCallback(TimeMonitorCallback):
-    def __init__(self, update_progress_callback: Optional[UpdateProgressCallback] = None):
+    def __init__(self, update_progress_callback: UpdateProgressCallback):
         super().__init__(0, 0, 0, 0, update_progress_callback=update_progress_callback)
 
     def on_train_batch_end(self, batch, logs=None):
         super().on_train_batch_end(batch, logs)
+        self.update_progress_callback(self.get_progress())
+
+
+class InferenceProgressCallback(TimeMonitorCallback):
+    def __init__(self, num_test_steps, update_progress_callback: UpdateProgressCallback):
+        super().__init__(
+            num_epoch=0,
+            num_train_steps=0,
+            num_val_steps=0,
+            num_test_steps=num_test_steps,
+            update_progress_callback=update_progress_callback)
+
+    def on_test_batch_end(self, batch=None, logs=None):
+        super().on_test_batch_end(batch, logs)
         self.update_progress_callback(self.get_progress())

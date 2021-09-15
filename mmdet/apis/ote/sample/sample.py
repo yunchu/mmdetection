@@ -13,31 +13,35 @@
 # and limitations under the License.
 
 import argparse
+import logging
 import os.path as osp
 import sys
 from ote_sdk.configuration.helper import create
 from ote_sdk.entities.inference_parameters import InferenceParameters
-from sc_sdk.entities.dataset_storage import NullDatasetStorage
-from sc_sdk.entities.datasets import Subset
-from sc_sdk.entities.model import Model, ModelStatus
-from sc_sdk.entities.model_storage import NullModelStorage
-from ote_sdk.entities.model_template import parse_model_template
-from sc_sdk.entities.optimized_model import (ModelOptimizationType,
-                                             ModelPrecision, OptimizedModel,
-                                             TargetDevice)
-from sc_sdk.entities.project import NullProject
-from sc_sdk.entities.resultset import ResultSet
+from ote_sdk.entities.model import (
+    ModelEntity,
+    ModelPrecision,
+    ModelStatus,
+    ModelOptimizationType,
+    OptimizationMethod,
+)
+from ote_sdk.entities.model_template import parse_model_template, TargetDevice
+from ote_sdk.entities.optimization_parameters import OptimizationParameters
+from ote_sdk.entities.resultset import ResultSetEntity
+from ote_sdk.entities.subset import Subset
+from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
+from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
 from ote_sdk.entities.task_environment import TaskEnvironment
-from sc_sdk.logging import logger_factory
-from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
 from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
 from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
-                                                     get_task_class,
-                                                     reload_hyper_parameters)
+                                                     get_task_class)
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
 
-logger = logger_factory.get_logger('Sample')
+from sc_sdk.entities.dataset_storage import NullDatasetStorage
+
+
+logger = logging.getLogger(__name__)
 
 
 def parse_args():
@@ -45,8 +49,7 @@ def parse_args():
     parser.add_argument('template_file_path', help='path to template file')
     parser.add_argument('--data-dir', default='data')
     parser.add_argument('--export', action='store_true')
-    args = parser.parse_args()
-    return args
+    return parser.parse_args()
 
 
 def main(args):
@@ -68,12 +71,7 @@ def main(args):
     logger.info(f'Validation dataset: {len(dataset.get_subset(Subset.VALIDATION))} items')
 
     logger.info('Load model template')
-    model_template = parse_model_template(args.template_file_path, '1')
-
-    # Here we have to reload parameters manually because
-    # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
-    if not model_template.hyper_parameters.data:
-        reload_hyper_parameters(model_template)
+    model_template = parse_model_template(args.template_file_path)
 
     hyper_parameters = model_template.hyper_parameters.data
     set_values_as_default(hyper_parameters)
@@ -90,9 +88,7 @@ def main(args):
     task = task_cls(task_environment=environment)
 
     logger.info('Train model')
-    output_model = Model(
-        NullProject(),
-        NullModelStorage(),
+    output_model = ModelEntity(
         dataset,
         environment.get_model_configuration(),
         model_status=ModelStatus.NOT_READY)
@@ -103,26 +99,24 @@ def main(args):
     predicted_validation_dataset = task.infer(
         validation_dataset.with_empty_annotations(),
         InferenceParameters(is_evaluation=True))
-    resultset = ResultSet(
+    resultset = ResultSetEntity(
         model=output_model,
         ground_truth_dataset=validation_dataset,
         prediction_dataset=predicted_validation_dataset,
     )
     logger.info('Estimate quality on validation set')
-    performance = task.evaluate(resultset)
-    logger.info(str(performance))
+    task.evaluate(resultset)
+    logger.info(str(resultset.performance))
 
     if args.export:
         logger.info('Export model')
-        exported_model = OptimizedModel(
-            NullProject(),
-            NullModelStorage(),
+        exported_model = ModelEntity(
             dataset,
             environment.get_model_configuration(),
-            ModelOptimizationType.MO,
+            optimization_type=ModelOptimizationType.MO,
             precision=[ModelPrecision.FP32],
             optimization_methods=[],
-            optimization_level={},
+            optimization_objectives={},
             target_device=TargetDevice.UNSPECIFIED,
             performance_improvement={},
             model_size_reduction=1.,
@@ -139,7 +133,7 @@ def main(args):
         predicted_validation_dataset = openvino_task.infer(
             validation_dataset.with_empty_annotations(),
             InferenceParameters(is_evaluation=True))
-        resultset = ResultSet(
+        resultset = ResultSetEntity(
             model=output_model,
             ground_truth_dataset=validation_dataset,
             prediction_dataset=predicted_validation_dataset,
@@ -148,7 +142,36 @@ def main(args):
         performance = openvino_task.evaluate(resultset)
         logger.info(str(performance))
 
+        logger.info('Run POT optimization')
+        optimized_model = ModelEntity(
+            dataset,
+            environment.get_model_configuration(),
+            optimization_type=ModelOptimizationType.POT,
+            optimization_methods=OptimizationMethod.QUANTIZATION,
+            optimization_objectives={},
+            precision=[ModelPrecision.INT8],
+            target_device=TargetDevice.CPU,
+            performance_improvement={},
+            model_size_reduction=1.,
+            model_status=ModelStatus.NOT_READY)
+        openvino_task.optimize(
+            OptimizationType.POT,
+            dataset.get_subset(Subset.TRAINING),
+            optimized_model,
+            OptimizationParameters())
+
+        logger.info('Get predictions on the validation set')
+        predicted_validation_dataset = openvino_task.infer(
+            validation_dataset.with_empty_annotations(),
+            InferenceParameters(is_evaluation=True))
+        resultset = ResultSetEntity(
+            model=optimized_model,
+            ground_truth_dataset=validation_dataset,
+            prediction_dataset=predicted_validation_dataset,
+        )
+        logger.info('Performance of optimized model:')
+        performance = openvino_task.evaluate(resultset)
+        logger.info(str(performance))
 
 if __name__ == '__main__':
-    args = parse_args()
-    sys.exit(main(args) or 0)
+    sys.exit(main(parse_args()) or 0)
