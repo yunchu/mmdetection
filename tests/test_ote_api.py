@@ -235,11 +235,12 @@ class API(unittest.TestCase):
 
         items = []
         i = 0
-        for item in mm_train_dataset:
-            a = item.keys()
-            items.append(a)
-            print(i)
-            i += 1
+        for a in range(100):
+            for item in mm_train_dataset:
+                a = item.keys()
+                items.append(a)
+                print(i)
+                i += 1
 
 
     @e2e_pytest_api
