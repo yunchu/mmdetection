@@ -129,15 +129,7 @@ class OTEDataset2(Dataset):
 
     def prepare_train_img(self, idx: int) -> dict:
         item = deepcopy(self.data_infos[idx])
-        self.pre_pipeline(item)
         return self.pipeline(item)
-
-    @staticmethod
-    def pre_pipeline(results: dict):
-        results['bbox_fields'] = []
-        results['mask_fields'] = []
-        results['seg_fields'] = []
-
 
 class API(unittest.TestCase):
     """
@@ -219,14 +211,9 @@ class API(unittest.TestCase):
 
         pipeline = [
                 {'type': 'LoadImageFromOTEDataset', 'to_float32': True},
-                {'type': 'LoadAnnotationFromOTEDataset', 'with_bbox': True},
-                {'type': 'PhotoMetricDistortion', 'brightness_delta': 32, 'contrast_range': (0.5, 1.5), 'saturation_range': (0.5, 1.5), 'hue_delta': 18},
-                {'type': 'MinIoURandomCrop', 'min_ious': (0.1, 0.3, 0.5, 0.7, 0.9), 'min_crop_size': 0.1},
-                {'type': 'Resize', 'img_scale': (256, 256), 'keep_ratio': False},
-                {'type': 'Normalize', 'mean': [0, 0, 0], 'std': [255, 255, 255], 'to_rgb': True},
-                {'type': 'RandomFlip', 'flip_ratio': 0.5},
+                {'type': 'RandomFlip', 'flip_ratio': 0.0},
                 {'type': 'DefaultFormatBundle'},
-                {'type': 'Collect', 'keys': ['img', 'gt_bboxes', 'gt_labels']}
+                {'type': 'Collect', 'keys': ['img']}
             ]
 
         classes = ['rectangle', 'ellipse', 'triangle']
