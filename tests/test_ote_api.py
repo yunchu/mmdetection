@@ -1,24 +1,12 @@
+
 import random
 import unittest
+from copy import deepcopy
 
-import os.path as osp
-import warnings
-from collections import OrderedDict
-from random import randrange
-
-import mmcv
-import numpy as np
-from mmcv.utils import print_log
 from torch.utils.data import Dataset
 
-from ote_sdk.configuration.helper import create
 from ote_sdk.entities.annotation import AnnotationSceneKind
 from ote_sdk.entities.subset import Subset
-from ote_sdk.entities.task_environment import TaskEnvironment
-from ote_sdk.entities.model import (
-    ModelEntity,
-    ModelStatus,
-)
 from ote_sdk.entities.model_template import parse_model_template
 from ote_sdk.tests.test_helpers import generate_random_annotated_image
 
@@ -28,8 +16,6 @@ from sc_sdk.entities.datasets import Dataset, NullDatasetStorage
 from sc_sdk.entities.image import Image
 from sc_sdk.entities.media_identifier import ImageIdentifier
 
-from mmdet.apis.ote.apis.detection import OTEDetectionTask
-from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
 from e2e_test_system import e2e_pytest_api
 
 
@@ -37,32 +23,16 @@ from sc_sdk.usecases.repos import ImageRepo
 
 from sc_sdk.tests.test_helpers import generate_random_annotated_image
 
-from sc_sdk.entities.model import Model
 from sc_sdk.usecases.repos.workspace_repo import WorkspaceRepo
 from sc_sdk.utils.project_factory import ProjectFactory
-from mmdet.datasets import build_dataloader, build_dataset
 
-import json
-import os
-from copy import deepcopy
-from typing import List
-
-import numpy as np
-
-from ote_sdk.entities.annotation import Annotation, AnnotationSceneKind
-from ote_sdk.entities.label import ScoredLabel
-from ote_sdk.entities.shapes.rectangle import Rectangle
+from ote_sdk.entities.annotation import AnnotationSceneKind
 from ote_sdk.entities.subset import Subset
 
-from sc_sdk.entities.annotation import AnnotationScene, NullMediaIdentifier
-from sc_sdk.entities.datasets import Dataset, DatasetItem, NullDataset
+from sc_sdk.entities.annotation import AnnotationScene
+from sc_sdk.entities.datasets import Dataset, DatasetItem
 from sc_sdk.entities.dataset_storage import NullDatasetStorage
 from sc_sdk.entities.image import Image
-
-from mmdet.datasets import CocoDataset
-from mmdet.datasets.builder import DATASETS
-from mmdet.datasets.custom import CustomDataset
-from mmdet.datasets.pipelines import Compose
 
 
 class Collect:
@@ -79,34 +49,15 @@ class Collect:
 
 
 class LoadImageFromOTEDataset:
-    def __init__(self, to_float32: bool = False):
-        self.to_float32 = to_float32
 
     def __call__(self, results):
         dataset_item = results['dataset_item']
         img = dataset_item.numpy
-        shape = img.shape
 
         assert img.shape[0] == results['height'], f"{img.shape[0]} != {results['height']}"
         assert img.shape[1] == results['width'], f"{img.shape[1]} != {results['width']}"
 
-        filename = f"Dataset {results['dataset_id']}: Index {results['index']}"
-        results['filename'] = filename
-        results['ori_filename'] = filename
         results['img'] = img
-        results['img_shape'] = shape
-        results['ori_shape'] = shape
-        # Set initial values for default meta_keys
-        results['pad_shape'] = shape
-        num_channels = 1 if len(shape) < 3 else shape[2]
-        results['img_norm_cfg'] = dict(
-            mean=np.zeros(num_channels, dtype=np.float32),
-            std=np.ones(num_channels, dtype=np.float32),
-            to_rgb=False)
-        results['img_fields'] = ['img']
-
-        if self.to_float32:
-            results['img'] = results['img'].astype(np.float32)
 
         return results
 
@@ -142,9 +93,7 @@ class OTEDataset2(Dataset):
 
     def __init__(self, ote_dataset: Dataset, classes=None):
         self.data_infos = OTEDataset2._DataInfoProxy(ote_dataset, classes)
-        self.transforms = []
-        self.transforms.append(LoadImageFromOTEDataset(to_float32=True))
-        self.transforms.append(Collect(keys=['img']))
+        self.transforms = [LoadImageFromOTEDataset(), Collect(keys=['img'])]
 
     def __len__(self):
         return len(self.data_infos)
@@ -168,6 +117,7 @@ class API(unittest.TestCase):
         min_size_shape = 50
         max_size_shape = 100
         random_seed = 42
+        classes = ['rectangle', 'ellipse', 'triangle']
 
         image_width = lambda : random.randrange(200, 500)
         image_height = lambda : random.randrange(200, 500)
@@ -175,7 +125,7 @@ class API(unittest.TestCase):
         project = ProjectFactory.create_project_single_task(
             name="name",
             description="description",
-            label_names=["rectangle", "ellipse", "triangle"],
+            label_names=classes,
             model_template_id=model_template.model_template_id,
             configurable_parameters=None,
             workspace=workspace,
@@ -188,12 +138,9 @@ class API(unittest.TestCase):
         for i in range(0, number_of_images):
             name = f"image {i}"
 
-            new_image_width = image_width() if callable(image_width) else image_width
-            new_image_height = image_height() if callable(image_height) else image_height
-
             image_numpy, annotations = generate_random_annotated_image(
-                image_width=new_image_width,
-                image_height=new_image_height,
+                image_width=image_width(),
+                image_height=image_height(),
                 labels=labels,
                 max_shapes=max_shapes,
                 min_size=min_size_shape,
@@ -231,8 +178,6 @@ class API(unittest.TestCase):
         dataset = Dataset(NullDatasetStorage(), items)
         train_dataset = dataset.get_subset(Subset.TRAINING)
 
-        classes = ['rectangle', 'ellipse', 'triangle']
-
         mm_train_dataset = OTEDataset2(train_dataset, classes)
 
         items = []
@@ -242,7 +187,6 @@ class API(unittest.TestCase):
                 items.append(item)
                 print(i)
                 i += 1
-
 
     @e2e_pytest_api
     def test_save_to_repos_true(self):
