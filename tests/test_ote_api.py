@@ -261,12 +261,14 @@ class API(unittest.TestCase):
     def test_cancel_training_detection(self):
         """
         Tests starting and cancelling training.
+
         Flow of the test:
         - Creates a randomly annotated project with a small dataset containing 3 classes:
             ['rectangle', 'triangle', 'circle'].
         - Start training and give cancel training signal after 10 seconds. Assert that training
             stops within 35 seconds after that
         - Start training and give cancel signal immediately. Assert that training stops within 25 seconds.
+
         This test should be finished in under one minute on a workstation.
         """
         template_dir = osp.join('configs', 'ote', 'custom-object-detection', 'mobilenetV2_ATSS')
