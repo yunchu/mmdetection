@@ -1,6 +1,3 @@
-'mobilenet_v2-2s_ssd-256x256': ./custom-object-detection/mobilenet_v2-2s_ssd-256x256/template.yaml
-'mobilenet_v2-2s_ssd-384x384': ./custom-object-detection/mobilenet_v2-2s_ssd-384x384/template.yaml
-'mobilenet_v2-2s_ssd-512x512': ./custom-object-detection/mobilenet_v2-2s_ssd-512x512/template.yaml
 'mobilenetV2_ATSS': ./custom-object-detection/mobilenetV2_ATSS/template.yaml
 'mobilenetV2_SSD': ./custom-object-detection/mobilenetV2_SSD/template.yaml
 'resnet50_VFNet': ./custom-object-detection/resnet50_VFNet/template.yaml
