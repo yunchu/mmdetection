@@ -13,31 +13,33 @@ from pprint import pformat
 from ote_sdk.configuration.helper import create
 from ote_sdk.entities.inference_parameters import InferenceParameters
 from ote_sdk.entities.metrics import Performance, ScoreMetric
-from ote_sdk.entities.model_template import parse_model_template
+from ote_sdk.entities.model import (
+    ModelEntity,
+    ModelPrecision,
+    ModelStatus,
+    ModelOptimizationType,
+    OptimizationMethod,
+)
+from ote_sdk.entities.model_template import parse_model_template, TargetDevice
+from ote_sdk.entities.optimization_parameters import OptimizationParameters
+from ote_sdk.entities.resultset import ResultSetEntity
+from ote_sdk.entities.subset import Subset
+from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
+from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
 from ote_sdk.entities.task_environment import TaskEnvironment
-from sc_sdk.entities.dataset_storage import NullDatasetStorage
-from sc_sdk.entities.datasets import Subset
-from sc_sdk.entities.model import Model, ModelStatus
-from sc_sdk.entities.model_storage import NullModelStorage
-from sc_sdk.entities.optimized_model import (ModelOptimizationType,
-                                             ModelPrecision, OptimizedModel,
-                                             TargetDevice)
-from sc_sdk.entities.project import NullProject
-from sc_sdk.entities.resultset import ResultSet
-from sc_sdk.logging import logger_factory
-from sc_sdk.usecases.tasks.interfaces.export_interface import ExportType
 
 from mmdet.apis.ote.apis.detection.config_utils import set_values_as_default
 from mmdet.apis.ote.apis.detection.ote_utils import (generate_label_schema,
-                                                     get_task_class,
-                                                     reload_hyper_parameters)
+                                                     get_task_class)
 from mmdet.apis.ote.extension.datasets.mmdataset import MMDatasetAdapter
+from sc_sdk.entities.dataset_storage import NullDatasetStorage
 
 from e2e_test_system import e2e_pytest_performance, DataCollector
 
 
-logger_name = osp.splitext(osp.basename(__file__))[0]
-logger = logger_factory.get_logger(logger_name)
+#logger_name = osp.splitext(osp.basename(__file__))[0]
+#logger = logger_factory.get_logger(logger_name)
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 def DATASET_PARAMETERS_FIELDS():
@@ -248,12 +250,7 @@ class OTETrainingImpl:
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
         logger.debug('Load model template')
-        self.model_template = parse_model_template(self.template_file_path, '1')
-
-        # Here we have to reload parameters manually because
-        # `parse_model_template` was called when `configuration.yaml` was not near `template.yaml.`
-        if not self.model_template.hyper_parameters.data:
-            reload_hyper_parameters(self.model_template)
+        self.model_template = parse_model_template(self.template_file_path)
 
         hyper_parameters = self.model_template.hyper_parameters.data
         set_values_as_default(hyper_parameters)
@@ -279,9 +276,7 @@ class OTETrainingImpl:
                                                                         self.model_template)
 
         logger.debug('Train model')
-        self.output_model = Model(
-            NullProject(),
-            NullModelStorage(),
+        self.output_model = ModelEntity(
             self.dataset,
             self.environment.get_model_configuration(),
             model_status=ModelStatus.NOT_READY)
@@ -333,13 +328,14 @@ class OTETrainingImpl:
         self.predicted_validation_dataset = self.task.infer(
             validation_dataset.with_empty_annotations(),
             InferenceParameters(is_evaluation=True))
-        self.resultset = ResultSet(
+        self.resultset = ResultSetEntity(
             model=self.output_model,
             ground_truth_dataset=validation_dataset,
             prediction_dataset=self.predicted_validation_dataset,
         )
         logger.debug('Estimate quality on validation set')
-        self.evaluation_performance = self.task.evaluate(self.resultset)
+        self.task.evaluate(self.resultset)
+        self.evaluation_performance = self.resultset.performance
         logger.info(f'performance={self.evaluation_performance}')
         score_name, score_value = performance_to_score_name_value(self.evaluation_performance)
         data_collector.log_final_metric('evaluation_performance/' + score_name, score_value)
@@ -350,18 +346,9 @@ class OTETrainingImpl:
         # TODO(lbeynens): CONSIDER IT WITH Pavel
         self.environment_for_export = copy.copy(self.environment)
         logger.debug('Create exported model')
-        self.exported_model = OptimizedModel(
-            NullProject(),
-            NullModelStorage(),
+        self.exported_model = ModelEntity(
             self.dataset,
             self.environment_for_export.get_model_configuration(),
-            ModelOptimizationType.MO,
-            precision=[ModelPrecision.FP32],
-            optimization_methods=[],
-            optimization_level={},
-            target_device=TargetDevice.UNSPECIFIED,
-            performance_improvement={},
-            model_size_reduction=1.,
             model_status=ModelStatus.NOT_READY)
         logger.debug('Run export')
         self.task.export(ExportType.OPENVINO, self.exported_model)
@@ -407,13 +394,14 @@ class OTETrainingImpl:
         self.predicted_validation_dataset_exp = self.openvino_task.infer(
             validation_dataset.with_empty_annotations(),
             InferenceParameters(is_evaluation=True))
-        self.resultset_exp = ResultSet(
+        self.resultset_exp = ResultSetEntity(
             model=self.exported_model,
             ground_truth_dataset=validation_dataset,
             prediction_dataset=self.predicted_validation_dataset_exp,
         )
         logger.debug('Estimate quality on validation set')
-        self.evaluation_performance_exported = self.openvino_task.evaluate(self.resultset_exp)
+        self.openvino_task.evaluate(self.resultset_exp)
+        self.evaluation_performance_exported = self.resultset_exp.performance
 
         logger.info(f'performance exported={self.evaluation_performance_exported}')
         score_name, score_value = performance_to_score_name_value(self.evaluation_performance_exported)
@@ -444,34 +432,31 @@ def pytest_generate_tests(metafunc):
 class TestOTETraining:
     PERFORMANCE_RESULTS = None # it is required for e2e system
 
-    DEFAULT_NUM_ITERS = 10
+    DEFAULT_NUM_ITERS = 1
     test_bunches = [
-           TestBunch(
-               model_name=[
-                   'face-detection-0200',
-                   'face-detection-0202',
-                   'face-detection-0204',
-                   'face-detection-0205',
-                   'face-detection-0206',
-                   'face-detection-0207',
-               ],
-               dataset_name='airport_faces',
-               num_training_iters=None,
-               usecase='precommit',
-           ),
-           TestBunch(
-               model_name=[
-                   'horizontal-text-detection-0001',
-               ],
-               dataset_name='horizontal_text_detection',
-               num_training_iters=None,
-               usecase='precommit',
-           ),
+#           TestBunch(
+#               model_name=[
+#                   'face-detection-0200',
+#                   'face-detection-0202',
+#                   'face-detection-0204',
+#                   'face-detection-0205',
+#                   'face-detection-0206',
+#                   'face-detection-0207',
+#               ],
+#               dataset_name='airport_faces',
+#               num_training_iters=None,
+#               usecase='precommit',
+#           ),
+#           TestBunch(
+#               model_name=[
+#                   'horizontal-text-detection-0001',
+#               ],
+#               dataset_name='horizontal_text_detection',
+#               num_training_iters=None,
+#               usecase='precommit',
+#           ),
             TestBunch(
                 model_name=[
-                   'mobilenet_v2-2s_ssd-256x256',
-                   'mobilenet_v2-2s_ssd-384x384',
-                   'mobilenet_v2-2s_ssd-512x512',
                    'mobilenetV2_ATSS',
                    'mobilenetV2_SSD',
                    'resnet50_VFNet'
@@ -480,40 +465,40 @@ class TestOTETraining:
                 num_training_iters=None,
                 usecase='precommit',
             ),
-            TestBunch(
-                model_name=[
-                    'person-detection-0200',
-                    'person-detection-0201',
-                    'person-detection-0202',
-                    'person-detection-0203'
-                ],
-                dataset_name='airport_person',
-                num_training_iters=None,
-                usecase='precommit',
-            ),
-            TestBunch(
-                model_name=[
-                    'person-vehicle-bike-detection-2000',
-                    'person-vehicle-bike-detection-2001',
-                    'person-vehicle-bike-detection-2002',
-                    'person-vehicle-bike-detection-2003',
-                    'person-vehicle-bike-detection-2004'
-                ],
-                dataset_name='airport_example',
-                num_training_iters=None,
-                usecase='precommit',
-            ),
-            TestBunch(
-                model_name=[
-                    'vehicle-detection-0200',
-                    'vehicle-detection-0201',
-                    'vehicle-detection-0202',
-                    'vehicle-detection-0203',
-                ],
-                dataset_name='vehicle_detection',
-                num_training_iters=None,
-                usecase='precommit',
-            ),
+#            TestBunch(
+#                model_name=[
+#                    'person-detection-0200',
+#                    'person-detection-0201',
+#                    'person-detection-0202',
+#                    'person-detection-0203'
+#                ],
+#                dataset_name='airport_person',
+#                num_training_iters=None,
+#                usecase='precommit',
+#            ),
+#            TestBunch(
+#                model_name=[
+#                    'person-vehicle-bike-detection-2000',
+#                    'person-vehicle-bike-detection-2001',
+#                    'person-vehicle-bike-detection-2002',
+#                    'person-vehicle-bike-detection-2003',
+#                    'person-vehicle-bike-detection-2004'
+#                ],
+#                dataset_name='airport_example',
+#                num_training_iters=None,
+#                usecase='precommit',
+#            ),
+#            TestBunch(
+#                model_name=[
+#                    'vehicle-detection-0200',
+#                    'vehicle-detection-0201',
+#                    'vehicle-detection-0202',
+#                    'vehicle-detection-0203',
+#                ],
+#                dataset_name='vehicle_detection',
+#                num_training_iters=None,
+#                usecase='precommit',
+#            ),
     ]
 
 
