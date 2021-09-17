@@ -12,4 +12,4 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-from .extension import EpochRunnerWithCancel, EarlyStoppingHook, ReduceLROnPlateauLrUpdaterHook, ClusterAnchorBoxesHook
+from .extension import ClusterAnchorBoxesHook, EpochRunnerWithCancel, EarlyStoppingHook, ReduceLROnPlateauLrUpdaterHook
