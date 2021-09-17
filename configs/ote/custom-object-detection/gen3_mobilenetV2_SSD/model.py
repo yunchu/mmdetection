@@ -98,5 +98,6 @@ load_from = 'https://storage.openvinotoolkit.org/repositories/openvino_training_
 resume_from = None
 workflow = [('train', 1)]
 custom_hooks = [
-    dict(type='EarlyStoppingHook', patience=5, iteration_patience=1000, metric='mAP', interval=1, priority=75)
+    dict(type='EarlyStoppingHook', patience=5, iteration_patience=1000, metric='mAP', interval=1, priority=75),
+    dict(type='ClusterAnchorBoxesHook', group_as=[4, 5])
 ]

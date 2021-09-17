@@ -475,7 +475,7 @@ class ClusterAnchorBoxesHook(Hook):
 
     :param group_as: Clustered widths and heights will be grouped by the backbone out stages based on the numbers
                      specified here.
-    :param min_box_size: Min width and height that should be used for collecting statistics.
+    :param min_box_size: Min width and height of boxes that should be used for collecting statistics.
 
     """
 
