@@ -1,4 +1,5 @@
 import copy
+import glob
 import itertools
 import logging
 import os
@@ -81,18 +82,20 @@ def dataset_definitions_fx(request):
 @pytest.fixture
 def template_paths_fx(request):
     """
-    Return mapping model names to template paths, read from YAML file passed as the parameter --template-paths
-    Note that the file should store the following structure:
-    {
-        <model_name>: <template_path>
-    }
+    Return mapping model names to template paths, received from globbing the folder configs/ote/
+    Note that the function searches files with name `template.yaml`, and for each such file
+    the model name is the name of the parent folder of the file.
     """
-    path = request.config.getoption('--template-paths')
-    assert path is not None, (f'The command line parameter "--template-paths" is not set, '
-                             f'whereas it is required for the test {request.node.originalname or request.node.name}')
-    with open(path) as f:
-        data = yaml.safe_load(f)
-    data[ROOT_PATH_KEY] = osp.dirname(path)
+    root = osp.dirname(osp.dirname(osp.realpath(__file__)))
+    glb = glob.glob(f'{root}/configs/ote/**/template.yaml', recursive=True)
+    data = {}
+    for p in glb:
+        assert osp.isabs(p), f'Error: not absolute path {p}'
+        name = osp.basename(osp.dirname(p))
+        if name in data:
+            raise RuntimeError(f'Duplication of names in config/ote/ folder: {data[name]} and {p}')
+        data[name] = p
+    data[ROOT_PATH_KEY] = ''
     return data
 
 def _make_path_be_abs(some_val, root_path):
