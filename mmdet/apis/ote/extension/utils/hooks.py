@@ -282,9 +282,7 @@ class EarlyStoppingHook(Hook):
             return
 
         if runner.rank == 0:
-            print('||||| ', runner.log_buffer.output)
             if self.key_indicator not in runner.log_buffer.output:
-                # key_score = 0
                 raise KeyError(
                     f'metric {self.key_indicator} does not exist in buffer. Please check '
                     f'{self.key_indicator} is cached in evaluation output buffer'
