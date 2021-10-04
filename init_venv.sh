@@ -90,7 +90,7 @@ else
       exit 1
     fi
   elif [[ "${CUDA_VERSION_CODE}" == "111" ]] ; then
-    if [[ "${TORCH_VERSION}" != "1.9.0" ]]; then
+    if [[ "${TORCH_VERSION}" != "1.9.0" ]] && [[ "${TORCH_VERSION}" != "1.8.1" ]]; then
       echo "if CUDA version is 11.1, then PyTorch must be 1.9.0"
       exit 1
     fi
