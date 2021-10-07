@@ -145,7 +145,22 @@ class OTEDetectionConfig(ConfigurableParameters):
                             description="Quantization preset that defines quantization scheme",
                             editable=True, visible_in_ui=True)
 
+
+    @attrs
+    class __DebugParameters(ParameterGroup):
+        header = string_attribute("Debugging Parameters")
+        description = header
+
+        enable_debug_dump = configurable_boolean(
+            default_value=True,
+            header="Enable data dumps for debugging",
+            description="Enable data dumps for debugging",
+            affects_outcome_of=ModelLifecycle.NONE
+        )
+
+
     learning_parameters = add_parameter_group(__LearningParameters)
     postprocessing = add_parameter_group(__Postprocessing)
     nncf_optimization = add_parameter_group(__NNCFOptimization)
     pot_parameters = add_parameter_group(__POTParameter)
+    debug_parameters = add_parameter_group(__DebugParameters)

@@ -16,6 +16,7 @@ import copy
 import io
 import logging
 import os
+import pickle
 import shutil
 import tempfile
 import warnings
@@ -52,11 +53,13 @@ from mmdet.models import build_detector
 from mmdet.parallel import MMDataCPU
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 
 class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IUnload):
 
     _task_environment: TaskEnvironment
+    _debug_dump_file_path: str = '/tmp/debug_dump.pkl'
 
     def __init__(self, task_environment: TaskEnvironment):
         """"
@@ -68,8 +71,6 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
         logger.info(f"Scratch space created at {self._scratch_space}")
 
-        self._hyperparams = hyperparams = task_environment.get_hyper_parameters(OTEDetectionConfig)
-
         self._model_name = task_environment.model_template.name
         self._labels = task_environment.get_labels(False)
 
@@ -80,7 +81,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         config_file_path = os.path.join(self._base_dir, "model.py")
         self._config = Config.fromfile(config_file_path)
         patch_config(self._config, self._scratch_space, self._labels, random_seed=42)
-        set_hyperparams(self._config, hyperparams)
+        set_hyperparams(self._config, self._hyperparams)
 
         # Create and initialize PyTorch model.
         self._model = self._load_model(task_environment.model)
@@ -89,6 +90,11 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._training_work_dir = None
         self._is_training = False
         self._should_stop = False
+
+
+    @property
+    def _hyperparams(self):
+        return self._task_environment.get_hyper_parameters(OTEDetectionConfig)
 
 
     def _load_model(self, model: ModelEntity):
@@ -142,9 +148,39 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             model = build_detector(model_cfg)
         return model
 
+    def _dump_model(self):
+        hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
+        labels = {label.name: label.color.rgb_tuple for label in self._labels}
+        weights = self._model.state_dict()
+        config = self._config
+        return {
+            'hyperparams': hyperparams_str,
+            'labels': labels,
+            'weights': weights,
+            'config': config
+        }
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
+
+        if self._hyperparams.debug_parameters.enable_debug_dump:
+            from mmdet.apis.ote.apis.detection.ote_utils import dump_dataset
+
+            class_name = self.__class__.__name__
+            func_name = 'infer'
+            dump_dict = {
+                'class_name': class_name,
+                'entrypoint': func_name,
+                'model': self._dump_model(),
+                'arguments': {
+                    'dataset': dump_dataset(dataset),
+                    # 'inference_parameters': inference_parameters
+                }
+            }
+            logger.warning(f'Saving debug dump for {class_name}.{func_name} call to {self._debug_dump_file_path}')
+            with open(self._debug_dump_file_path, 'ab') as fp:
+                pickle.dump(dump_dict, fp)
+
         set_hyperparams(self._config, self._hyperparams)
 
         if inference_parameters is not None:
@@ -234,9 +270,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
         """ Computes performance on a resultset """
-        params = self._hyperparams
 
-        result_based_confidence_threshold = params.postprocessing.result_based_confidence_threshold
+        result_based_confidence_threshold = self._hyperparams.postprocessing.result_based_confidence_threshold
 
         logger.info('Computing F-measure' + (' with auto threshold adjustment' if result_based_confidence_threshold else ''))
         f_measure_metrics = MetricsHelper.compute_f_measure(output_result_set,
@@ -250,11 +285,9 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 best_confidence_threshold = f_measure_metrics.best_confidence_threshold.value
                 if best_confidence_threshold is not None:
                     logger.info(f"Setting confidence_threshold to " f"{best_confidence_threshold} based on results")
-                    # params.postprocessing.confidence_threshold = best_confidence_threshold
                 else:
                     raise ValueError(f"Cannot compute metrics: Invalid confidence threshold!")
 
-            # self._task_environment.set_configurable_parameters(params)
         logger.info(f"F-measure after evaluation: {f_measure_metrics.f_measure.value}")
 
         output_result_set.performance = f_measure_metrics.get_performance()
@@ -311,7 +344,6 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             logger.warning(f"Done unloading. "
                            f"Torch is still occupying {torch.cuda.memory_allocated()} bytes of GPU memory")
 
-
     def export(self,
                export_type: ExportType,
                output_model: ModelEntity):
@@ -347,8 +379,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
-        hyperparams = self._task_environment.get_hyper_parameters(OTEDetectionConfig)
-        hyperparams_str = ids_to_strings(cfg_helper.convert(hyperparams, dict, enum_to_str=True))
+        hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
         labels = {label.name: label.color.rgb_tuple for label in self._labels}
         modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels, 'VERSION': 1}
         torch.save(modelinfo, buffer)
