@@ -45,7 +45,7 @@ from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.unload_interface import IUnload
 
 from mmdet.apis import export_model, single_gpu_test
-from mmdet.apis.ote.apis.detection.config_utils import patch_config, prepare_for_testing, set_hyperparams
+from mmdet.apis.ote.apis.detection.config_utils import patch_config, prepare_for_testing, save_config_to_file, set_hyperparams
 from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.ote_utils import InferenceProgressCallback
 from mmdet.datasets import build_dataloader, build_dataset
@@ -148,17 +148,50 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             model = build_detector(model_cfg)
         return model
 
-    def _dump_model(self):
-        hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
-        labels = {label.name: label.color.rgb_tuple for label in self._labels}
-        weights = self._model.state_dict()
-        config = self._config
-        return {
-            'hyperparams': hyperparams_str,
-            'labels': labels,
-            'weights': weights,
-            'config': config
+
+    def __getstate__(self):
+        from ote_sdk.configuration.helper import convert
+
+        model = {
+            'weights': self._model.state_dict(),
+            'config': self._config,
         }
+        environment = {
+            'model_template': self._task_environment.model_template,
+            'hyperparams': convert(self._hyperparams, str),
+            'label_schema': self._task_environment.label_schema,
+        }
+        return {
+            'environment': environment,
+            'model': model,
+        }
+
+
+    def __setstate__(self, state):
+        from ote_sdk.configuration.helper import create
+        from dataclasses import asdict
+        import yaml
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            model_template = state['environment']['model_template']
+            save_config_to_file(state['model']['config'], os.path.join(tmpdir, 'model.py'))
+            with open(os.path.join(tmpdir, 'template.yaml'), 'wt') as f:
+                yaml.dump(asdict(model_template), f)
+            model_template.model_template_path = os.path.join(tmpdir, 'template.yaml')
+
+            hyperparams = create(state['environment']['hyperparams'])
+            label_schema = state['environment']['label_schema']
+            environment = TaskEnvironment(
+                model_template=model_template,
+                model=None,
+                hyper_parameters=hyperparams,
+                label_schema=label_schema,
+            )
+            self.__init__(environment)
+
+        self._model.load_state_dict(state['model']['weights'])
+        self._config = state['model']['config']
+
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
@@ -171,7 +204,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             dump_dict = {
                 'class_name': class_name,
                 'entrypoint': func_name,
-                'model': self._dump_model(),
+                'task': self,
                 'arguments': {
                     'dataset': dump_dataset(dataset),
                     # 'inference_parameters': inference_parameters
