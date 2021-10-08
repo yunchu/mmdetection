@@ -47,6 +47,7 @@ from ote_sdk.usecases.tasks.interfaces.unload_interface import IUnload
 from mmdet.apis import export_model, single_gpu_test
 from mmdet.apis.ote.apis.detection.config_utils import patch_config, prepare_for_testing, save_config_to_file, set_hyperparams
 from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
+from mmdet.apis.ote.apis.detection.debug import debug_trace
 from mmdet.apis.ote.apis.detection.ote_utils import InferenceProgressCallback
 from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
@@ -193,26 +194,9 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._config = state['model']['config']
 
 
+    @debug_trace
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
-
-        if self._hyperparams.debug_parameters.enable_debug_dump:
-            from mmdet.apis.ote.apis.detection.ote_utils import dump_dataset
-
-            class_name = self.__class__.__name__
-            func_name = 'infer'
-            dump_dict = {
-                'class_name': class_name,
-                'entrypoint': func_name,
-                'task': self,
-                'arguments': {
-                    'dataset': dump_dataset(dataset),
-                    # 'inference_parameters': inference_parameters
-                }
-            }
-            logger.warning(f'Saving debug dump for {class_name}.{func_name} call to {self._debug_dump_file_path}')
-            with open(self._debug_dump_file_path, 'ab') as fp:
-                pickle.dump(dump_dict, fp)
 
         set_hyperparams(self._config, self._hyperparams)
 
@@ -299,6 +283,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         return eval_predictions, metric
 
 
+    @debug_trace
     def evaluate(self,
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
@@ -377,6 +362,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             logger.warning(f"Done unloading. "
                            f"Torch is still occupying {torch.cuda.memory_allocated()} bytes of GPU memory")
 
+
+    @debug_trace
     def export(self,
                export_type: ExportType,
                output_model: ModelEntity):

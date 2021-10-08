@@ -30,6 +30,7 @@ from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
 
 from mmdet.apis import train_detector
 from mmdet.apis.ote.apis.detection.config_utils import prepare_for_training, set_hyperparams
+from mmdet.apis.ote.apis.detection.debug import debug_trace
 from mmdet.apis.ote.apis.detection.inference_task import OTEDetectionInferenceTask
 from mmdet.apis.ote.apis.detection.ote_utils import TrainingProgressCallback
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
@@ -64,6 +65,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         return output
 
 
+    @debug_trace
     def train(self, dataset: DatasetEntity, output_model: ModelEntity, train_parameters: Optional[TrainParameters] = None):
         """ Trains a model on a dataset """
 
