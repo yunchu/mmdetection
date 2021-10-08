@@ -1,8 +1,11 @@
 import logging
 import pickle
 from functools import wraps
+from typing import Dict, Any
 
-from mmdet.apis.ote.apis.detection.ote_utils import dump_dataset
+from ote_sdk.entities.dataset_item import DatasetItemEntity
+from ote_sdk.entities.datasets import DatasetEntity
+from ote_sdk.entities.image import Image
 
 logger = logging.getLogger(__name__)
 
@@ -59,3 +62,36 @@ debug_trace_registry = {
     'evaluate': evaluate_debug_trace,
     'export': export_debug_trace,
 }
+
+
+def dump_dataset_item(item: DatasetItemEntity):
+    dump = {
+        'subset': item.subset,
+        'numpy': item.numpy,
+        'roi': item.roi,
+        'annotation_scene': item.annotation_scene
+    }
+    return dump
+
+
+def load_dataset_item(dump: Dict[str, Any]):
+    return DatasetItemEntity(
+        media=Image(dump['numpy']),
+        annotation_scene=dump['annotation_scene'],
+        roi=dump['roi'],
+        subset=dump['subset'])
+
+
+def dump_dataset(dataset: DatasetEntity):
+    dump = {
+        'purpose': dataset.purpose,
+        'items': list(dump_dataset_item(item) for item in dataset)
+    }
+    return dump
+
+
+def load_dataset(dump: Dict[str, Any]):
+    return DatasetEntity(
+        items=[load_dataset_item(i) for i in dump['items']],
+        purpose=dump['purpose'])
+

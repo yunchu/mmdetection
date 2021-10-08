@@ -15,12 +15,8 @@
 import colorsys
 import importlib
 import random
-from typing import Dict, Any
 
 import numpy as np
-from ote_sdk.entities.dataset_item import DatasetItemEntity
-from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.image import Image
 import yaml
 from ote_sdk.entities.color import Color
 from ote_sdk.entities.label import LabelEntity
@@ -119,35 +115,3 @@ class InferenceProgressCallback(TimeMonitorCallback):
     def on_test_batch_end(self, batch=None, logs=None):
         super().on_test_batch_end(batch, logs)
         self.update_progress_callback(self.get_progress())
-
-
-def dump_dataset_item(item: DatasetItemEntity):
-    dump = {
-        'subset': item.subset,
-        'numpy': item.numpy,
-        'roi': item.roi,
-        'annotation_scene': item.annotation_scene
-    }
-    return dump
-
-
-def load_dataset_item(dump: Dict[str, Any]):
-    return DatasetItemEntity(
-        media=Image(dump['numpy']),
-        annotation_scene=dump['annotation_scene'],
-        roi=dump['roi'],
-        subset=dump['subset'])
-
-
-def dump_dataset(dataset: DatasetEntity):
-    dump = {
-        'purpose': dataset.purpose,
-        'items': list(dump_dataset_item(item) for item in dataset)
-    }
-    return dump
-
-
-def load_dataset(dump: Dict[str, Any]):
-    return DatasetEntity(
-        items=[load_dataset_item(i) for i in dump['items']],
-        purpose=dump['purpose'])
