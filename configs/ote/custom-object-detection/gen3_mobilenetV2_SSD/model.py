@@ -99,5 +99,5 @@ resume_from = None
 workflow = [('train', 1)]
 custom_hooks = [
     dict(type='EarlyStoppingHook', patience=5, iteration_patience=1000, metric='mAP', interval=1, priority=75),
-    dict(type='ClusterAnchorBoxesHook', group_as=[4, 5])
+    dict(type='ClusterAnchorBoxesHook', target_wh=[864, 864], group_as=[4,5])
 ]
