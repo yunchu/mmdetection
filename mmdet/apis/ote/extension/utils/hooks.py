@@ -26,6 +26,7 @@ from mmcv.runner.dist_utils import master_only
 from mmcv.utils import print_log
 
 from mmdet.datasets.coco import CocoDataset
+from mmdet.apis.ote.extension.datasets import OTEDataset
 
 
 logger = logging.getLogger(__name__)
@@ -522,19 +523,23 @@ class ClusterAnchorBoxesHook(Hook):
     def _get_sizes_from_data_loader(self, runner):
         print_log('Collecting statistics from training dataset to cluster anchor boxes...',
                   logger=runner.logger)
-        dataset = None
-        if isinstance(runner.data_loader.dataset, CocoDataset):
-            dataset = runner.data_loader.dataset
-        elif hasattr(runner.data_loader.dataset, 'dataset') and \
-                isinstance(runner.data_loader.dataset.dataset, CocoDataset):
+        dataset = runner.data_loader.dataset
+        # Wrapper for RepeatDataset
+        if hasattr(runner.data_loader.dataset, 'dataset'):
             dataset = runner.data_loader.dataset.dataset
-        if dataset:
+        if isinstance(dataset, CocoDataset):
             sizes = self._get_sizes_from_coco(dataset.ann_file, dataset.img_prefix, self.target_wh, self.min_box_size)
+            return sizes
+        elif isinstance(dataset, OTEDataset):
+            sizes = self._get_sizes_from_OTEdataset(dataset, self.target_wh, self.min_box_size)
             return sizes
 
         wh_stats = []
-        # If stats is get from loader, the results could be undetermine because random transformations (cropping), so
-        # getting info from annotations (above) is the more prefarable way
+        # If stats were collected from loader, the results could be undetermine because random transformations
+        # (cropping), so getting info from annotations (above) is the more prefarable way
+        print_log('Training annotation is not in COCO or OTE format, collecting statistics from DataLoader.',
+                  logger=runner.logger)
+        logger.warning('This option leads to non-determenistic anchor boxes parameters from run to run.')
         for data_batch in tqdm(iter(runner.data_loader)):
             batch = data_batch['gt_bboxes'].data[0]
             for boxes in batch:
@@ -562,6 +567,17 @@ class ClusterAnchorBoxesHook(Hook):
             w, h = w * target_image_wh[0], h * target_image_wh[1]
             if w > min_box_size[0] and h > min_box_size[1]:
                 wh_stats.append((w, h))
+        return wh_stats
+
+    def _get_sizes_from_OTEdataset(self, dataset, target_wh, min_box_size):
+        wh_stats = []
+        for ind in tqdm(range(len(dataset))):
+            for ann in dataset.ote_dataset[ind].get_annotations():
+                box = ann.shape
+                w = box.width * target_wh[0]
+                h = box.height * target_wh[1]
+                if w > min_box_size[0] and h > min_box_size[1]:
+                    wh_stats.append((w, h))
         return wh_stats
 
     def _get_anchor_boxes(self, wh_stats):
