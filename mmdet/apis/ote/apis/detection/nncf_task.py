@@ -17,7 +17,7 @@ import json
 import logging
 import os
 from collections import defaultdict
-from typing import Optional
+from typing import DefaultDict, Optional
 
 import torch
 from ote_sdk.configuration import cfg_helper
@@ -143,7 +143,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
         else:
             update_progress_callback = default_progress_callback
         time_monitor = TrainingProgressCallback(update_progress_callback)
-        learning_curves = defaultdict(OTELoggerHook.Curve)
+        learning_curves: DefaultDict[str, OTELoggerHook.Curve] = defaultdict(OTELoggerHook.Curve)
         training_config = prepare_for_training(config, train_dataset, val_dataset, time_monitor, learning_curves)
         mm_train_dataset = build_dataset(training_config.data.train)
 

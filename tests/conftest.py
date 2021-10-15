@@ -10,7 +10,7 @@ except ImportError:
     _e2e_pytest_addoption = None
     pass
 
-import config
+import e2e_config
 
 def pytest_addoption(parser):
     if _e2e_pytest_addoption:

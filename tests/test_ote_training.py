@@ -20,7 +20,7 @@ import os.path as osp
 from collections import namedtuple, OrderedDict
 from copy import deepcopy
 from pprint import pformat
-from typing import Optional, Union
+from typing import Optional, Tuple, Union
 
 import pytest
 import yaml
@@ -43,7 +43,7 @@ from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco
 
 logger = logging.getLogger(__name__)
 
-def DATASET_PARAMETERS_FIELDS():
+def DATASET_PARAMETERS_FIELDS() -> Tuple[str, ...]:
     return ('annotations_train',
             'images_train_dir',
             'annotations_val',
@@ -53,7 +53,7 @@ def DATASET_PARAMETERS_FIELDS():
             )
 
 ROOT_PATH_KEY = '_root_path'
-DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
+DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())  # type: ignore
 
 @pytest.fixture
 def dataset_definitions_fx(request):

@@ -14,4 +14,4 @@
 
 from .mmdataset import OTEDataset, get_annotation_mmdet_format
 
-__all__ = [OTEDataset, get_annotation_mmdet_format]
+__all__ = ['OTEDataset', 'get_annotation_mmdet_format']

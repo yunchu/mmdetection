@@ -17,6 +17,6 @@ from .hooks import EarlyStoppingHook, ReduceLROnPlateauLrUpdaterHook
 from .pipelines import LoadImageFromOTEDataset, LoadAnnotationFromOTEDataset
 from .runner import EpochRunnerWithCancel
 
-__all__ = [CancelTrainingHook, FixedMomentumUpdaterHook, LoadImageFromOTEDataset, EpochRunnerWithCancel,
-           LoadAnnotationFromOTEDataset, OTELoggerHook, OTEProgressHook, EarlyStoppingHook,
-           ReduceLROnPlateauLrUpdaterHook]
+__all__ = ['CancelTrainingHook', 'FixedMomentumUpdaterHook', 'LoadImageFromOTEDataset', 'EpochRunnerWithCancel',
+           'LoadAnnotationFromOTEDataset', 'OTELoggerHook', 'OTEProgressHook', 'EarlyStoppingHook',
+           'ReduceLROnPlateauLrUpdaterHook']

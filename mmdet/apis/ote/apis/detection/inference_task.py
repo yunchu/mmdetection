@@ -205,7 +205,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
     @staticmethod
     def _infer_detector(model: torch.nn.Module, config: Config, dataset: DatasetEntity,
-                        eval: Optional[bool] = False, metric_name: Optional[str] = 'mAP') -> Tuple[List, float]:
+                        eval: bool = False,
+                        metric_name: str = 'mAP') -> Tuple[List, float]:
         model.eval()
         test_config = prepare_for_testing(config, dataset)
         mm_val_dataset = build_dataset(test_config.data.test)
@@ -224,7 +225,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
         eval_predictions = single_gpu_test(eval_model, mm_val_dataloader, show=False)
 
-        metric = None
+        metric = 0.0
         if eval:
             metric = mm_val_dataset.evaluate(eval_predictions, metric=metric_name)[metric_name]
         return eval_predictions, metric

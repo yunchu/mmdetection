@@ -16,7 +16,7 @@ import copy
 import logging
 import os
 from collections import defaultdict
-from typing import List, Optional
+from typing import DefaultDict, Dict, List, Optional
 
 import torch
 from ote_sdk.entities.datasets import DatasetEntity
@@ -40,7 +40,7 @@ logger = logging.getLogger(__name__)
 
 class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
-    def _generate_training_metrics_group(self, learning_curves) -> Optional[List[MetricsGroup]]:
+    def _generate_training_metrics_group(self, learning_curves: Dict[str, OTELoggerHook.Curve]) -> List[MetricsGroup]:
         """
         Parses the mmdetection logs to get metrics from the latest training run
 
@@ -77,7 +77,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         old_model = copy.deepcopy(self._model)
 
         # Evaluate model performance before training.
-        _, initial_performance = self._infer_detector(self._model, config, val_dataset, True)
+        initial_performance = self._infer_detector(self._model, config, val_dataset, True)[1]
         logger.info(f'initial_performance = {initial_performance}')
 
         # Check for stop signal between pre-eval and training. If training is cancelled at this point,
@@ -96,7 +96,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         else:
             update_progress_callback = default_progress_callback
         time_monitor = TrainingProgressCallback(update_progress_callback)
-        learning_curves = defaultdict(OTELoggerHook.Curve)
+        learning_curves: DefaultDict[str, OTELoggerHook.Curve] = defaultdict(OTELoggerHook.Curve)
         training_config = prepare_for_training(config, train_dataset, val_dataset, time_monitor, learning_curves)
         self._training_work_dir = training_config.work_dir
         mm_train_dataset = build_dataset(training_config.data.train)
@@ -120,7 +120,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         self._model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
-        _, final_performance = self._infer_detector(self._model, config, val_dataset, True)
+        final_performance = self._infer_detector(self._model, config, val_dataset, True)[1]
         improved = final_performance > initial_performance
 
         # Return a new model if model has improved, or there is no model yet.

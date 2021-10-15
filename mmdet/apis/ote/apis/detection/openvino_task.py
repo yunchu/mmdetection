@@ -20,6 +20,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 from addict import Dict as ADDict
+from ie import ExecutableNetwork
 from compression.api import DataLoader
 from compression.engines.ie_engine import IEEngine
 from compression.graph import load_model, save_model
@@ -46,7 +47,7 @@ from .configuration import OTEDetectionConfig
 logger = logging.getLogger(__name__)
 
 
-def get_output(net, outputs, name):
+def get_output(net: ExecutableNetwork, outputs: Dict[str, np.ndarray], name: str) -> np.ndarray:
     try:
         key = net.get_ov_name_for_tensor(name)
         assert key in outputs, f'"{key}" is not a valid output identifier'
@@ -57,7 +58,8 @@ def get_output(net, outputs, name):
     return outputs[key]
 
 
-def extract_detections(output, net, input_size):
+def extract_detections(output: Dict[str, np.ndarray], net: ExecutableNetwork,
+                       input_size: Tuple[int, int]) -> Dict[str, np.ndarray]:
     if 'detection_out' in output:
         detection_out = output['detection_out']
         output['labels'] = detection_out[0, 0, :, 1].astype(np.int32)
@@ -106,7 +108,7 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
         self.confidence_threshold = float(hparams.postprocessing.confidence_threshold)
 
     @staticmethod
-    def resize_image(image: np.ndarray, size: Tuple[int], keep_aspect_ratio: bool = False) -> np.ndarray:
+    def resize_image(image: np.ndarray, size: Tuple[int, int], keep_aspect_ratio: bool = False) -> np.ndarray:
         if not keep_aspect_ratio:
             resized_frame = cv2.resize(image, size)
         else:
