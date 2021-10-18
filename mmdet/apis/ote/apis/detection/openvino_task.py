@@ -20,12 +20,12 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import cv2
 import numpy as np
 from addict import Dict as ADDict
-from ie import ExecutableNetwork
 from compression.api import DataLoader
 from compression.engines.ie_engine import IEEngine
 from compression.graph import load_model, save_model
 from compression.graph.model_utils import compress_model_weights, get_nodes_by_type
 from compression.pipeline.initializer import create_pipeline
+from openvino.inference_engine import ExecutableNetwork
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters
