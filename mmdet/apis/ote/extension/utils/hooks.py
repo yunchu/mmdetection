@@ -16,9 +16,12 @@ import json
 import logging
 import math
 import os
+
 from math import inf
 from collections import defaultdict
+import numpy as np
 from tqdm import tqdm
+from sklearn.cluster import KMeans
 
 from mmcv.runner.hooks import HOOKS, Hook, LoggerHook, LrUpdaterHook
 from mmcv.runner import BaseRunner, EpochBasedRunner
@@ -484,9 +487,9 @@ class ClusterAnchorBoxesHook(Hook):
     """
 
     def __init__(self,
-                 group_as: list = [4, 5],
-                 target_wh: list = [256, 256],
-                 min_box_size: list = [0, 0]):
+                 group_as: tuple = (4, 5),
+                 target_wh: tuple = (256, 256),
+                 min_box_size: tuple = (0, 0)):
         super().__init__()
         self.group_as = group_as
         self.target_wh = target_wh
@@ -501,24 +504,28 @@ class ClusterAnchorBoxesHook(Hook):
                 self.check = True
 
     def before_train_iter(self, runner):
-        if runner.iter == 0:
-            if self.check:
-                wh_stats = self._get_sizes_from_data_loader(runner)
-                if len(wh_stats) >= sum(self.group_as):
-                    widths, heights = self._get_anchor_boxes(wh_stats)
-                    anchor_generator = runner.model.module.bbox_head.anchor_generator
-                    print_log(f'Anchor boxes widths have been updated from '
-                              f'{format_list_to_str(anchor_generator.widths)} '
-                              f'to {format_list_to_str(widths)}',
-                              logger=runner.logger)
-                    print_log(f'Anchor boxes heights have been updated from '
-                              f'{format_list_to_str(anchor_generator.heights)} '
-                              f'to {format_list_to_str(heights)}',
-                              logger=runner.logger)
-                    anchor_generator.widths = widths
-                    anchor_generator.heights = heights
-                    anchor_generator.base_anchors = anchor_generator.gen_base_anchors()
-                    runner.model.module.bbox_head.anchor_generator = anchor_generator
+        if runner.iter == 0 and self.check:
+            wh_stats = self._get_sizes_from_data_loader(runner)
+            if len(wh_stats) < sum(self.group_as):
+                print_log(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '
+                          f'at least {sum(self.group_as)}. Please increase the number of images or '
+                          'decrease the number of anchors per layer, changing group_as parameter.',
+                          logger=runner.logger, level=logging.WARNING)
+            else:
+                widths, heights = self._get_anchor_boxes(wh_stats)
+                anchor_generator = runner.model.module.bbox_head.anchor_generator
+                print_log(f'Anchor boxes widths have been updated from '
+                            f'{format_list_to_str(anchor_generator.widths)} '
+                            f'to {format_list_to_str(widths)}',
+                            logger=runner.logger)
+                print_log(f'Anchor boxes heights have been updated from '
+                            f'{format_list_to_str(anchor_generator.heights)} '
+                            f'to {format_list_to_str(heights)}',
+                            logger=runner.logger)
+                anchor_generator.widths = widths
+                anchor_generator.heights = heights
+                anchor_generator.base_anchors = anchor_generator.gen_base_anchors()
+                runner.model.module.bbox_head.anchor_generator = anchor_generator
 
     def _get_sizes_from_data_loader(self, runner):
         print_log('Collecting statistics from training dataset to cluster anchor boxes...',
@@ -528,18 +535,19 @@ class ClusterAnchorBoxesHook(Hook):
         if hasattr(runner.data_loader.dataset, 'dataset'):
             dataset = runner.data_loader.dataset.dataset
         if isinstance(dataset, CocoDataset):
-            sizes = self._get_sizes_from_coco(dataset.ann_file, dataset.img_prefix, self.target_wh, self.min_box_size)
+            sizes = self.get_sizes_from_coco(dataset.ann_file, self.target_wh, self.min_box_size)
             return sizes
-        elif isinstance(dataset, OTEDataset):
-            sizes = self._get_sizes_from_OTEdataset(dataset, self.target_wh, self.min_box_size)
+        if isinstance(dataset, OTEDataset):
+            sizes = self.get_sizes_from_OTEdataset(dataset, self.target_wh, self.min_box_size)
             return sizes
 
         wh_stats = []
-        # If stats were collected from loader, the results could be undetermine because random transformations
-        # (cropping), so getting info from annotations (above) is the more prefarable way
+        # If stats were collected from loader, the results could be non-deterministic because of random transformations
+        # (cropping), so getting info from annotations (above) is the prefarable way.
         print_log('Training annotation is not in COCO or OTE format, collecting statistics from DataLoader.',
                   logger=runner.logger)
-        logger.warning('This option leads to non-determenistic anchor boxes parameters from run to run.')
+        print_log('This option leads to non-determenistic anchor boxes parameters from run to run.',
+                  logger=runner.logger, level=logging.WARNING)
         for data_batch in tqdm(iter(runner.data_loader)):
             batch = data_batch['gt_bboxes'].data[0]
             for boxes in batch:
@@ -550,16 +558,14 @@ class ClusterAnchorBoxesHook(Hook):
                         wh_stats.append((w, h))
         return wh_stats
 
-    def _get_sizes_from_coco(self, annotation_path, root, target_image_wh, min_box_size):
-        import imagesize
+    @classmethod
+    def get_sizes_from_coco(cls, annotation_path, target_image_wh, min_box_size):
         with open(annotation_path) as f:
             content = json.load(f)
-
         images_wh = {}
         wh_stats = []
         for image_info in tqdm(content['images']):
-            image_path = os.path.join(root, image_info['file_name'])
-            images_wh[image_info['id']] = imagesize.get(image_path)
+            images_wh[image_info['id']] = (image_info['width'], image_info['height'])
         for ann in content['annotations']:
             w, h = ann['bbox'][2:4]
             image_wh = images_wh[ann['image_id']]
@@ -569,7 +575,8 @@ class ClusterAnchorBoxesHook(Hook):
                 wh_stats.append((w, h))
         return wh_stats
 
-    def _get_sizes_from_OTEdataset(self, dataset, target_wh, min_box_size):
+    @classmethod
+    def get_sizes_from_OTEdataset(cls, dataset, target_wh, min_box_size):
         wh_stats = []
         for ind in tqdm(range(len(dataset))):
             for ann in dataset.ote_dataset[ind].get_annotations():
@@ -581,8 +588,6 @@ class ClusterAnchorBoxesHook(Hook):
         return wh_stats
 
     def _get_anchor_boxes(self, wh_stats):
-        import numpy as np
-        from sklearn.cluster import KMeans
         kmeans = KMeans(init='k-means++', n_clusters=sum(self.group_as), random_state=0).fit(wh_stats)
         centers = kmeans.cluster_centers_
 
