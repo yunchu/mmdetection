@@ -183,7 +183,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
         hyperparams_str = ids_to_strings(cfg_helper.convert(hyperparams, dict, enum_to_str=True))
         labels = {label.name: label.color.rgb_tuple for label in self._labels}
         modelinfo = {
-            'compression_state': self._compression_ctrl.get_compression_state(),
+            'compression_state': self._compression_ctrl.get_compression_state(),  # type: ignore  # FIXME.
             'meta': {
                 'config': self._config,
                 'nncf_enable_compression': True,
