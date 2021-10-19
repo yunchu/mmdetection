@@ -13,7 +13,7 @@
 # and limitations under the License.
 
 from copy import deepcopy
-from typing import List
+from typing import List, Sequence, Optional
 
 import numpy as np
 from ote_sdk.entities.dataset_item import DatasetItemEntity
@@ -88,7 +88,7 @@ class OTEDataset(CustomDataset):
         forwards data access operations to ote_dataset and converts the dataset items to the view
         convenient for mmdetection.
         """
-        def __init__(self, ote_dataset, classes):
+        def __init__(self, ote_dataset: DatasetEntity, classes: Optional[Sequence[str]]):
             self.ote_dataset = ote_dataset
             self.CLASSES = classes
 
@@ -113,7 +113,7 @@ class OTEDataset(CustomDataset):
             return data_info
 
     def __init__(self, ote_dataset: DatasetEntity, pipeline, classes=None, test_mode: bool = False):
-        self.ote_dataset = ote_dataset
+        self.ote_dataset: DatasetEntity = ote_dataset
         self.test_mode = test_mode
         self.CLASSES = self.get_classes(classes)
 
@@ -193,4 +193,5 @@ class OTEDataset(CustomDataset):
         if label_list is None:
             # For RepeatDataset wrapper.
             label_list = self.dataset.CLASSES
+        self.ote_dataset.project_labels
         return get_annotation_mmdet_format(dataset_item, label_list)
