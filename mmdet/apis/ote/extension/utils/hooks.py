@@ -21,7 +21,12 @@ from math import inf
 from collections import defaultdict
 import numpy as np
 from tqdm import tqdm
-from sklearn.cluster import KMeans
+
+try:
+    from sklearn.cluster import KMeans
+    kmeans_import = True
+except ImportError:
+    kmeans_import = False
 
 from mmcv.runner.hooks import HOOKS, Hook, LoggerHook, LrUpdaterHook
 from mmcv.runner import BaseRunner, EpochBasedRunner
@@ -502,6 +507,9 @@ class ClusterAnchorBoxesHook(Hook):
         if hasattr(runner.model.module, 'bbox_head'):
             if hasattr(runner.model.module.bbox_head, 'anchor_generator'):
                 self.check = True
+        if not kmeans_import:
+            runner.warning('Sklearn module is not installed, so anchor boxes clustering was skipped. To achieve '
+                           'higher accuracy, please install packages from requirements/optional.txt or just sklearn')
 
     def before_train_iter(self, runner):
         if runner.iter == 0 and self.check:
