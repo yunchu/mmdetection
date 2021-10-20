@@ -508,8 +508,8 @@ class ClusterAnchorBoxesHook(Hook):
             if hasattr(runner.model.module.bbox_head, 'anchor_generator'):
                 self.check = True
         if not kmeans_import:
-            runner.warning('Sklearn module is not installed, so anchor boxes clustering was skipped. To achieve '
-                           'higher accuracy, please install packages from requirements/optional.txt or just sklearn')
+            raise ImportError('Sklearn module is not installed. To enable anchor boxes clustering, please install '
+                              'packages from requirements/optional.txt or just sklearn package.')
 
     def before_train_iter(self, runner):
         if runner.iter == 0 and self.check:
