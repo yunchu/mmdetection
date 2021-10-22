@@ -13,11 +13,13 @@
 # and limitations under the License.
 
 import copy
+import datetime
 import io
 import logging
 import os
 import pickle
 import shutil
+import socket
 import tempfile
 import warnings
 from typing import List, Optional, Tuple
@@ -56,10 +58,19 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
+def get_dump_file_path():
+    full_path = os.path.join(
+        '/NOUS' if os.path.exists('/NOUS') else '/tmp',
+        'debug_dumps',
+        socket.gethostname(),
+        datetime.datetime.now().strftime("%Y%m%d_%H%M%S") + '.pkl')
+    return full_path
+
+
 class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IUnload):
 
     _task_environment: TaskEnvironment
-    _debug_dump_file_path: str = '/tmp/debug_dump.pkl'
+    _debug_dump_file_path: str = get_dump_file_path()
 
     def __init__(self, task_environment: TaskEnvironment):
         """"

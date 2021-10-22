@@ -1,4 +1,5 @@
 import logging
+import os
 import pickle
 from functools import wraps
 from typing import Dict, Any
@@ -25,6 +26,7 @@ def debug_trace(func):
                 raise ValueError(f'Debug tracing is not implemented for {func_name} method.')
             dump_dict['arguments'] = debug_trace_registry[func_name](self, *args, **kwargs)
             logger.warning(f'Saving debug dump for {class_name}.{func_name} call to {self._debug_dump_file_path}')
+            os.makedirs(os.path.dirname(self._debug_dump_file_path), exist_ok=True)
             with open(self._debug_dump_file_path, 'ab') as fp:
                 pickle.dump(dump_dict, fp)
         return func(self, *args, **kwargs)
