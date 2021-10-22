@@ -509,11 +509,14 @@ class ClusterAnchorBoxesHook(Hook):
                 self.check = True
         if not kmeans_import:
             raise ImportError('Sklearn module is not installed. To enable anchor boxes clustering, please install '
-                              'packages from requirements/optional.txt or just sklearn package.')
+                              'packages from requirements/optional.txt or just scikit-learn package.\n'
+                              'For that use "pip install -U scikit-learn" command')
 
     def before_train_iter(self, runner):
         if runner.iter == 0 and self.check:
             wh_stats = self._get_sizes_from_data_loader(runner)
+            if wh_stats is None:
+                return
             if len(wh_stats) < sum(self.group_as):
                 print_log(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '
                           f'at least {sum(self.group_as)}. Please increase the number of images or '
@@ -549,22 +552,11 @@ class ClusterAnchorBoxesHook(Hook):
             sizes = self.get_sizes_from_OTEdataset(dataset, self.target_wh, self.min_box_size)
             return sizes
 
-        wh_stats = []
-        # If stats were collected from loader, the results could be non-deterministic because of random transformations
-        # (cropping), so getting info from annotations (above) is the prefarable way.
-        print_log('Training annotation is not in COCO or OTE format, collecting statistics from DataLoader.',
-                  logger=runner.logger)
-        print_log('This option leads to non-determenistic anchor boxes parameters from run to run.',
+        # If stats were not collected from annotation, the results could be non-deterministic because of random
+        # transformations (cropping) and distributed mode. So, getting info from annotations (above) is the prefarable
+        # way. Getting statistics from DataLoader works less efficiently and was removed.
+        print_log('Training annotation is not in COCO or OTE format, so anchor boxes clustering were skipped.',
                   logger=runner.logger, level=logging.WARNING)
-        for data_batch in tqdm(iter(runner.data_loader)):
-            batch = data_batch['gt_bboxes'].data[0]
-            for boxes in batch:
-                for box in boxes.numpy():
-                    w = box[2] - box[0] + 1
-                    h = box[3] - box[1] + 1
-                    if w > self.min_box_size[0] and h > self.min_box_size[1]:
-                        wh_stats.append((w, h))
-        return wh_stats
 
     @classmethod
     def get_sizes_from_coco(cls, annotation_path, target_image_wh, min_box_size):
