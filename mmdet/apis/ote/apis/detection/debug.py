@@ -37,26 +37,29 @@ def infer_debug_trace(self, dataset, inference_parameters=None):
     return {'dataset': dump_dataset(dataset)}
 
 
-def evaluate_debug_trace(self, output_resultset, evaluation_metric=None):
+def evaluate_debug_trace(self, output_result_set, evaluation_metric=None):
     return {
         'output_resultset': {
-            'purpose': output_resultset.purpose,
-            'ground_truth_dataset' : dump_dataset(output_resultset.ground_truth_dataset),
-            'prediction_dataset' : dump_dataset(output_resultset.prediction_dataset)
+            'purpose': output_result_set.purpose,
+            'ground_truth_dataset' : dump_dataset(output_result_set.ground_truth_dataset),
+            'prediction_dataset' : dump_dataset(output_result_set.prediction_dataset)
         },
         'evaluation_metric': evaluation_metric,
     }
+
 
 def export_debug_trace(self, export_type, output_model):
     return {
         'export_type': export_type
     }
 
+
 def train_debug_trace(self, dataset, output_model, train_parameters=None):
     return {
         'dataset': dump_dataset(dataset),
         'train_parameters': None if train_parameters is None else {'resume': train_parameters.resume}
     }
+
 
 debug_trace_registry = {
     'infer': infer_debug_trace,
@@ -97,3 +100,69 @@ def load_dataset(dump: Dict[str, Any]):
         items=[load_dataset_item(i) for i in dump['items']],
         purpose=dump['purpose'])
 
+
+if __name__ == '__main__':
+    import argparse
+    from ote_sdk.entities.model import ModelEntity, ModelStatus
+    from ote_sdk.entities.resultset import ResultSetEntity
+
+
+    def parse_args():
+        parser = argparse.ArgumentParser()
+        parser.add_argument('dump_path')
+        return parser.parse_args()
+
+
+    def main():
+        args = parse_args()
+        assert os.path.exists(args.dump_path)
+
+        output_model = None
+        train_dataset = None
+
+        with open(args.dump_path, 'rb') as f:
+            while True:
+                try:
+                    dump = pickle.load(f)
+                except EOFError:
+                    break
+
+                task = dump['task']
+                method_args = {}
+
+                entrypoint = dump['entrypoint']
+                print(f'{type(task)=}, {entrypoint=}')
+
+                if entrypoint == 'train':
+                    method_args['dataset'] = load_dataset(dump['arguments']['dataset'])
+                    train_dataset = method_args['dataset']
+                    method_args['output_model'] = ModelEntity(
+                        method_args['dataset'],
+                        task._task_environment,
+                        model_status=ModelStatus.NOT_READY)
+                    output_model = method_args['output_model']
+                    method_args['train_parameters'] = None
+                elif entrypoint == 'infer':
+                    method_args['dataset'] = load_dataset(dump['arguments']['dataset'])
+                    method_args['inference_parameters'] = None
+                elif entrypoint == 'export':
+                    method_args['output_model'] = ModelEntity(
+                        train_dataset,
+                        task._task_environment,
+                        model_status=ModelStatus.NOT_READY)
+                    output_model = method_args['output_model']
+                    method_args['export_type'] = dump['arguments']['export_type']
+                elif entrypoint == 'evaluate':
+                    method_args['output_result_set'] = ResultSetEntity(
+                        model=output_model,
+                        ground_truth_dataset=load_dataset(dump['arguments']['output_resultset']['ground_truth_dataset']),
+                        prediction_dataset=load_dataset(dump['arguments']['output_resultset']['prediction_dataset'])
+                    )
+                    method_args['evaluation_metric'] = dump['arguments']['evaluation_metric']
+                else:
+                    raise RuntimeError(f'Unknown {entrypoint=}')
+
+                output = getattr(task, entrypoint)(**method_args)
+                print(f'\nOutput {type(output)=}\n\n\n\n')
+
+    main()
