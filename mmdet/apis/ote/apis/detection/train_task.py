@@ -20,9 +20,9 @@ from typing import List, Optional
 
 import torch
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, MetricsGroup, Performance, ScoreMetric,
-                                      VisualizationInfo, VisualizationType)
-from ote_sdk.entities.model import ModelEntity, ModelStatus, ModelPrecision
+from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, LineMetricsGroup, MetricsGroup, Performance,
+                                      ScoreMetric, TextMetricsGroup, VisualizationInfo, VisualizationType)
+from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
@@ -51,14 +51,14 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         architecture = InfoMetric(name='Model architecture', value=self._model_name)
         visualization_info_architecture = VisualizationInfo(name="Model architecture",
                                                             visualisation_type=VisualizationType.TEXT)
-        output.append(MetricsGroup(metrics=[architecture],
-                                   visualization_info=visualization_info_architecture))
+        output.append(TextMetricsGroup(metrics=[architecture],
+                                       visualization_info=visualization_info_architecture))
 
         # Learning curves
         for key, curve in learning_curves.items():
             metric_curve = CurveMetric(xs=curve.x, ys=curve.y, name=key)
             visualization_info = LineChartInfo(name=key, x_axis_label="Epoch", y_axis_label=key)
-            output.append(MetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
+            output.append(LineMetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
 
         return output
 
