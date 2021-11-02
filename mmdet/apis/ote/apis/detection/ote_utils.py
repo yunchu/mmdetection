@@ -109,7 +109,7 @@ class TrainingProgressCallback(TimeMonitorCallback):
         score = None
         if hasattr(self.update_progress_callback, 'metric') and isinstance(logs, dict):
             score = logs.get(self.update_progress_callback.metric, None)
-        self.update_progress_callback(self.get_progress(), score)
+        self.update_progress_callback(self.get_progress(), score=score)
 
     def __calculate_average_epoch(self):
         if len(self.past_epoch_duration) > self.epoch_history:
