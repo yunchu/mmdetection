@@ -45,7 +45,7 @@ from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType, IExpo
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.unload_interface import IUnload
 
-from mmdet.apis import export_model, single_gpu_test
+from mmdet.apis import export_model
 from mmdet.apis.ote.apis.detection.config_utils import patch_config, prepare_for_testing, set_hyperparams
 from mmdet.apis.ote.apis.detection.configuration import OTEDetectionConfig
 from mmdet.apis.ote.apis.detection.ote_utils import InferenceProgressCallback
