@@ -76,7 +76,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         old_model = copy.deepcopy(self._model)
 
         # Evaluate model performance before training.
-        _, initial_performance = self._infer_detector(self._model, config, val_dataset, True)
+        _, initial_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
         logger.info(f'initial_performance = {initial_performance}')
 
         # Check for stop signal between pre-eval and training. If training is cancelled at this point,
@@ -118,7 +118,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         self._model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
-        _, final_performance = self._infer_detector(self._model, config, val_dataset, True)
+        _, final_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
         improved = final_performance > initial_performance
 
         # Return a new model if model has improved, or there is no model yet.

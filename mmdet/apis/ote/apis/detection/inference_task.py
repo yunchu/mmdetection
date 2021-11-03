@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
+import contextlib
 import copy
 import io
 import logging
@@ -37,6 +38,7 @@ from ote_sdk.entities.resultset import ResultSetEntity, ResultsetPurpose
 from ote_sdk.entities.scored_label import ScoredLabel
 from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
+from ote_sdk.entities.tensor import TensorEntity
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType, IExportTask
@@ -181,15 +183,15 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         confidence_threshold = self._get_confidence_threshold(is_evaluation)
         logger.info(f'Confidence threshold {confidence_threshold}')
 
-        prediction_results, _ = self._infer_detector(self._model, self._config, dataset, False)
+        prediction_results, _ = self._infer_detector(self._model, self._config, dataset, dump_features=True, eval=False)
 
         # Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format
-        for dataset_item, output in zip(dataset, prediction_results):
+        for dataset_item, (all_bboxes, fmap) in zip(dataset, prediction_results):
             width = dataset_item.width
             height = dataset_item.height
 
             shapes = []
-            for label_idx, detections in enumerate(output):
+            for label_idx, detections in enumerate(all_bboxes):
                 for i in range(detections.shape[0]):
                     probability = float(detections[i, 4])
                     coords = detections[i, :4].astype(float).copy()
@@ -210,6 +212,10 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
             dataset_item.append_annotations(shapes)
 
+            if fmap is not None:
+                active_score = TensorEntity(name="representation_vector", numpy=fmap)
+                dataset_item.append_metadata_item(active_score)
+
         pre_hook_handle.remove()
         hook_handle.remove()
 
@@ -217,7 +223,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
 
     @staticmethod
-    def _infer_detector(model: torch.nn.Module, config: Config, dataset: DatasetEntity,
+    def _infer_detector(model: torch.nn.Module, config: Config, dataset: DatasetEntity, dump_features: bool = False,
                         eval: Optional[bool] = False, metric_name: Optional[str] = 'mAP') -> Tuple[List, float]:
         model.eval()
         test_config = prepare_for_testing(config, dataset)
@@ -234,12 +240,29 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                                         device_ids=test_config.gpu_ids)
         else:
             eval_model = MMDataCPU(model)
+
+        eval_predictions = []
+        feature_maps = []
+
+        def dump_features_hook(mod, inp, out):
+            feature_maps.append(out[-1].detach().cpu().numpy())
+
+        context = eval_model.module.backbone.register_forward_hook(dump_features_hook) \
+            if dump_features \
+            else contextlib.nullcontext()
+
         # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
-        eval_predictions = single_gpu_test(eval_model, mm_val_dataloader, show=False)
+        with context:
+            for data in mm_val_dataloader:
+                with torch.no_grad():
+                    result = eval_model(return_loss=False, rescale=True, **data)
+                eval_predictions.extend(result)
 
         metric = None
         if eval:
             metric = mm_val_dataset.evaluate(eval_predictions, metric=metric_name)[metric_name]
+
+        eval_predictions = zip(eval_predictions, feature_maps)
         return eval_predictions, metric
 
 
