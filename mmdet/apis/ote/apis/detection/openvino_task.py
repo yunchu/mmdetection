@@ -13,7 +13,11 @@
 # and limitations under the License.
 
 import logging
+import inspect
 import os
+import sys
+import subprocess
+import time
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -43,10 +47,13 @@ from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseOpenVINOInferencer
+import ote_sdk.usecases.exportable_code.demo as demo
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
 
+from .new_model import NewModel
+from openvino.inference_engine import ExecutableNetwork, IECore
 from .configuration import OTEDetectionConfig
 
 logger = logging.getLogger(__name__)
@@ -191,6 +198,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         self.task_environment = task_environment
         self.model = self.task_environment.model
         self.inferencer = self.load_inferencer()
+        ie = IECore()
+        self.tmp_model = NewModel(ie, "/home/akorobei/custom_object_detection_candidates/mobilenetV2_ATSS/IR/model.xml")
 
     @property
     def hparams(self):
@@ -198,6 +207,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
 
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
+        print(self.hparams)
         return OpenVINODetectionInferencer(self.hparams,
                                            labels,
                                            self.model.get_data("openvino.xml"),
@@ -217,6 +227,30 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
         output_result_set.performance = MetricsHelper.compute_f_measure(output_result_set).get_performance()
+
+    def deploy(self,
+               output_path: str):
+        work_dir = os.path.dirname(demo.__file__)
+        model_file = inspect.getfile(type(self.tmp_model))
+        is_new_model = 'model_api' not in model_file
+        with tempfile.TemporaryDirectory() as tempdir:
+            subprocess.run(['mkdir', os.path.join(tempdir, "demo_package")])
+            xml_path = os.path.join(tempdir, "demo_package", "model.xml")
+            bin_path = os.path.join(tempdir, "demo_package", "model.bin")
+            with open(xml_path, "wb") as f:
+                f.write(self.model.get_data("openvino.xml"))
+            with open(bin_path, "wb") as f:
+                f.write(self.model.get_data("openvino.bin"))
+            subprocess.run(['cp', os.path.join(work_dir, "setup.py"), tempdir])
+            subprocess.run(['cp', os.path.join(work_dir, "requirements.txt"), tempdir])
+            subprocess.run(['touch', os.path.join(tempdir, "demo_package", "__init__.py")])
+            # generate demo
+            subprocess.run(['cp', os.path.join(work_dir, "sync.py"), os.path.join(tempdir, "demo_package", "demo.py")])
+            # generate model.py if needed
+            if is_new_model:
+                subprocess.run(['cp', model_file, os.path.join(tempdir, "demo_package", "model.py")])
+            # create wheel package
+            subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel', '--dist-dir', output_path])
 
     def optimize(self,
                  optimization_type: OptimizationType,
