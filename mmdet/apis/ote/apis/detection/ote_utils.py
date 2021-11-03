@@ -113,7 +113,7 @@ class TrainingProgressCallback(TimeMonitorCallback):
 
     def __calculate_average_epoch(self):
         if len(self.past_epoch_duration) > self.epoch_history:
-            self.past_epoch_duration.remove(self.past_epoch_duration[0])
+            del self.past_epoch_duration[0]
         self.average_epoch = sum(self.past_epoch_duration) / len(
             self.past_epoch_duration
         )
