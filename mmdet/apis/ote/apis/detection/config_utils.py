@@ -331,11 +331,11 @@ def get_anchor_boxes(wh_stats, group_as):
     kmeans = KMeans(init='k-means++', n_clusters=sum(group_as), random_state=0).fit(wh_stats)
     centers = kmeans.cluster_centers_
 
-    areas = np.sqrt([c[0] * c[1] for c in centers])
+    areas = np.sqrt(np.prod(centers, axis=1))
     idx = np.argsort(areas)
 
-    widths = [centers[i][0] for i in idx]
-    heights = [centers[i][1] for i in idx]
+    widths = centers[idx, 0]
+    heights = centers[idx, 1]
 
     group_as = np.cumsum([0] + group_as)
     widths = [[widths[i] for i in range(group_as[j], group_as[j + 1])] for j in
