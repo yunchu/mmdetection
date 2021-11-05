@@ -18,6 +18,7 @@ model = dict(
         anchor_generator=dict(
             type='SSDAnchorGeneratorClustered',
             strides=(16, 32),
+            reclustering_anchors=True,
             widths=[[
                 38.641007923271076, 92.49516032784699, 271.4234764938237,
                 141.53469410876247
@@ -98,6 +99,5 @@ load_from = 'https://storage.openvinotoolkit.org/repositories/openvino_training_
 resume_from = None
 workflow = [('train', 1)]
 custom_hooks = [
-    dict(type='EarlyStoppingHook', patience=5, iteration_patience=1000, metric='mAP', interval=1, priority=75),
-    dict(type='ClusterAnchorBoxesHook', target_wh=[864, 864], group_as=[4,5])
+    dict(type='EarlyStoppingHook', patience=5, iteration_patience=1000, metric='mAP', interval=1, priority=75)
 ]

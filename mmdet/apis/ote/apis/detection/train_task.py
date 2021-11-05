@@ -28,7 +28,7 @@ from ote_sdk.entities.train_parameters import TrainParameters, default_progress_
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
 
 from mmdet.apis import train_detector
-from mmdet.apis.ote.apis.detection.config_utils import prepare_for_training, set_hyperparams
+from mmdet.apis.ote.apis.detection.config_utils import  cluster_anchors, prepare_for_training, set_hyperparams
 from mmdet.apis.ote.apis.detection.inference_task import OTEDetectionInferenceTask
 from mmdet.apis.ote.apis.detection.ote_utils import TrainingProgressCallback
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
@@ -70,8 +70,13 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
-        config = self._config
 
+        # Do clustering for SSD model
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                self._config, self._model = cluster_anchors(self._config, train_dataset, self._model)
+
+        config = self._config
         # Create new model if training from scratch.
         old_model = copy.deepcopy(self._model)
 
