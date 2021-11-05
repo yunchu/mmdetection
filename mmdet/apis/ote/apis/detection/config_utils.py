@@ -285,9 +285,8 @@ def remove_from_config(config, key: str):
 
 def cluster_anchors(config : Config, dataset : DatasetEntity, model : ModelEntity):
     if not kmeans_import:
-        raise ImportError('Sklearn module is not installed. To enable anchor boxes clustering, please install '
-                          'packages from requirements/optional.txt or just scikit-learn package.\n'
-                          'For that use "pip install -U scikit-learn" command')
+        raise ImportError('Sklearn package is not installed. To enable anchor boxes clustering, please install '
+                          'packages from requirements/optional.txt or just scikit-learn package.')
 
     logger.info('Collecting statistics from training dataset to cluster anchor boxes...')
     [target_wh] = [transforms.img_scale for transforms in config.data.test.pipeline
