@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-import contextlib
 import copy
 import io
 import logging
@@ -247,12 +246,13 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         def dump_features_hook(mod, inp, out):
             feature_maps.append(out[-1].detach().cpu().numpy())
 
-        context = eval_model.module.backbone.register_forward_hook(dump_features_hook) \
-            if dump_features \
-            else contextlib.nullcontext()
+        def dummy_dump_features_hook(mod, inp, out):
+            feature_maps.append(None)
+
+        hook = dump_features_hook if dump_features else dummy_dump_features_hook
 
         # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
-        with context:
+        with eval_model.module.backbone.register_forward_hook(hook):
             for data in mm_val_dataloader:
                 with torch.no_grad():
                     result = eval_model(return_loss=False, rescale=True, **data)
@@ -262,6 +262,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         if eval:
             metric = mm_val_dataset.evaluate(eval_predictions, metric=metric_name)[metric_name]
 
+        assert len(eval_predictions) == len(feature_maps), f'{len(eval_predictions)} != {len(feature_maps)}'
         eval_predictions = zip(eval_predictions, feature_maps)
         return eval_predictions, metric
 
