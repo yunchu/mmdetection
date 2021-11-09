@@ -14,7 +14,10 @@
 
 import logging
 import inspect
+import json
 import os
+from shutil import copyfile, copytree
+import shutil
 import sys
 import subprocess
 import time
@@ -117,6 +120,7 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
         self.keep_aspect_ratio_resize = False
         self.pad_value = 0
         self.confidence_threshold = float(hparams.postprocessing.confidence_threshold)
+        self.iou_threshold = float(hparams.postprocessing.iou_threshold)
 
     @staticmethod
     def resize_image(image: np.ndarray, size: Tuple[int], keep_aspect_ratio: bool = False) -> np.ndarray:
@@ -232,23 +236,31 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                output_path: str):
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.tmp_model))
+        parameters = {}
         is_new_model = 'model_api' not in model_file
+        parameters['name_of_model'] = self.tmp_model.__class__.__name__
+        parameters['model_parameters'] = {
+            'threshold': self.inferencer.confidence_threshold,
+            'iou_threshold': self.inferencer.iou_threshold
+        }
         with tempfile.TemporaryDirectory() as tempdir:
-            subprocess.run(['mkdir', os.path.join(tempdir, "demo_package")])
+            os.mkdir(os.path.join(tempdir, "demo_package"))
             xml_path = os.path.join(tempdir, "demo_package", "model.xml")
             bin_path = os.path.join(tempdir, "demo_package", "model.bin")
+            config_path = os.path.join(tempdir, "demo_package", "config.json")
             with open(xml_path, "wb") as f:
                 f.write(self.model.get_data("openvino.xml"))
             with open(bin_path, "wb") as f:
                 f.write(self.model.get_data("openvino.bin"))
-            subprocess.run(['cp', os.path.join(work_dir, "setup.py"), tempdir])
-            subprocess.run(['cp', os.path.join(work_dir, "requirements.txt"), tempdir])
-            subprocess.run(['touch', os.path.join(tempdir, "demo_package", "__init__.py")])
-            # generate demo
-            subprocess.run(['cp', os.path.join(work_dir, "sync.py"), os.path.join(tempdir, "demo_package", "demo.py")])
-            # generate model.py if needed
-            if is_new_model:
-                subprocess.run(['cp', model_file, os.path.join(tempdir, "demo_package", "model.py")])
+            with open(config_path, "w") as f:
+                json.dump(parameters, f)
+            copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
+            copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
+            copyfile(os.path.join(work_dir, "__init__.py"), os.path.join(tempdir, "demo_package", "__init__.py"))
+            copyfile(os.path.join(work_dir, "sync.py"), os.path.join(tempdir, "demo_package", "demo.py"))
+            copyfile(os.path.join(work_dir, "utils.py"), os.path.join(tempdir, "demo_package", "utils.py"))
+            # generate model.py
+            copyfile(model_file, os.path.join(tempdir, "demo_package", "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel', '--dist-dir', output_path])
 

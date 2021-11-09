@@ -119,6 +119,15 @@ class OTEDetectionConfig(ConfigurableParameters):
             affects_outcome_of=ModelLifecycle.INFERENCE
         )
 
+        iou_threshold = configurable_float(
+            default_value=0.5,
+            min_value=0,
+            max_value=1,
+            header="Intersection over Union threshold",
+            description="Threshold for NMS detection filtering.",
+            affects_outcome_of=ModelLifecycle.INFERENCE
+        )
+
     @attrs
     class __NNCFOptimization(ParameterGroup):
         header = string_attribute("Optimization by NNCF")
