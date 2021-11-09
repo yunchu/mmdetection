@@ -42,3 +42,7 @@ max_nodes: 1
 training_targets:
   - GPU
   - CPU
+
+# Stats.
+gigaflops: 9.4
+size: 7.6

@@ -20,9 +20,9 @@ from typing import List, Optional
 
 import torch
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, MetricsGroup, Performance, ScoreMetric,
-                                      VisualizationInfo, VisualizationType)
-from ote_sdk.entities.model import ModelEntity, ModelStatus, ModelPrecision
+from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, LineMetricsGroup, MetricsGroup, Performance,
+                                      ScoreMetric, TextMetricsGroup, VisualizationInfo, VisualizationType)
+from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
@@ -51,14 +51,14 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         architecture = InfoMetric(name='Model architecture', value=self._model_name)
         visualization_info_architecture = VisualizationInfo(name="Model architecture",
                                                             visualisation_type=VisualizationType.TEXT)
-        output.append(MetricsGroup(metrics=[architecture],
-                                   visualization_info=visualization_info_architecture))
+        output.append(TextMetricsGroup(metrics=[architecture],
+                                       visualization_info=visualization_info_architecture))
 
         # Learning curves
         for key, curve in learning_curves.items():
             metric_curve = CurveMetric(xs=curve.x, ys=curve.y, name=key)
             visualization_info = LineChartInfo(name=key, x_axis_label="Epoch", y_axis_label=key)
-            output.append(MetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
+            output.append(LineMetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
 
         return output
 
@@ -76,7 +76,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         old_model = copy.deepcopy(self._model)
 
         # Evaluate model performance before training.
-        _, initial_performance = self._infer_detector(self._model, config, val_dataset, True)
+        _, initial_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
         logger.info(f'initial_performance = {initial_performance}')
 
         # Check for stop signal between pre-eval and training. If training is cancelled at this point,
@@ -118,7 +118,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         self._model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
-        _, final_performance = self._infer_detector(self._model, config, val_dataset, True)
+        _, final_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
         improved = final_performance > initial_performance
 
         # Return a new model if model has improved, or there is no model yet.
