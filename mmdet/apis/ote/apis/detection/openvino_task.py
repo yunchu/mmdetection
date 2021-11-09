@@ -57,6 +57,7 @@ from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizati
 
 from .new_model import NewModel
 from openvino.inference_engine import ExecutableNetwork, IECore
+from openvino.model_zoo.model_api import models
 from .configuration import OTEDetectionConfig
 
 logger = logging.getLogger(__name__)
@@ -201,17 +202,16 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
         self.model = self.task_environment.model
-        self.inferencer = self.load_inferencer()
         ie = IECore()
+        self.inferencer = self.load_inferencer(ie)
         self.tmp_model = NewModel(ie, "/home/akorobei/custom_object_detection_candidates/mobilenetV2_ATSS/IR/model.xml")
 
     @property
     def hparams(self):
         return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
 
-    def load_inferencer(self) -> OpenVINODetectionInferencer:
+    def load_inferencer(self, ie):
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
-        print(self.hparams)
         return OpenVINODetectionInferencer(self.hparams,
                                            labels,
                                            self.model.get_data("openvino.xml"),
@@ -243,24 +243,22 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             'threshold': self.inferencer.confidence_threshold,
             'iou_threshold': self.inferencer.iou_threshold
         }
+        name_of_package = parameters['name_of_model'].lower()
         with tempfile.TemporaryDirectory() as tempdir:
-            os.mkdir(os.path.join(tempdir, "demo_package"))
-            xml_path = os.path.join(tempdir, "demo_package", "model.xml")
-            bin_path = os.path.join(tempdir, "demo_package", "model.bin")
-            config_path = os.path.join(tempdir, "demo_package", "config.json")
+            copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
+            copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
+            copytree(os.path.join(work_dir, "demo_package"), os.path.join(tempdir, name_of_package))
+            xml_path = os.path.join(tempdir, name_of_package, "model.xml")
+            bin_path = os.path.join(tempdir, name_of_package, "model.bin")
+            config_path = os.path.join(tempdir, name_of_package, "config.json")
             with open(xml_path, "wb") as f:
                 f.write(self.model.get_data("openvino.xml"))
             with open(bin_path, "wb") as f:
                 f.write(self.model.get_data("openvino.bin"))
             with open(config_path, "w") as f:
                 json.dump(parameters, f)
-            copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
-            copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
-            copyfile(os.path.join(work_dir, "__init__.py"), os.path.join(tempdir, "demo_package", "__init__.py"))
-            copyfile(os.path.join(work_dir, "sync.py"), os.path.join(tempdir, "demo_package", "demo.py"))
-            copyfile(os.path.join(work_dir, "utils.py"), os.path.join(tempdir, "demo_package", "utils.py"))
             # generate model.py
-            copyfile(model_file, os.path.join(tempdir, "demo_package", "model.py"))
+            copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel', '--dist-dir', output_path])
 
