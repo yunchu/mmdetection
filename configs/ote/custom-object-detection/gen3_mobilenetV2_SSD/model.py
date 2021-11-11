@@ -88,7 +88,7 @@ log_config = dict(
     interval=100,
     hooks=[
         dict(type='TextLoggerHook'),
-        dict(type='TensorboardLoggerHook')
+        # dict(type='TensorboardLoggerHook'),
     ])
 runner = dict(type='EpochRunnerWithCancel', max_epochs=300)
 dist_params = dict(backend='nccl')
