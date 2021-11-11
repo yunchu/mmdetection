@@ -17,6 +17,7 @@ import io
 import logging
 import os
 from collections import defaultdict
+from glob import glob
 from typing import List, Optional
 
 import torch
@@ -115,9 +116,15 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
             return
 
         # Load best weights.
-        checkpoint_file_path = os.path.join(training_config.work_dir, 'best.pth')
-        if not os.path.isfile(checkpoint_file_path):
+        checkpoint_file_path = glob(os.path.join(training_config.work_dir, 'best*pth'))
+        if len(checkpoint_file_path) == 0:
             checkpoint_file_path = os.path.join(training_config.work_dir, 'latest.pth')
+        elif len(checkpoint_file_path) > 1:
+            logger.warning(f'Multiple candidates for the best checkpoint found: {checkpoint_file_path}')
+            checkpoint_file_path = checkpoint_file_path[0]
+        else:
+            checkpoint_file_path = checkpoint_file_path[0]
+        logger.info(f'Use {checkpoint_file_path} for final model weights.')
         checkpoint = torch.load(checkpoint_file_path)
         self._model.load_state_dict(checkpoint['state_dict'])
 
