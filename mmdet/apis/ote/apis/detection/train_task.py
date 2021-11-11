@@ -23,8 +23,10 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, LineMetricsGroup, MetricsGroup, Performance,
                                       ScoreMetric, TextMetricsGroup, VisualizationInfo, VisualizationType)
 from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
+from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
+from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
 
 from mmdet.apis import train_detector
@@ -118,7 +120,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         self._model.load_state_dict(best_checkpoint['state_dict'])
 
         # Evaluate model performance after training.
-        _, final_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
+        val_preds, final_performance = self._infer_detector(self._model, config, val_dataset, dump_features=False, eval=True)
         improved = final_performance > initial_performance
 
         # Return a new model if model has improved, or there is no model yet.
@@ -130,7 +132,36 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
             # Add mAP metric and loss curves
             performance = Performance(score=ScoreMetric(value=final_performance, name="mAP"),
                                       dashboard_metrics=training_metrics)
-            logger.info('FINAL MODEL PERFORMANCE\n' + str(performance))
+            logger.info('FINAL MODEL PERFORMANCE (internal metric)\n' + str(performance))
+
+            preds_val_dataset = val_dataset.with_empty_annotations()
+            self._add_predictions_to_dataset(val_preds, preds_val_dataset, 0.0)
+
+            resultset = ResultSetEntity(
+                model=output_model,
+                ground_truth_dataset=val_dataset,
+                prediction_dataset=preds_val_dataset,
+            )
+
+            adaptive_threshold = self._hyperparams.postprocessing.result_based_confidence_threshold
+            if adaptive_threshold:
+                logger.info('Adjusting the confidence threshold')
+                metric = MetricsHelper.compute_f_measure(resultset, vary_confidence_threshold=True)
+                best_confidence_threshold = metric.best_confidence_threshold.value
+                if best_confidence_threshold is None:
+                    raise ValueError(f"Cannot compute metrics: Invalid confidence threshold!")
+                logger.info(f"Setting confidence threshold to {best_confidence_threshold} based on results")
+                self.confidence_threshold = best_confidence_threshold
+            else:
+                metric = MetricsHelper.compute_f_measure(resultset, vary_confidence_threshold=False)
+
+            if self.confidence_threshold is None:
+                logger.error('Confidence threshold is set to None. Falling back to the user defined value.')
+                self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
+
+            performance = metric.get_performance()
+            logger.info('FINAL MODEL PERFORMANCE (external metric)\n' + str(performance))
+
             self.save_model(output_model)
             output_model.performance = performance
             output_model.precision = [ModelPrecision.FP32]
