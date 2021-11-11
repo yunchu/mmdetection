@@ -1255,6 +1255,16 @@ class TestOTEIntegration:
                 batch_size=KEEP_CONFIG_FIELD_VALUE(),
                 usecase='reallife',
             ),
+            dict(
+                model_name=[
+                    'efficientnet_b0',
+                    'mobilenet_v3_large_1',
+                ],
+                dataset_name='lg_chem',
+                num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
+                batch_size=KEEP_CONFIG_FIELD_VALUE(),
+                usecase='reallife',
+            ),
     ]
 
     @staticmethod
