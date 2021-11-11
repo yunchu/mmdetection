@@ -94,14 +94,16 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
         device: str = "CPU",
         num_requests: int = 1,
     ):
-        # FIXME. Update docs.
         """
         Inferencer implementation for OTEDetection using OpenVINO backend.
 
-        :param model: Path to model to load, `.xml`, `.bin` or `.onnx` file.
-        :param num_requests: Maximum number of requests that the inferencer can make.
-            Good value is the number of available cores. Defaults to 1.
+        :param labels: List of labels that was used during model training.
+        :param model_file: Path OpenVINO IR model definition file.
+        :param weight_file: Path OpenVINO IR model weights file.
+        :param confidence_threshold: Confidence threshold for passing detection to the output.
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
+        :param num_requests: Maximum number of requests that the inferencer can make. Defaults to 1.
+
         """
         super().__init__(model_file, weight_file, device, num_requests)
         self.labels = labels
