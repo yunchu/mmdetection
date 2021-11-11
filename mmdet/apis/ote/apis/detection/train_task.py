@@ -13,12 +13,15 @@
 # and limitations under the License.
 
 import copy
+import io
 import logging
 import os
 from collections import defaultdict
 from typing import List, Optional
 
 import torch
+from ote_sdk.configuration import cfg_helper
+from ote_sdk.configuration.helper.utils import ids_to_strings
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.metrics import (CurveMetric, InfoMetric, LineChartInfo, LineMetricsGroup, MetricsGroup, Performance,
                                       ScoreMetric, TextMetricsGroup, VisualizationInfo, VisualizationType)
@@ -173,6 +176,16 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
             self._model = old_model
 
         self._is_training = False
+
+
+    def save_model(self, output_model: ModelEntity):
+        buffer = io.BytesIO()
+        hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
+        labels = {label.name: label.color.rgb_tuple for label in self._labels}
+        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels,
+            'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
+        torch.save(modelinfo, buffer)
+        output_model.set_data("weights.pth", buffer.getvalue())
 
 
     def cancel_training(self):

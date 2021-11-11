@@ -116,6 +116,9 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             buffer = io.BytesIO(model.get_data("weights.pth"))
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
+            self.confidence_threshold = model_data.get('confidence_threshold',
+                self._hyperparams.postprocessing.confidence_threshold)
+
             model = self._create_model(self._config, from_scratch=True)
             try:
                 if is_state_nncf(model_data):
@@ -241,6 +244,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             'model': self._model.state_dict(),
             'config': hyperparams_str,
             'labels': labels,
+            'confidence_threshold': self.confidence_threshold,
             'VERSION': 1,
         }
 
