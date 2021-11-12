@@ -86,13 +86,13 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._config = Config.fromfile(config_file_path)
         patch_config(self._config, self._scratch_space, self._labels, random_seed=42)
         set_hyperparams(self._config, self._hyperparams)
+        self.confidence_threshold: float = self._hyperparams.postprocessing.confidence_threshold
 
         # Set default model attributes.
         self._optimization_methods = []
         self._precision = [ModelPrecision.FP32]
 
         # Create and initialize PyTorch model.
-        self.confidence_threshold: Optional[float] = None
         self._model = self._load_model(task_environment.model)
 
         # Extra control variables.
@@ -110,8 +110,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             buffer = io.BytesIO(model.get_data("weights.pth"))
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
-            self.confidence_threshold = model_data.get('confidence_threshold',
-                self._hyperparams.postprocessing.confidence_threshold)
+            self.confidence_threshold = model_data.get('confidence_threshold', self.confidence_threshold)
 
             model = self._create_model(self._config, from_scratch=True)
 
@@ -195,6 +194,9 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
         set_hyperparams(self._config, self._hyperparams)
+
+        # If confidence threshold is adaptive then up-to-date value should be stored in the model
+        # and should not be changed during inference. Otherwise user-specified value should be taken.
         if not self._hyperparams.postprocessing.result_based_confidence_threshold:
             self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
 
