@@ -14,6 +14,22 @@
 
 from ote_sdk.configuration import ConfigurableEnum
 
+
+class Models(ConfigurableEnum):
+    """
+    This Enum represents the types of models for inference
+    """
+    SSD = 'ssd'
+
+class ResizeTypes(ConfigurableEnum):
+    """
+    This Enum represents the types of resize for preprocessing
+    """
+    STANDARD = 'standard'
+    FIT_TO_WINDOW = 'fit_to_window'
+    FIR_TO_WINDOW_LETTERBOX = 'fit_to_window_letterbox'
+
+
 class POTQuantizationPreset(ConfigurableEnum):
     """
     This Enum represents the quantization preset for post training optimization

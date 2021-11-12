@@ -272,7 +272,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                  evaluation_metric: Optional[str] = None):
         """ Computes performance on a resultset """
 
-        result_based_confidence_threshold = self._hyperparams.postprocessing.result_based_confidence_threshold
+        result_based_confidence_threshold = self._hyperparams.inference_parameters.postprocessing.result_based_confidence_threshold
 
         logger.info('Computing F-measure' + (' with auto threshold adjustment' if result_based_confidence_threshold else ''))
         f_measure_metrics = MetricsHelper.compute_f_measure(output_result_set,
@@ -306,8 +306,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         """
 
         hyperparams = self._hyperparams
-        confidence_threshold = hyperparams.postprocessing.confidence_threshold
-        result_based_confidence_threshold = hyperparams.postprocessing.result_based_confidence_threshold
+        confidence_threshold = hyperparams.inference_parameters.postprocessing.confidence_threshold
+        result_based_confidence_threshold = hyperparams.inference_parameters.postprocessing.result_based_confidence_threshold
         if is_evaluation:
             if result_based_confidence_threshold:
                 confidence_threshold = 0.0

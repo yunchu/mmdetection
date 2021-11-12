@@ -25,7 +25,7 @@ from ote_sdk.configuration.elements import (ParameterGroup,
 from ote_sdk.configuration import ConfigurableParameters
 from ote_sdk.configuration.model_lifecycle import ModelLifecycle
 
-from .configuration_enums import POTQuantizationPreset
+from .configuration_enums import POTQuantizationPreset, ResizeTypes, Models
 
 
 @attrs
@@ -99,34 +99,54 @@ class OTEDetectionConfig(ConfigurableParameters):
         )
 
     @attrs
-    class __Postprocessing(ParameterGroup):
-        header = string_attribute("Postprocessing")
+    class __InferenceParameters(ParameterGroup):
+        header = string_attribute("Parameters for inference")
         description = header
+        class_name = selectable(default_value=Models.SSD, header="Model class for inference",
+                                description="Model classes with defined pre- and postprocessing",
+                                editable=True, visible_in_ui=True)
 
-        result_based_confidence_threshold = configurable_boolean(
-            default_value=True,
-            header="Result based confidence threshold",
-            description="Confidence threshold is derived from the results",
-            affects_outcome_of=ModelLifecycle.INFERENCE
-        )
+        @attrs
+        class __Preprocessing(ParameterGroup):
+            header = string_attribute("Preprocessing")
+            description = header
 
-        confidence_threshold = configurable_float(
-            default_value=0.35,
-            min_value=0,
-            max_value=1,
-            header="Confidence threshold",
-            description="This threshold only takes effect if the threshold is not set based on the result.",
-            affects_outcome_of=ModelLifecycle.INFERENCE
-        )
+            resize_type = selectable(default_value=ResizeTypes.STANDARD, header="Resize type",
+                                     description="A resize type for model preprocess",
+                                     editable=True, visible_in_ui=True)
 
-        iou_threshold = configurable_float(
-            default_value=0.5,
-            min_value=0,
-            max_value=1,
-            header="Intersection over Union threshold",
-            description="Threshold for NMS detection filtering.",
-            affects_outcome_of=ModelLifecycle.INFERENCE
-        )
+        @attrs
+        class __Postprocessing(ParameterGroup):
+            header = string_attribute("Postprocessing")
+            description = header
+
+            result_based_confidence_threshold = configurable_boolean(
+                default_value=True,
+                header="Result based confidence threshold",
+                description="Confidence threshold is derived from the results",
+                affects_outcome_of=ModelLifecycle.INFERENCE
+            )
+
+            confidence_threshold = configurable_float(
+                default_value=0.35,
+                min_value=0,
+                max_value=1,
+                header="Confidence threshold",
+                description="This threshold only takes effect if the threshold is not set based on the result.",
+                affects_outcome_of=ModelLifecycle.INFERENCE
+            )
+
+            iou_threshold = configurable_float(
+                default_value=0.5,
+                min_value=0,
+                max_value=1,
+                header="Intersection over Union threshold",
+                description="Threshold for NMS detection filtering.",
+                affects_outcome_of=ModelLifecycle.INFERENCE
+            )
+
+        preprocessing = add_parameter_group(__Preprocessing)
+        postprocessing = add_parameter_group(__Postprocessing)
 
     @attrs
     class __NNCFOptimization(ParameterGroup):
@@ -174,6 +194,6 @@ class OTEDetectionConfig(ConfigurableParameters):
                             editable=True, visible_in_ui=True)
 
     learning_parameters = add_parameter_group(__LearningParameters)
-    postprocessing = add_parameter_group(__Postprocessing)
+    inference_parameters = add_parameter_group(__InferenceParameters)
     nncf_optimization = add_parameter_group(__NNCFOptimization)
     pot_parameters = add_parameter_group(__POTParameter)

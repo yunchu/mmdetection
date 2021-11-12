@@ -49,53 +49,20 @@ from ote_sdk.entities.scored_label import ScoredLabel
 from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
-from ote_sdk.usecases.exportable_code.inference import BaseOpenVINOInferencer
+from ote_sdk.usecases.exportable_code.inference import BaseInferencer
 import ote_sdk.usecases.exportable_code.demo as demo
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
 
-from .new_model import NewModel
-from openvino.inference_engine import ExecutableNetwork, IECore
+from openvino.inference_engine import ExecutableNetwork, IECore, InferRequest
 from openvino.model_zoo.model_api import models
 from .configuration import OTEDetectionConfig
 
 logger = logging.getLogger(__name__)
 
 
-def get_output(net, outputs, name):
-    try:
-        key = net.get_ov_name_for_tensor(name)
-        assert key in outputs, f'"{key}" is not a valid output identifier'
-    except KeyError:
-        if name not in outputs:
-            raise KeyError(f'Failed to identify output "{name}"')
-        key = name
-    return outputs[key]
-
-
-def extract_detections(output, net, input_size):
-    if 'detection_out' in output:
-        detection_out = output['detection_out']
-        output['labels'] = detection_out[0, 0, :, 1].astype(np.int32)
-        output['boxes'] = detection_out[0, 0, :, 3:] # * np.tile(input_size, 2)
-        output['boxes'] = np.concatenate((output['boxes'], detection_out[0, 0, :, 2:3]), axis=1)
-        del output['detection_out']
-        return output
-
-    outs = output
-    output = {
-        'labels': get_output(net, outs, 'labels'),
-        'boxes': get_output(net, outs, 'boxes')
-    }
-    valid_detections_mask = output['labels'] >= 0
-    output['labels'] = output['labels'][valid_detections_mask]
-    output['boxes'] = output['boxes'][valid_detections_mask]
-    output['boxes'][:, :4] /= np.tile(input_size, 2)[None]
-    return output
-
-
-class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
+class OpenVINODetectionInferencer(BaseInferencer):
     def __init__(
         self,
         hparams: OTEDetectionConfig,
@@ -114,65 +81,25 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
             Good value is the number of available cores. Defaults to 1.
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
         """
-        super().__init__(model_file, weight_file, device, num_requests)
         self.labels = labels
-        self.input_blob_name = 'image'
-        self.n, self.c, self.h, self.w = self.net.input_info[self.input_blob_name].tensor_desc.dims
-        self.keep_aspect_ratio_resize = False
-        self.pad_value = 0
-        self.confidence_threshold = float(hparams.postprocessing.confidence_threshold)
-        self.iou_threshold = float(hparams.postprocessing.iou_threshold)
-
-    @staticmethod
-    def resize_image(image: np.ndarray, size: Tuple[int], keep_aspect_ratio: bool = False) -> np.ndarray:
-        if not keep_aspect_ratio:
-            resized_frame = cv2.resize(image, size)
-        else:
-            h, w = image.shape[:2]
-            scale = min(size[1] / h, size[0] / w)
-            resized_frame = cv2.resize(image, None, fx=scale, fy=scale)
-        return resized_frame
+        model_cls = models.get_model_class(hparams.inference_parameters.class_name)
+        self.ie = IECore()
+        self.model = model_cls(self.ie, model_file, weight_file, resize_type=hparams.inference_parameters.preprocessing.resize_type.value,
+                               threshold=hparams.inference_parameters.postprocessing.confidence_threshold,
+                               iou_threshold=hparams.inference_parameters.postprocessing.iou_threshold)
+        self.exec_net = self.ie.load_network(self.model.net, device_name=device)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
-        resized_image = self.resize_image(image, (self.w, self.h), self.keep_aspect_ratio_resize)
-        meta = {'original_shape': image.shape,
-                'resized_shape': resized_image.shape}
-
-        h, w = resized_image.shape[:2]
-        if h != self.h or w != self.w:
-            resized_image = np.pad(resized_image, ((0, self.h - h), (0, self.w - w), (0, 0)),
-                                   mode='constant', constant_values=self.pad_value)
-        # resized_image = self.input_transform(resized_image)
-        resized_image = resized_image.transpose((2, 0, 1))  # Change data layout from HWC to CHW
-        resized_image = resized_image.reshape((self.n, self.c, self.h, self.w))
-        dict_inputs = {self.input_blob_name: resized_image}
-        return dict_inputs, meta
+        return self.model.preprocess(image)
 
     def post_process(self, prediction: Dict[str, np.ndarray], metadata: Dict[str, Any]) -> AnnotationSceneEntity:
-        detections = extract_detections(prediction, self.net, (self.w, self.h))
-        scores = detections['boxes'][:, 4]
-        boxes = detections['boxes'][:, :4]
-        labels = detections['labels']
-
-        resized_image_shape = metadata['resized_shape']
-        scale_x = self.w / resized_image_shape[1]
-        scale_y = self.h / resized_image_shape[0]
-        boxes[:, :4] *= np.array([scale_x, scale_y, scale_x, scale_y], dtype=boxes.dtype)
-
-        areas = np.maximum(boxes[:, 3] - boxes[:, 1], 0) * np.maximum(boxes[:, 2] - boxes[:, 0], 0)
-        valid_boxes = (scores >= self.confidence_threshold) & (areas > 0)
-        scores = scores[valid_boxes]
-        boxes = boxes[valid_boxes]
-        labels = labels[valid_boxes]
-        boxes_num = len(boxes)
-
+        detections = self.model.postprocess(prediction, metadata)
         annotations = []
-        for i in range(boxes_num):
-            if scores[i] < self.confidence_threshold:
-                continue
-            assigned_label = [ScoredLabel(self.labels[labels[i]], probability=scores[i])]
+        for box in detections:
+            assigned_label = [ScoredLabel(self.labels[box.id], probability=box.score)]
+            coords = np.array(box.get_coords()) / np.tile(metadata['original_shape'][1::-1], 2)
             annotations.append(Annotation(
-                Rectangle(x1=boxes[i, 0], y1=boxes[i, 1], x2=boxes[i, 2], y2=boxes[i, 3]),
+                Rectangle(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
                 labels=assigned_label))
 
         return AnnotationSceneEntity(
@@ -180,11 +107,11 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
             annotations=annotations)
 
     def forward(self, inputs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        return self.model.infer(inputs)
+        return self.exec_net.infer(inputs)
 
 
 class OTEOpenVinoDataLoader(DataLoader):
-    def __init__(self, dataset: DatasetEntity, inferencer: BaseOpenVINOInferencer):
+    def __init__(self, dataset: DatasetEntity, inferencer: BaseInferencer):
         self.dataset = dataset
         self.inferencer = inferencer
 
@@ -202,15 +129,13 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
         self.model = self.task_environment.model
-        ie = IECore()
-        self.inferencer = self.load_inferencer(ie)
-        self.tmp_model = NewModel(ie, "/home/akorobei/custom_object_detection_candidates/mobilenetV2_ATSS/IR/model.xml")
+        self.inferencer = self.load_inferencer()
 
     @property
     def hparams(self):
         return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
 
-    def load_inferencer(self, ie):
+    def load_inferencer(self):
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         return OpenVINODetectionInferencer(self.hparams,
                                            labels,
@@ -235,13 +160,14 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def deploy(self,
                output_path: str):
         work_dir = os.path.dirname(demo.__file__)
-        model_file = inspect.getfile(type(self.tmp_model))
+        model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
         is_new_model = 'model_api' not in model_file
-        parameters['name_of_model'] = self.tmp_model.__class__.__name__
+        parameters['name_of_model'] = self.inferencer.model.__class__.__name__
         parameters['model_parameters'] = {
-            'threshold': self.inferencer.confidence_threshold,
-            'iou_threshold': self.inferencer.iou_threshold
+            'threshold': self.inferencer.model.threshold,
+            'iou_threshold': self.inferencer.model.iou_threshold,
+            'resize_type': self.inferencer.model.resize_type
         }
         name_of_package = parameters['name_of_model'].lower()
         with tempfile.TemporaryDirectory() as tempdir:
