@@ -1,5 +1,6 @@
 # Description.
-name: Custom Object Detection Gen3 ATSS
+model_template_id: Custom_Object_Detection_Gen3_ATSS
+name: ATSS
 task_type: DETECTION
 task_family: VISION
 instantiation: "CLASS"
@@ -30,11 +31,19 @@ hyper_parameters:
       num_iters:
         default_value: 300
     nncf_optimization:
-      preset:
-        default_value: Quantization
+      enable_quantization:
+        default_value: true
+      enable_pruning:
+        default_value: false
+      maximal_accuracy_degradation:
+        default_value: 0.01
 
 # Training resources.
 max_nodes: 1
 training_targets:
   - GPU
   - CPU
+
+# Stats.
+gigaflops: 20.6
+size: 9.1

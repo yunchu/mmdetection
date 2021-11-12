@@ -28,9 +28,15 @@ from compression.pipeline.initializer import create_pipeline
 from openvino.inference_engine import ExecutableNetwork
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.inference_parameters import InferenceParameters
+from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
 from ote_sdk.entities.label import LabelEntity
-from ote_sdk.entities.model import ModelEntity, ModelStatus
+from ote_sdk.entities.model import (
+    ModelStatus,
+    ModelEntity,
+    ModelFormat,
+    OptimizationMethod,
+    ModelPrecision,
+)
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.scored_label import ScoredLabel
@@ -83,21 +89,23 @@ def extract_detections(output: Dict[str, np.ndarray], net: ExecutableNetwork,
 class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
     def __init__(
         self,
-        hparams: OTEDetectionConfig,
         labels: List[LabelEntity],
         model_file: Union[str, bytes],
         weight_file: Union[str, bytes, None] = None,
+        confidence_threshold: float = 0.0,
         device: str = "CPU",
         num_requests: int = 1,
     ):
         """
         Inferencer implementation for OTEDetection using OpenVINO backend.
 
-        :param model: Path to model to load, `.xml`, `.bin` or `.onnx` file.
-        :param hparams: Hyper parameters that the model should use.
-        :param num_requests: Maximum number of requests that the inferencer can make.
-            Good value is the number of available cores. Defaults to 1.
+        :param labels: List of labels that was used during model training.
+        :param model_file: Path OpenVINO IR model definition file.
+        :param weight_file: Path OpenVINO IR model weights file.
+        :param confidence_threshold: Confidence threshold for passing detection to the output.
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
+        :param num_requests: Maximum number of requests that the inferencer can make. Defaults to 1.
+
         """
         super().__init__(model_file, weight_file, device, num_requests)
         self.labels = labels
@@ -105,7 +113,7 @@ class OpenVINODetectionInferencer(BaseOpenVINOInferencer):
         self.n, self.c, self.h, self.w = self.net.input_info[self.input_blob_name].tensor_desc.dims
         self.keep_aspect_ratio_resize = False
         self.pad_value = 0
-        self.confidence_threshold = float(hparams.postprocessing.confidence_threshold)
+        self.confidence_threshold = confidence_threshold
 
     @staticmethod
     def resize_image(image: np.ndarray, size: Tuple[int, int], keep_aspect_ratio: bool = False) -> np.ndarray:
@@ -185,26 +193,37 @@ class OTEOpenVinoDataLoader(DataLoader):
 class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
-        self.hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
         self.model = self.task_environment.model
+        self.confidence_threshold: float = 0.0
         self.inferencer = self.load_inferencer()
+
+    @property
+    def hparams(self):
+        return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
 
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
-        return OpenVINODetectionInferencer(self.hparams,
-                                           labels,
+        self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
+        return OpenVINODetectionInferencer(labels,
                                            self.model.get_data("openvino.xml"),
-                                           self.model.get_data("openvino.bin"))
+                                           self.model.get_data("openvino.bin"),
+                                           self.confidence_threshold)
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
-        from tqdm import tqdm
-        for dataset_item in tqdm(dataset):
+        update_progress_callback = default_progress_callback
+        if inference_parameters is not None:
+            update_progress_callback = inference_parameters.update_progress
+        dataset_size = len(dataset)
+        for i, dataset_item in enumerate(dataset, 1):
             dataset_item.annotation_scene = self.inferencer.predict(dataset_item.numpy)
+            update_progress_callback(int(i / dataset_size * 100))
         return dataset
 
     def evaluate(self,
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
+        if evaluation_metric is not None:
+            logger.warning(f'Requested to use {evaluation_metric} metric, but parameter is ignored. Use F-measure instead.')
         output_result_set.performance = MetricsHelper.compute_f_measure(output_result_set).get_performance()
 
     def optimize(self,
@@ -271,7 +290,14 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                 output_model.set_data("openvino.xml", f.read())
             with open(os.path.join(tempdir, "model.bin"), "rb") as f:
                 output_model.set_data("openvino.bin", f.read())
+            output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
+
+        # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS
+        output_model.model_format = ModelFormat.OPENVINO
+        output_model.optimization_type = OptimizationType.POT
+        output_model.optimization_methods = [OptimizationMethod.QUANTIZATION]
+        output_model.precision = [ModelPrecision.INT8]
 
         self.model = output_model
         self.inferencer = self.load_inferencer()
