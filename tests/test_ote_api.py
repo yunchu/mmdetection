@@ -58,28 +58,6 @@ DEFAULT_TEMPLATE_DIR = osp.join('configs', 'ote', 'custom-object-detection', 'ge
 
 class ModelTemplate(unittest.TestCase):
 
-    # ------------------------------ Gen1 ------------------------------
-
-    @e2e_pytest_api
-    def test_reading_gen1_ssd(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen1_mobilenet_v2-2s_ssd-256x256', 'template.yaml'))
-
-    # ------------------------------ Gen2 ------------------------------
-
-    @e2e_pytest_api
-    def test_reading_gen2_ssd(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_mobilenetV2_SSD', 'template.yaml'))
-
-    @e2e_pytest_api
-    def test_reading_gen2_atss(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_mobilenetV2_ATSS', 'template.yaml'))
-
-    @e2e_pytest_api
-    def test_reading_gen2_vfnet(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_resnet50_VFNet', 'template.yaml'))
-
-    # ------------------------------ Gen3 ------------------------------
-
     @e2e_pytest_api
     def test_reading_gen3_ssd(self):
         parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_SSD', 'template.yaml'))
@@ -544,36 +522,6 @@ class API(unittest.TestCase):
                     'Too big performance difference after NNCF optimization.')
             else:
                 print('Skipped test of OTEDetectionNNCFTask. Required NNCF module.')
-
-    # ------------------------------ Gen1 ------------------------------
-
-    @e2e_pytest_api
-    def test_training_gen1_ssd(self):
-        pytest.skip('Gen1 models are not relevant anymore')
-        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'gen1_mobilenet_v2-2s_ssd-256x256'),
-            num_iters=150)
-
-    # ------------------------------ Gen2 ------------------------------
-
-    @e2e_pytest_api
-    def test_training_gen2_ssd(self):
-        pytest.skip('Gen2 models are not relevant anymore')
-        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_mobilenetV2_SSD'),
-            num_iters=150)
-
-    @e2e_pytest_api
-    def test_training_gen2_atss(self):
-        pytest.skip('Gen2 models are not relevant anymore')
-        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_mobilenetV2_ATSS'),
-            num_iters=150)
-
-    @e2e_pytest_api
-    def test_training_gen2_vfnet(self):
-        pytest.skip('Gen2 models are not relevant anymore')
-        self.end_to_end(osp.join('configs', 'ote', 'custom-object-detection', 'gen2_resnet50_VFNet'),
-            num_iters=150, export_perf_delta_tolerance=0.01)
-
-    # ------------------------------ Gen3 ------------------------------
 
     @e2e_pytest_api
     def test_training_gen3_ssd(self):
