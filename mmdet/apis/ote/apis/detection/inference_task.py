@@ -27,13 +27,11 @@ import torch
 from mmcv.parallel import MMDataParallel
 from mmcv.runner import load_checkpoint
 from mmcv.utils import Config
-from ote_sdk.configuration import cfg_helper
-from ote_sdk.configuration.helper.utils import ids_to_strings
 from ote_sdk.entities.annotation import Annotation
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
 from ote_sdk.entities.model import ModelEntity, ModelFormat, ModelOptimizationType, ModelPrecision, ModelStatus
-from ote_sdk.entities.resultset import ResultSetEntity, ResultsetPurpose
+from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.scored_label import ScoredLabel
 from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
@@ -94,6 +92,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._precision = [ModelPrecision.FP32]
 
         # Create and initialize PyTorch model.
+        self.confidence_threshold: Optional[float] = None
         self._model = self._load_model(task_environment.model)
 
         # Extra control variables.
@@ -110,6 +109,9 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             # If a model has been trained and saved for the task already, create empty model and load weights here
             buffer = io.BytesIO(model.get_data("weights.pth"))
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
+
+            self.confidence_threshold = model_data.get('confidence_threshold',
+                self._hyperparams.postprocessing.confidence_threshold)
 
             model = self._create_model(self._config, from_scratch=True)
 
@@ -157,34 +159,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         return model
 
 
-    def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
-        """ Analyzes a dataset using the latest inference model. """
-        set_hyperparams(self._config, self._hyperparams)
-
-        if inference_parameters is not None:
-            update_progress_callback = inference_parameters.update_progress
-            is_evaluation = inference_parameters.is_evaluation
-        else:
-            is_evaluation = False
-            update_progress_callback = default_progress_callback
-
-        time_monitor = InferenceProgressCallback(len(dataset), update_progress_callback)
-
-        def pre_hook(module, input):
-            time_monitor.on_test_batch_begin(None, None)
-
-        def hook(module, input, output):
-            time_monitor.on_test_batch_end(None, None)
-
-        pre_hook_handle = self._model.register_forward_pre_hook(pre_hook)
-        hook_handle = self._model.register_forward_hook(hook)
-
-        confidence_threshold = self._get_confidence_threshold(is_evaluation)
-        logger.info(f'Confidence threshold {confidence_threshold}')
-
-        prediction_results, _ = self._infer_detector(self._model, self._config, dataset, dump_features=True, eval=False)
-
-        # Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format
+    def _add_predictions_to_dataset(self, prediction_results, dataset, confidence_threshold=0.0):
+        """ Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format. """
         for dataset_item, (all_bboxes, fmap) in zip(dataset, prediction_results):
             width = dataset_item.width
             height = dataset_item.height
@@ -215,8 +191,30 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 active_score = TensorEntity(name="representation_vector", numpy=fmap)
                 dataset_item.append_metadata_item(active_score)
 
-        pre_hook_handle.remove()
-        hook_handle.remove()
+
+    def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
+        """ Analyzes a dataset using the latest inference model. """
+        set_hyperparams(self._config, self._hyperparams)
+        if not self._hyperparams.postprocessing.result_based_confidence_threshold:
+            self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
+
+        update_progress_callback = default_progress_callback
+        if inference_parameters is not None:
+            update_progress_callback = inference_parameters.update_progress
+
+        time_monitor = InferenceProgressCallback(len(dataset), update_progress_callback)
+
+        def pre_hook(module, input):
+            time_monitor.on_test_batch_begin(None, None)
+
+        def hook(module, input, output):
+            time_monitor.on_test_batch_end(None, None)
+
+        logger.info(f'Confidence threshold {self.confidence_threshold}')
+        model = self._model
+        with model.register_forward_pre_hook(pre_hook), model.register_forward_hook(hook):
+            prediction_results, _ = self._infer_detector(model, self._config, dataset, dump_features=True, eval=False)
+        self._add_predictions_to_dataset(prediction_results, dataset, self.confidence_threshold)
 
         return dataset
 
@@ -272,46 +270,12 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                  evaluation_metric: Optional[str] = None):
         """ Computes performance on a resultset """
 
-        result_based_confidence_threshold = self._hyperparams.postprocessing.result_based_confidence_threshold
+        if evaluation_metric is not None:
+            logger.warning(f'Requested to use {evaluation_metric} metric, but parameter is ignored. Use F-measure instead.')
+        metric = MetricsHelper.compute_f_measure(output_result_set)
+        logger.info(f"F-measure after evaluation: {metric.f_measure.value}")
+        output_result_set.performance = metric.get_performance()
 
-        logger.info('Computing F-measure' + (' with auto threshold adjustment' if result_based_confidence_threshold else ''))
-        f_measure_metrics = MetricsHelper.compute_f_measure(output_result_set,
-                                                            result_based_confidence_threshold,
-                                                            False,
-                                                            False)
-
-        if output_result_set.purpose is ResultsetPurpose.EVALUATION:
-            # only set configurable params based on validation result set
-            if result_based_confidence_threshold:
-                best_confidence_threshold = f_measure_metrics.best_confidence_threshold.value
-                if best_confidence_threshold is not None:
-                    logger.info(f"Setting confidence_threshold to " f"{best_confidence_threshold} based on results")
-                else:
-                    raise ValueError(f"Cannot compute metrics: Invalid confidence threshold!")
-
-        logger.info(f"F-measure after evaluation: {f_measure_metrics.f_measure.value}")
-
-        output_result_set.performance = f_measure_metrics.get_performance()
-
-
-    def _get_confidence_threshold(self, is_evaluation: bool) -> float:
-        """
-        Retrieves the threshold for confidence from the configurable parameters. If
-        is_evaluation is True, the confidence threshold is set to 0 in order to compute optimum values
-        for the thresholds.
-
-        :param is_evaluation: bool, True in case analysis is requested for evaluation
-
-        :return confidence_threshold: float, threshold for prediction confidence
-        """
-
-        hyperparams = self._hyperparams
-        confidence_threshold = hyperparams.postprocessing.confidence_threshold
-        result_based_confidence_threshold = hyperparams.postprocessing.result_based_confidence_threshold
-        if is_evaluation:
-            if result_based_confidence_threshold:
-                confidence_threshold = 0.0
-        return confidence_threshold
 
     @staticmethod
     def _is_docker():
@@ -370,22 +334,13 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                     output_model.set_data("openvino.bin", f.read())
                 with open(os.path.join(tempdir, xml_file), "rb") as f:
                     output_model.set_data("openvino.xml", f.read())
+                output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
                 output_model.precision = self._precision
                 output_model.optimization_methods = self._optimization_methods
                 output_model.model_status = ModelStatus.SUCCESS
             except Exception as ex:
                 output_model.model_status = ModelStatus.FAILED
                 raise RuntimeError("Optimization was unsuccessful.") from ex
-
-
-    def save_model(self, output_model: ModelEntity):
-        buffer = io.BytesIO()
-        hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
-        labels = {label.name: label.color.rgb_tuple for label in self._labels}
-        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels, 'VERSION': 1}
-        torch.save(modelinfo, buffer)
-        output_model.set_data("weights.pth", buffer.getvalue())
-
 
     def _delete_scratch_space(self):
         """

@@ -30,12 +30,11 @@ from ote_sdk.entities.model import (
     OptimizationMethod,
     ModelPrecision,
 )
-from ote_sdk.entities.optimization_parameters import OptimizationParameters
+from ote_sdk.entities.optimization_parameters import default_progress_callback, OptimizationParameters
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
-from ote_sdk.entities.train_parameters import default_progress_callback
 
 from mmdet.apis import train_detector
 from mmdet.apis.fake_input import get_fake_input
@@ -115,6 +114,9 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             # If a model has been trained and saved for the task already, create empty model and load weights here
             buffer = io.BytesIO(model.get_data("weights.pth"))
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
+
+            self.confidence_threshold = model_data.get('confidence_threshold',
+                self._hyperparams.postprocessing.confidence_threshold)
 
             model = self._create_model(self._config, from_scratch=True)
             try:
@@ -241,6 +243,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             'model': self._model.state_dict(),
             'config': hyperparams_str,
             'labels': labels,
+            'confidence_threshold': self.confidence_threshold,
             'VERSION': 1,
         }
 

@@ -431,7 +431,7 @@ class API(unittest.TestCase):
         # Test that output model is valid.
         self.assertEqual(output_model.model_status, ModelStatus.SUCCESS)
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
-        self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'labels', 'VERSION'])
+        self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'labels', 'confidence_threshold', 'VERSION'])
         self.assertTrue('ellipse' in modelinfo['labels'])
 
         # Run inference.

@@ -68,8 +68,10 @@ lr_config = dict(
 checkpoint_config = dict(interval=100)
 log_config = dict(
     interval=50,
-    hooks=[dict(type='TextLoggerHook'),
-           dict(type='TensorboardLoggerHook')])
+    hooks=[
+        dict(type='TextLoggerHook'),
+        # dict(type='TensorboardLoggerHook'),
+    ])
 runner = dict(type='EpochRunnerWithCancel', max_epochs=300)
 dist_params = dict(backend='nccl')
 log_level = 'INFO'
