@@ -44,4 +44,4 @@ repos:
       - id: mypy
         args: ["--config-file=.mypy.ini"]
         additional_dependencies: [numpy==1.19.5, types-PyYAML, attrs==21.2.*, types-requests, types-Deprecated, types-docutils, types_futures, types-python-dateutil]
-        exclude: "ci|configs|data|demo|docker|docs|experiments|resources|tools"
+        exclude: "ci|configs|data|demo|docker|docs|experiments|resources|tools|.dev_scripts|tests|setup.py"
