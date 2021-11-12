@@ -151,10 +151,6 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         else:
             metric = MetricsHelper.compute_f_measure(resultset, vary_confidence_threshold=False)
 
-        if self.confidence_threshold is None:
-            logger.error('Confidence threshold is set to None. Falling back to the user defined value.')
-            self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
-
         # Compose performance statistics.
         performance = metric.get_performance()
         performance.dashboard_metrics.extend(self._generate_training_metrics(learning_curves, val_map))
