@@ -16,6 +16,7 @@ import time
 import colorsys
 import importlib
 import random
+from typing import Callable, Union
 
 import numpy as np
 import yaml
@@ -96,12 +97,12 @@ def get_task_class(path):
 
 
 class TrainingProgressCallback(TimeMonitorCallback):
-    def __init__(self, update_progress_callback: UpdateProgressCallback):
+    def __init__(self, update_progress_callback: Union[UpdateProgressCallback, Callable[[int], None]]):
         super().__init__(0, 0, 0, 0, update_progress_callback=update_progress_callback)
 
     def on_train_batch_end(self, batch, logs=None):
         super().on_train_batch_end(batch, logs)
-        self.update_progress_callback(self.get_progress())
+        self.update_progress_callback(int(self.get_progress()))
 
     def on_epoch_end(self, epoch, logs=None):
         self.past_epoch_duration.append(time.time() - self.start_epoch_time)
@@ -124,7 +125,7 @@ class TrainingProgressCallback(TimeMonitorCallback):
 
 
 class InferenceProgressCallback(TimeMonitorCallback):
-    def __init__(self, num_test_steps, update_progress_callback: UpdateProgressCallback):
+    def __init__(self, num_test_steps, update_progress_callback: Callable[[int], None]):
         super().__init__(
             num_epoch=0,
             num_train_steps=0,
@@ -134,4 +135,4 @@ class InferenceProgressCallback(TimeMonitorCallback):
 
     def on_test_batch_end(self, batch=None, logs=None):
         super().on_test_batch_end(batch, logs)
-        self.update_progress_callback(self.get_progress())
+        self.update_progress_callback(int(self.get_progress()))

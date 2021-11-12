@@ -304,7 +304,8 @@ class API(unittest.TestCase):
         print('Task initialized, model optimization starts.')
         training_progress_curve = []
 
-        def progress_callback(progress: float, score: Optional[float] = None):
+        def progress_callback(progress: int):
+            assert isinstance(progress, int)
             training_progress_curve.append(progress)
 
         optimization_parameters = OptimizationParameters
@@ -314,7 +315,6 @@ class API(unittest.TestCase):
             detection_environment.get_model_configuration(),
             model_status=ModelStatus.NOT_READY
         )
-        optimization_parameters.update_progress = progress_callback
 
         nncf_task.optimize(OptimizationType.NNCF, dataset, nncf_model, optimization_parameters)
 
@@ -333,11 +333,12 @@ class API(unittest.TestCase):
         print('Task initialized, model inference starts.')
         inference_progress_curve = []
 
-        def inference_progress_callback(progress: float, score: Optional[float] = None):
+        def progress_callback(progress: int):
+            assert isinstance(progress, int)
             inference_progress_curve.append(progress)
 
         inference_parameters = InferenceParameters
-        inference_parameters.update_progress = inference_progress_callback
+        inference_parameters.update_progress = progress_callback
 
         task.infer(dataset.with_empty_annotations(), inference_parameters)
 
