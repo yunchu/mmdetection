@@ -26,11 +26,6 @@ if [[ $PYTHON_VERSION != "3.7" && $PYTHON_VERSION != "3.8" && $PYTHON_VERSION !=
   exit 1
 fi
 
-if [[ -z $SC_SDK_REPO ]]; then
-  echo "The environment variable SC_SDK_REPO is not set -- it is required for creating virtual environment"
-  exit 1
-fi
-
 cd ${work_dir}
 
 if [[ -e ${venv_dir} ]]; then
@@ -125,7 +120,15 @@ pip install -r requirements/nncf_compression.txt || exit 1
 echo "Build NNCF extensions ..."
 python -c "import nncf"
 
-pip install -e $SC_SDK_REPO/src/ote_sdk || exit 1
+if [[ ! -z $OTE_SDK_PATH ]]; then
+  pip install -e $OTE_SDK_PATH || exit 1
+elif [[ ! -z $SC_SDK_REPO ]]; then
+  pip install -e $SC_SDK_REPO/src/ote_sdk || exit 1
+else
+  echo "OTE_SDK_PATH or SC_SDK_REPO should be specified"
+  exit 1
+fi
+
 
 deactivate
 
