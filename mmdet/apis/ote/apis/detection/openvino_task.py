@@ -164,6 +164,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         parameters = {}
         is_new_model = 'model_api' not in model_file
         parameters['name_of_model'] = self.inferencer.model.__class__.__name__
+        parameters['is_new_model'] = is_new_model
         parameters['model_parameters'] = {
             'threshold': self.inferencer.model.threshold,
             'iou_threshold': self.inferencer.model.iou_threshold,
@@ -184,7 +185,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             with open(config_path, "w") as f:
                 json.dump(parameters, f)
             # generate model.py
-            copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
+            if is_new_model:
+                copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel', '--dist-dir', output_path])
 
