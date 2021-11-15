@@ -20,6 +20,7 @@ class Models(ConfigurableEnum):
     This Enum represents the types of models for inference
     """
     SSD = 'ssd'
+    YOLO = 'yolo'
 
 class ResizeTypes(ConfigurableEnum):
     """

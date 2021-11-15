@@ -102,6 +102,13 @@ class OTEDetectionConfig(ConfigurableParameters):
     class __InferenceParameters(ParameterGroup):
         header = string_attribute("Parameters for inference")
         description = header
+
+        use_auto_parameters = configurable_boolean(
+            default_value=True,
+            header="Using auto parameters",
+            description="Using default parameters for model from ModelAPI",
+            affects_outcome_of=ModelLifecycle.INFERENCE
+        )
         class_name = selectable(default_value=Models.SSD, header="Model class for inference",
                                 description="Model classes with defined pre- and postprocessing",
                                 editable=True, visible_in_ui=True)

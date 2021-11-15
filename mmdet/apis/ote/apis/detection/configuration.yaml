@@ -117,6 +117,21 @@ learning_parameters:
 inference_parameters:
   description: Parameters for inference
   header: Parameters for inference
+  use_auto_parameters:
+    affects_outcome_of: INFERENCE
+    default_value: true
+    description: Using default parameters for model from ModelAPI
+    editable: true
+    header: Using auto parameters
+    type: BOOLEAN
+    ui_rules:
+      action: DISABLE_EDITING
+      operator: AND
+      rules: []
+      type: UI_RULES
+    value: true
+    visible_in_ui: true
+    warning: null
   class_name:
     affects_outcome_of: INFERENCE
     default_value: ssd
@@ -126,6 +141,7 @@ inference_parameters:
     header: Model class for inference
     options:
       SSD: ssd
+      YOLO: yolo
     type: SELECTABLE
     ui_rules:
       action: DISABLE_EDITING

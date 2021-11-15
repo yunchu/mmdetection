@@ -82,11 +82,15 @@ class OpenVINODetectionInferencer(BaseInferencer):
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
         """
         self.labels = labels
-        model_cls = models.get_model_class(hparams.inference_parameters.class_name)
+        model_cls = models.get_model_class(hparams.inference_parameters.class_name.value)
+
         self.ie = IECore()
-        self.model = model_cls(self.ie, model_file, weight_file, resize_type=hparams.inference_parameters.preprocessing.resize_type.value,
-                               threshold=hparams.inference_parameters.postprocessing.confidence_threshold,
-                               iou_threshold=hparams.inference_parameters.postprocessing.iou_threshold)
+        if hparams.inference_parameters.use_auto_parameters:
+            self.model = model_cls(self.ie, model_file, weight_file)
+        else:
+            self.model = model_cls(self.ie, model_file, weight_file, resize_type=hparams.inference_parameters.preprocessing.resize_type.value,
+                                   threshold=hparams.inference_parameters.postprocessing.confidence_threshold,
+                                   iou_threshold=hparams.inference_parameters.postprocessing.iou_threshold)
         self.exec_net = self.ie.load_network(self.model.net, device_name=device)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -188,7 +192,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             if is_new_model:
                 copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
-            subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel', '--dist-dir', output_path])
+            subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
+                            '--dist-dir', output_path, 'clean', '--all'])
 
     def optimize(self,
                  optimization_type: OptimizationType,
