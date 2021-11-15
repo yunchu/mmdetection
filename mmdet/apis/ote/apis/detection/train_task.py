@@ -14,7 +14,6 @@
 
 import copy
 import io
-import logging
 import os
 from collections import defaultdict
 from glob import glob
@@ -39,8 +38,9 @@ from mmdet.apis.ote.apis.detection.inference_task import OTEDetectionInferenceTa
 from mmdet.apis.ote.apis.detection.ote_utils import TrainingProgressCallback
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
 from mmdet.datasets import build_dataset
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+logger = get_root_logger()
 
 
 class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
@@ -73,6 +73,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
     def train(self, dataset: DatasetEntity, output_model: ModelEntity, train_parameters: Optional[TrainParameters] = None):
         """ Trains a model on a dataset """
 
+        logger.info('Training the model')
         set_hyperparams(self._config, self._hyperparams)
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
@@ -103,8 +104,9 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         mm_train_dataset = build_dataset(training_config.data.train)
         self._is_training = True
         self._model.train()
+        logger.info('Start training')
         train_detector(model=self._model, dataset=mm_train_dataset, cfg=training_config, validate=True)
-        logger.info("Training finished.")
+        logger.info('Training completed')
 
         # Check for stop signal when training has stopped. If should_stop is true, training was cancelled and no new
         # model should be returned. Old train model is restored.
@@ -162,6 +164,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         output_model.model_status = ModelStatus.SUCCESS
 
         self._is_training = False
+        logger.info('Training the model [done]')
 
 
     def save_model(self, output_model: ModelEntity):
