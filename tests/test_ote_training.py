@@ -440,7 +440,7 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
     _name = 'training_evaluation'
     _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_evaluation(self, data_collector,
@@ -532,7 +532,7 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
     _name = 'export_evaluation'
     _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_export_evaluation(self, data_collector,
@@ -616,7 +616,7 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
     _name = 'pot_evaluation'
     _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_pot_evaluation(self, data_collector,
@@ -712,7 +712,7 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
     _name = 'nncf_evaluation'
     _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_nncf_evaluation(self, data_collector,
@@ -780,7 +780,7 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
     _name = 'nncf_export_evaluation'
     _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_nncf_export_evaluation(self, data_collector,
@@ -853,7 +853,7 @@ class Validator:
         But also the range may be pointed by keys 'max_diff_if_less_threshold' and
         'max_diff_if_greater_threshold', in this case the range is
         [target_value - max_diff_if_less_threshold, target_value + max_diff_if_greater_threshold]
-        (also inclusively). This allows to point non-simmetric ranges w.r.t. the target_value.
+        (also inclusively). This allows to point non-symmetric ranges w.r.t. the target_value.
 
         Also note that if one of 'max_diff_if_less_threshold' and 'max_diff_if_greater_threshold'
         is absent, it is set to `+infinity`, so the range will be bounded from one side
