@@ -103,24 +103,11 @@ class OTEDetectionConfig(ConfigurableParameters):
         header = string_attribute("Parameters for inference")
         description = header
 
-        use_auto_parameters = configurable_boolean(
-            default_value=True,
-            header="Using auto parameters",
-            description="Using default parameters for model from ModelAPI",
-            affects_outcome_of=ModelLifecycle.INFERENCE
-        )
-        class_name = selectable(default_value=Models.SSD, header="Model class for inference",
+        class_name = selectable(default_value=Models.SSD,
+                                header="Model class for inference",
                                 description="Model classes with defined pre- and postprocessing",
-                                editable=True, visible_in_ui=True)
-
-        @attrs
-        class __Preprocessing(ParameterGroup):
-            header = string_attribute("Preprocessing")
-            description = header
-
-            resize_type = selectable(default_value=ResizeTypes.STANDARD, header="Resize type",
-                                     description="A resize type for model preprocess",
-                                     editable=True, visible_in_ui=True)
+                                editable=False,
+                                visible_in_ui=True)
 
         @attrs
         class __Postprocessing(ParameterGroup):
@@ -143,16 +130,6 @@ class OTEDetectionConfig(ConfigurableParameters):
                 affects_outcome_of=ModelLifecycle.INFERENCE
             )
 
-            iou_threshold = configurable_float(
-                default_value=0.5,
-                min_value=0,
-                max_value=1,
-                header="Intersection over Union threshold",
-                description="Threshold for NMS detection filtering.",
-                affects_outcome_of=ModelLifecycle.INFERENCE
-            )
-
-        preprocessing = add_parameter_group(__Preprocessing)
         postprocessing = add_parameter_group(__Postprocessing)
 
     @attrs

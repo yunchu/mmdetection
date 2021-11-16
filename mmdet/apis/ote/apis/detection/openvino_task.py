@@ -85,12 +85,8 @@ class OpenVINODetectionInferencer(BaseInferencer):
         model_cls = models.get_model_class(hparams.inference_parameters.class_name.value)
 
         self.ie = IECore()
-        if hparams.inference_parameters.use_auto_parameters:
-            self.model = model_cls(self.ie, model_file, weight_file)
-        else:
-            self.model = model_cls(self.ie, model_file, weight_file, resize_type=hparams.inference_parameters.preprocessing.resize_type.value,
-                                   threshold=hparams.inference_parameters.postprocessing.confidence_threshold,
-                                   iou_threshold=hparams.inference_parameters.postprocessing.iou_threshold)
+        self.model = model_cls(self.ie, model_file, weight_file,
+                               threshold=hparams.inference_parameters.postprocessing.confidence_threshold)
         self.exec_net = self.ie.load_network(self.model.net, device_name=device)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -133,13 +129,16 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
         self.model = self.task_environment.model
+        self.hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
+        try:
+            self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
+            self.hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
+        except KeyError:
+            self.confidence_threshold = self.hparams.inference_parameters.postprocessing.confidence_threshold
+        self.model_name = task_environment.model_template.name
         self.inferencer = self.load_inferencer()
 
-    @property
-    def hparams(self):
-        return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
-
-    def load_inferencer(self):
+    def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         return OpenVINODetectionInferencer(self.hparams,
                                            labels,
@@ -159,6 +158,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def evaluate(self,
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
+        if evaluation_metric is not None:
+            logger.warning(f'Requested to use {evaluation_metric} metric, but parameter is ignored. Use F-measure instead.')
         output_result_set.performance = MetricsHelper.compute_f_measure(output_result_set).get_performance()
 
     def deploy(self,
@@ -167,12 +168,11 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
         is_new_model = 'model_api' not in model_file
-        parameters['name_of_model'] = self.inferencer.model.__class__.__name__
+        parameters['name_of_model'] = self.model_name
+        parameters['type_of_model'] = self.hparams.inference_parameters.class_name.value
         parameters['is_new_model'] = is_new_model
         parameters['model_parameters'] = {
-            'threshold': self.inferencer.model.threshold,
-            'iou_threshold': self.inferencer.model.iou_threshold,
-            'resize_type': self.inferencer.model.resize_type
+            'threshold': self.inferencer.model.threshold
         }
         name_of_package = parameters['name_of_model'].lower()
         with tempfile.TemporaryDirectory() as tempdir:
@@ -259,6 +259,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                 output_model.set_data("openvino.xml", f.read())
             with open(os.path.join(tempdir, "model.bin"), "rb") as f:
                 output_model.set_data("openvino.bin", f.read())
+            output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
 
         # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS

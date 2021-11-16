@@ -117,26 +117,11 @@ learning_parameters:
 inference_parameters:
   description: Parameters for inference
   header: Parameters for inference
-  use_auto_parameters:
-    affects_outcome_of: INFERENCE
-    default_value: true
-    description: Using default parameters for model from ModelAPI
-    editable: true
-    header: Using auto parameters
-    type: BOOLEAN
-    ui_rules:
-      action: DISABLE_EDITING
-      operator: AND
-      rules: []
-      type: UI_RULES
-    value: true
-    visible_in_ui: true
-    warning: null
   class_name:
     affects_outcome_of: INFERENCE
     default_value: ssd
     description: Model classes with defined pre- and postprocessing
-    editable: True
+    editable: false
     enum_name: Models
     header: Model class for inference
     options:
@@ -151,31 +136,6 @@ inference_parameters:
     value: ssd
     visible_in_ui: True
     warning: null
-  preprocessing:
-    description: Preprocessing
-    header: Preprocessing
-    resize_type:
-      affects_outcome_of: INFERENCE
-      default_value: standard
-      description: A resize type for model preprocess
-      editable: True
-      enum_name: ResizeTypes
-      header: Resize type
-      options:
-        STANDARD: standard
-        FIT_TO_WINDOW: fit_to_window
-        FIT_TO_WINDOW_LETTERBOX: fit_to_window_letterbox
-      type: SELECTABLE
-      ui_rules:
-        action: DISABLE_EDITING
-        operator: AND
-        rules: []
-        type: UI_RULES
-      value: standard
-      visible_in_ui: True
-      warning: null
-    type: PARAMETER_GROUP
-    visible_in_ui: true
   postprocessing:
     confidence_threshold:
       affects_outcome_of: INFERENCE
@@ -193,23 +153,6 @@ inference_parameters:
         rules: []
         type: UI_RULES
       value: 0.35
-      visible_in_ui: true
-      warning: null
-    iou_threshold:
-      affects_outcome_of: INFERENCE
-      default_value: 0.5
-      description: Intersection over Union threshold for postprocessing NMS
-      editable: true
-      header: IoU threshold
-      max_value: 1
-      min_value: 0
-      type: FLOAT
-      ui_rules:
-        action: DISABLE_EDITING
-        operator: AND
-        rules: []
-        type: UI_RULES
-      value: 0.5
       visible_in_ui: true
       warning: null
     description: Postprocessing
