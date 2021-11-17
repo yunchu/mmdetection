@@ -986,8 +986,12 @@ class Validator:
             cur_res_addr = k
             cur_metric_requirements = v
             logger.info(f'Validation: begin check {cur_res_addr}')
-            current_metric = get_value_from_dict_by_dot_separated_address(current_result, cur_res_addr)
-            current_metric = float(current_metric)
+            try:
+                current_metric = get_value_from_dict_by_dot_separated_address(current_result, cur_res_addr)
+                current_metric = float(current_metric)
+            except ValueError as e:
+                raise ValueError(f'Cannot get metric {cur_res_addr} from the current result {current_result}') from e
+
             logger.debug(f'current_metric = {current_metric}')
             try:
                 target_value, min_value, max_value = \
