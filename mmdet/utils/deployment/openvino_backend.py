@@ -12,22 +12,21 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-import logging
-import numpy as np
 import os.path as osp
 import string
-import torch
-from collections import OrderedDict
-from lxml import etree
+
+import numpy as np
 from openvino.inference_engine import IECore
 from scipy.special import softmax
+
+from mmdet.utils.logger import get_root_logger
 
 from ...models import build_detector
 
 
 class Model:
     def __init__(self, model_path, ie=None, device='CPU', cfg=None, classes=None):
-        self.logger = logging.getLogger()
+        self.logger = get_root_logger()
         self.logger.info('Reading network from IR...')
 
         self.ie = IECore() if ie is None else ie

@@ -50,8 +50,10 @@ from mmdet.integration.nncf import is_state_nncf
 from mmdet.integration.nncf import wrap_nncf_model
 from mmdet.integration.nncf import is_accuracy_aware_training_set
 from mmdet.integration.nncf.config import compose_nncf_config
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_root_logger()
 
 
 class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):

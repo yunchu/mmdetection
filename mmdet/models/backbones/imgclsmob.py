@@ -22,14 +22,15 @@ from pytorchcv.model_provider import _models
 from pytorchcv.models.model_store import download_model
 from torch import distributed
 from torch.nn.modules.batchnorm import _BatchNorm
+from mmcv.runner import get_dist_info
+
+from mmdet.utils.logger import get_root_logger
 
 from ..builder import BACKBONES
 
-from mmcv.runner import get_dist_info
-
 
 def generate_backbones():
-    logger = logging.getLogger()
+    logger = get_root_logger()
 
     for model_name, model_getter in _models.items():
 
