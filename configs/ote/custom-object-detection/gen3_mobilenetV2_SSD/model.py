@@ -85,7 +85,7 @@ lr_config = dict(
 
 checkpoint_config = dict(interval=5)
 log_config = dict(
-    interval=100,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='TensorboardLoggerHook'),
