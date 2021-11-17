@@ -77,7 +77,7 @@ def patch_config(config: Config, work_dir: str, labels: List[LabelEntity], rando
 
     if 'log_config' not in config:
         config.log_config = ConfigDict()
-    config.log_config.hooks = []
+    # config.log_config.hooks = []
 
     if 'evaluation' not in config:
         config.evaluation = ConfigDict()
@@ -110,7 +110,7 @@ def set_hyperparams(config: Config, hyperparams: OTEDetectionConfig):
         config.runner.max_iters = total_iterations
 
 
-def patch_adaptive_repeat_dataset(config: Config, num_samples: int, 
+def patch_adaptive_repeat_dataset(config: Config, num_samples: int,
     decay: float = -0.002, factor: float = 30):
     """ Patch the repeat times and training epochs adatively
 
