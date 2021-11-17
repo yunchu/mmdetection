@@ -26,9 +26,12 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 
+from mmdet.utils.logger import get_root_logger
+
 from .configuration import OTEDetectionConfig
 
-logger = logging.getLogger(__name__)
+
+logger = get_root_logger()
 
 
 def is_epoch_based_runner(runner_config: ConfigDict):

@@ -13,10 +13,10 @@
 # and limitations under the License.
 
 import argparse
-import logging
 import sys
 
 import numpy as np
+from mmcv.utils import get_logger
 from ote_sdk.configuration.helper import create
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters
@@ -32,7 +32,8 @@ from ote_sdk.usecases.tasks.interfaces.optimization_interface import Optimizatio
 
 from mmdet.apis.ote.apis.detection.ote_utils import get_task_class
 
-logger = logging.getLogger(__name__)
+
+logger = get_logger(name='sample')
 
 
 def parse_args():
