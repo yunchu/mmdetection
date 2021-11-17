@@ -25,7 +25,7 @@ from ote_sdk.configuration.elements import (ParameterGroup,
 from ote_sdk.configuration import ConfigurableParameters
 from ote_sdk.configuration.model_lifecycle import ModelLifecycle
 
-from .configuration_enums import POTQuantizationPreset, ResizeTypes, Models
+from .configuration_enums import POTQuantizationPreset, Models
 
 
 @attrs

@@ -17,14 +17,11 @@ import inspect
 import json
 import os
 from shutil import copyfile, copytree
-import shutil
 import sys
 import subprocess
-import time
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple, Union
 
-import cv2
 import numpy as np
 from addict import Dict as ADDict
 from compression.api import DataLoader
@@ -75,11 +72,13 @@ class OpenVINODetectionInferencer(BaseInferencer):
         """
         Inferencer implementation for OTEDetection using OpenVINO backend.
 
-        :param model: Path to model to load, `.xml`, `.bin` or `.onnx` file.
         :param hparams: Hyper parameters that the model should use.
-        :param num_requests: Maximum number of requests that the inferencer can make.
-            Good value is the number of available cores. Defaults to 1.
+        :param labels: List of labels that was used during model training.
+        :param model_file: Path OpenVINO IR model definition file.
+        :param weight_file: Path OpenVINO IR model weights file.
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
+        :param num_requests: Maximum number of requests that the inferencer can make. Defaults to 1.
+
         """
         self.labels = labels
         model_cls = models.get_model_class(hparams.inference_parameters.class_name.value)
@@ -125,18 +124,23 @@ class OTEOpenVinoDataLoader(DataLoader):
     def __len__(self):
         return len(self.dataset)
 
+
 class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
         self.model = self.task_environment.model
-        self.hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
+        self._hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
         try:
             self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
-            self.hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
+            self._hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
         except KeyError:
             self.confidence_threshold = self.hparams.inference_parameters.postprocessing.confidence_threshold
         self.model_name = task_environment.model_template.name
         self.inferencer = self.load_inferencer()
+
+    @property
+    def hparams(self):
+        return self._hparams
 
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
