@@ -139,7 +139,7 @@ class OTEProgressHook(Hook):
         self.time_monitor.on_epoch_begin(runner.epoch)
 
     def after_epoch(self, runner):
-        self.time_monitor.on_epoch_end(runner.epoch)
+        self.time_monitor.on_epoch_end(runner.epoch, runner.log_buffer.output)
 
     def before_iter(self, runner):
         self.time_monitor.on_train_batch_begin(1)
@@ -160,7 +160,7 @@ class OTEProgressHook(Hook):
 
     def after_run(self, runner):
         self.time_monitor.on_train_end(1)
-        self.time_monitor.update_progress_callback(self.time_monitor.get_progress())
+        self.time_monitor.update_progress_callback(int(self.time_monitor.get_progress()))
 
     @property
     def progress(self):

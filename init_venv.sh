@@ -26,11 +26,6 @@ if [[ $PYTHON_VERSION != "3.7" && $PYTHON_VERSION != "3.8" && $PYTHON_VERSION !=
   exit 1
 fi
 
-if [[ -z $SC_SDK_REPO ]]; then
-  echo "The environment variable SC_SDK_REPO is not set -- it is required for creating virtual environment"
-  exit 1
-fi
-
 cd ${work_dir}
 
 if [[ -e ${venv_dir} ]]; then
@@ -80,74 +75,60 @@ else
   # Remove dots from CUDA version string, if any.
   CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
   echo "Using CUDA_VERSION ${CUDA_VERSION}"
-  if [[ "${CUDA_VERSION_CODE}" != "111" && "${CUDA_VERSION_CODE}" != "102" ]] ; then
-    echo "CUDA version must be either 10.2 or 11.1"
+  if [[ "${CUDA_VERSION_CODE}" != "111" ]] && [[ "${CUDA_VERSION_CODE}" != "102" ]] ; then
+    echo "CUDA version must be either 11.1 or 10.2"
     exit 1
   fi
-  if [[ "${CUDA_VERSION_CODE}" == "102" ]] ; then
-    if [[ "${TORCH_VERSION}" != "1.8.2" ]] && [[ "${TORCH_VERSION}" != "1.9.0" ]]; then
-      echo "if CUDA version is 10.2, then PyTorch must be either 1.8.2 or 1.9.0"
-      exit 1
-    fi
-  elif [[ "${CUDA_VERSION_CODE}" == "111" ]] ; then
-    if [[ "${TORCH_VERSION}" != "1.9.0" ]] && [[ "${TORCH_VERSION}" != "1.8.2" ]]; then
-      echo "if CUDA version is 11.1, then PyTorch must be 1.9.0 or"
-      exit 1
-    fi
-  fi
+  echo "export CUDA_HOME=${CUDA_HOME}" >> ${venv_dir}/bin/activate
 fi
 
 CONSTRAINTS_FILE=$(tempfile)
 cat constraints.txt >> ${CONSTRAINTS_FILE}
+export PIP_CONSTRAINT=${CONSTRAINTS_FILE}
 
-pip install --upgrade pip || exit 1
-pip install wheel -c ${CONSTRAINTS_FILE} || exit 1
-pip install --upgrade setuptools -c ${CONSTRAINTS_FILE} || exit 1
-
-if [[ -z $CUDA_VERSION_CODE ]]; then
-  pip install torch==${TORCH_VERSION}+cpu torchvision==${TORCHVISION_VERSION}+cpu -f https://download.pytorch.org/whl/torch_stable.html \
-          -c ${CONSTRAINTS_FILE} || exit 1
-  echo torch==${TORCH_VERSION}+cpu >> ${CONSTRAINTS_FILE}
-  echo torchvision==${TORCHVISION_VERSION}+cpu >> ${CONSTRAINTS_FILE}
-elif [[ $CUDA_VERSION_CODE == "102" ]]; then
-  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html \
-          -c ${CONSTRAINTS_FILE} || exit 1
-  echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
-  echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
-else
-  pip install torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html \
-          -c ${CONSTRAINTS_FILE} || exit 1
-  echo torch==${TORCH_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
-  echo torchvision==${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE} >> ${CONSTRAINTS_FILE}
-fi
+# Newer versions of pip have troubles with NNCF installation from the repo commit.
+pip install pip==21.2.1 || exit 1
+pip install wheel || exit 1
+pip install --upgrade setuptools || exit 1
 
 if [[ -z $CUDA_VERSION_CODE ]]; then
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cpu/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE} || exit 1
+  export TORCH_VERSION=${TORCH_VERSION}+cpu
+  export TORCHVISION_VERSION=${TORCHVISION_VERSION}+cpu
 else
-  pip install --no-cache-dir mmcv-full==${MMCV_VERSION} -f https://download.openmmlab.com/mmcv/dist/cu${CUDA_VERSION_CODE}/torch${TORCH_VERSION}/index.html -c ${CONSTRAINTS_FILE} || exit 1
+  export TORCH_VERSION=${TORCH_VERSION}+cu${CUDA_VERSION_CODE}
+  export TORCHVISION_VERSION=${TORCHVISION_VERSION}+cu${CUDA_VERSION_CODE}
 fi
+
+pip install torch==${TORCH_VERSION} torchvision==${TORCHVISION_VERSION} -f https://download.pytorch.org/whl/lts/1.8/torch_lts.html || exit 1
+echo torch==${TORCH_VERSION} >> ${CONSTRAINTS_FILE}
+echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
+
+pip install --no-cache-dir mmcv-full==${MMCV_VERSION} || exit 1
 
 # Install other requirements.
 # Install mmpycocotools and Polygon3 from source to make sure it is compatible with installed numpy version.
-pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools -c ${CONSTRAINTS_FILE} || exit 1
-pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 -c ${CONSTRAINTS_FILE} || exit 1
-cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache -c ${CONSTRAINTS_FILE} || exit 1
+pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools || exit 1
+pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 || exit 1
+cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache || exit 1
 
-pip install -e . -c ${CONSTRAINTS_FILE} || exit 1
+pip install -e . || exit 1
 MMDETECTION_DIR=`realpath .`
 echo "export MMDETECTION_DIR=${MMDETECTION_DIR}" >> ${venv_dir}/bin/activate
 
 # Install NNCF
-pip install -r requirements/nncf_compression.txt -c ${CONSTRAINTS_FILE} || exit 1
+pip install -r requirements/nncf_compression.txt || exit 1
 echo "Build NNCF extensions ..."
 python -c "import nncf"
 
-pip install -e $SC_SDK_REPO/src/ote_sdk -c ${CONSTRAINTS_FILE} || exit 1
-pip install -e $SC_SDK_REPO/src/sc_sdk -c ${CONSTRAINTS_FILE} || exit 1
-pip install -e $SC_SDK_REPO/src/common/users_handler -c ${CONSTRAINTS_FILE} || exit 1
-if [[ -z ${SKIP_SC_SDK_ADDITIONAL_PACKAGES} ]]; then
-  pip install `find $SC_SDK_REPO/.cache -name *.whl` || exit 1
+if [[ ! -z $OTE_SDK_PATH ]]; then
+  pip install -e $OTE_SDK_PATH || exit 1
+elif [[ ! -z $SC_SDK_REPO ]]; then
+  pip install -e $SC_SDK_REPO/src/ote_sdk || exit 1
+else
+  echo "OTE_SDK_PATH or SC_SDK_REPO should be specified"
+  exit 1
 fi
+
 
 deactivate
 
