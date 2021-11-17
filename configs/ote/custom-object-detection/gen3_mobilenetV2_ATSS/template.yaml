@@ -1,5 +1,6 @@
 # Description.
-name: Custom Object Detection Gen3 ATSS
+model_template_id: Custom_Object_Detection_Gen3_ATSS
+name: ATSS
 task_type: DETECTION
 task_family: VISION
 instantiation: "CLASS"
@@ -42,3 +43,7 @@ max_nodes: 1
 training_targets:
   - GPU
   - CPU
+
+# Stats.
+gigaflops: 20.6
+size: 9.1

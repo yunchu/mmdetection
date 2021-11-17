@@ -26,11 +26,6 @@ if [[ $PYTHON_VERSION != "3.7" && $PYTHON_VERSION != "3.8" && $PYTHON_VERSION !=
   exit 1
 fi
 
-if [[ -z $SC_SDK_REPO ]]; then
-  echo "The environment variable SC_SDK_REPO is not set -- it is required for creating virtual environment"
-  exit 1
-fi
-
 cd ${work_dir}
 
 if [[ -e ${venv_dir} ]]; then
@@ -72,7 +67,7 @@ fi
 # install PyTorch and MMCV.
 export TORCH_VERSION=1.8.2
 export TORCHVISION_VERSION=0.9.2
-export MMCV_VERSION=1.3.0
+export MMCV_VERSION=1.3.14
 
 if [[ -z ${CUDA_VERSION} ]]; then
   echo "CUDA was not found, installing dependencies in CPU-only mode. If you want to use CUDA, set CUDA_HOME and CUDA_VERSION beforehand."
@@ -80,10 +75,11 @@ else
   # Remove dots from CUDA version string, if any.
   CUDA_VERSION_CODE=$(echo ${CUDA_VERSION} | sed -e "s/\.//" -e "s/\(...\).*/\1/")
   echo "Using CUDA_VERSION ${CUDA_VERSION}"
-  if [[ "${CUDA_VERSION_CODE}" != "111" ]] ; then
-    echo "CUDA version must be 11.1"
+  if [[ "${CUDA_VERSION_CODE}" != "111" ]] && [[ "${CUDA_VERSION_CODE}" != "102" ]] ; then
+    echo "CUDA version must be either 11.1 or 10.2"
     exit 1
   fi
+  echo "export CUDA_HOME=${CUDA_HOME}" >> ${venv_dir}/bin/activate
 fi
 
 CONSTRAINTS_FILE=$(tempfile)
@@ -124,7 +120,15 @@ pip install -r requirements/nncf_compression.txt || exit 1
 echo "Build NNCF extensions ..."
 python -c "import nncf"
 
-pip install -e $SC_SDK_REPO/src/ote_sdk || exit 1
+if [[ ! -z $OTE_SDK_PATH ]]; then
+  pip install -e $OTE_SDK_PATH || exit 1
+elif [[ ! -z $SC_SDK_REPO ]]; then
+  pip install -e $SC_SDK_REPO/src/ote_sdk || exit 1
+else
+  echo "OTE_SDK_PATH or SC_SDK_REPO should be specified"
+  exit 1
+fi
+
 
 deactivate
 

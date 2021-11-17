@@ -1233,16 +1233,6 @@ class TestOTEIntegration:
     test_bunches = [
             dict(
                 model_name=[
-                   'gen1_mobilenet_v2-2s_ssd-256x256',
-                   'gen2_mobilenetV2_SSD',
-                   'gen2_mobilenetV2_ATSS',
-                   'gen2_resnet50_VFNet',
-                ],
-                dataset_name='dataset1_tiled_shortened_500_A',
-                usecase='precommit',
-            ),
-            dict(
-                model_name=[
                    'gen3_mobilenetV2_SSD',
                    'gen3_mobilenetV2_ATSS',
                    'gen3_resnet50_VFNet',
