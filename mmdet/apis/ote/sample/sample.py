@@ -118,6 +118,7 @@ def main(args):
     params.learning_parameters.num_iters = 5
     params.learning_parameters.learning_rate_warmup_iters = 1
     params.learning_parameters.batch_size = 2
+    params.debug_parameters.enable_debug_dump = False
 
     logger.info('Setup environment')
     environment = TaskEnvironment(model=None, hyper_parameters=params, label_schema=labels_schema, model_template=model_template)
