@@ -243,6 +243,7 @@ class OTETestTrainingAction(BaseOTETestAction):
 
         logger.debug('Set hyperparameters')
         params = create(self.model_template.hyper_parameters.data)
+        params.debug_parameters.enable_debug_dump = False
         params.learning_parameters.num_iters = self.num_training_iters
         if self.num_training_iters < 20:
             num_checkpoints = 2

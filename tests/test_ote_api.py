@@ -163,6 +163,7 @@ class API(unittest.TestCase):
         hyper_parameters.learning_parameters.num_checkpoints = 1
         hyper_parameters.postprocessing.result_based_confidence_threshold = False
         hyper_parameters.postprocessing.confidence_threshold = 0.1
+        hyper_parameters.debug_parameters.enable_debug_dump = False
         return hyper_parameters, model_template
 
     @e2e_pytest_api
