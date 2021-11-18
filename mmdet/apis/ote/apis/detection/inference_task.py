@@ -17,9 +17,9 @@ import io
 import logging
 import os
 import shutil
+import subprocess
 import tempfile
 import warnings
-from subprocess import run
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -65,11 +65,11 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         Task for inference object detection models using OTEDetection.
         """
 
-        print('ENVIRONMENT:')
+        logger.info('ENVIRONMENT:')
         for name, val in collect_env().items():
-            print(f'{name}: {val}')
-        print('pip list:')
-        run('pip list', shell=True, check=True)
+            logger.info(f'{name}: {val}')
+        logger.info('pip list:')
+        logger.info(subprocess.check_output(['pip', 'list'], universal_newlines=True))
 
         self._task_environment = task_environment
 
@@ -168,6 +168,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         model = {
             'weights': self._model.state_dict(),
             'config': self._config,
+            'confidence_threshold': self.confidence_threshold,
         }
         environment = {
             'model_template': self._task_environment.model_template,
@@ -204,6 +205,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         self._model.load_state_dict(state['model']['weights'])
         self._config = state['model']['config']
+        self.confidence_threshold = state['model']['confidence_threshold']
 
 
     def _add_predictions_to_dataset(self, prediction_results, dataset, confidence_threshold=0.0):

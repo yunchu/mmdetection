@@ -1,4 +1,5 @@
 import datetime
+import logging
 import os
 import pickle
 import socket
@@ -135,16 +136,45 @@ if __name__ == '__main__':
 
         with open(args.dump_path, 'rb') as f:
             while True:
+                print('reading dump record...')
+                logger = get_root_logger()
+                logger.setLevel(logging.ERROR)
                 try:
                     dump = pickle.load(f)
                 except EOFError:
+                    print('no more records found in the dump file')
                     break
+                logger.setLevel(logging.INFO)
 
                 task = dump['task']
+                # Disable debug dump when replay another debug dump
+                task._task_environment.get_hyper_parameters().debug_parameters.enable_debug_dump = False
                 method_args = {}
 
                 entrypoint = dump['entrypoint']
+                print('*' * 80)
+
                 print(f'{type(task)=}, {entrypoint=}')
+                print('=' * 80)
+
+                while True:
+                    action = input('[r]eplay, [s]kip or [q]uit : [r] ')
+                    action = action.lower()
+                    if action == '':
+                        action = 'r'
+                    if action not in {'r', 's', 'q'}:
+                        continue
+                    else:
+                        break
+
+                if action == 's':
+                    print('skipping the step replay')
+                    continue
+                if action == 'q':
+                    print('quiting dump replay session')
+                    exit(0)
+
+                print('replaying the step')
 
                 if entrypoint == 'train':
                     method_args['dataset'] = load_dataset(dump['arguments']['dataset'])
@@ -166,6 +196,11 @@ if __name__ == '__main__':
                     output_model = method_args['output_model']
                     method_args['export_type'] = dump['arguments']['export_type']
                 elif entrypoint == 'evaluate':
+                    output_model = ModelEntity(
+                        DatasetEntity(),
+                        task._task_environment,
+                        model_status=ModelStatus.SUCCESS)
+                    output_model.configuration.label_schema = task._task_environment.label_schema
                     method_args['output_result_set'] = ResultSetEntity(
                         model=output_model,
                         ground_truth_dataset=load_dataset(dump['arguments']['output_resultset']['ground_truth_dataset']),
