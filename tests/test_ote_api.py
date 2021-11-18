@@ -160,7 +160,6 @@ class API(unittest.TestCase):
         model_template = parse_model_template(osp.join(template_dir, 'template.yaml'))
         hyper_parameters = create(model_template.hyper_parameters.data)
         hyper_parameters.learning_parameters.num_iters = num_iters
-        hyper_parameters.learning_parameters.num_checkpoints = 1
         hyper_parameters.postprocessing.result_based_confidence_threshold = False
         hyper_parameters.postprocessing.confidence_threshold = 0.1
         return hyper_parameters, model_template
@@ -427,7 +426,6 @@ class API(unittest.TestCase):
             model_status=ModelStatus.NOT_READY,
             _id=ObjectId())
         task._hyperparams.learning_parameters.num_iters = 1
-        task._hyperparams.learning_parameters.num_checkpoints = 1
         task.train(dataset, new_model)
         self.assertEqual(new_model.model_status, ModelStatus.SUCCESS)
         self.assertNotEqual(first_model, new_model)

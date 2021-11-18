@@ -244,16 +244,7 @@ class OTETestTrainingAction(BaseOTETestAction):
         logger.debug('Set hyperparameters')
         params = create(self.model_template.hyper_parameters.data)
         params.learning_parameters.num_iters = self.num_training_iters
-        if self.num_training_iters < 20:
-            num_checkpoints = 2
-        elif self.num_training_iters < 1000:
-            num_checkpoints = 10
-        else:
-            num_checkpoints = 30
-
         params.learning_parameters.batch_size = self.batch_size
-
-        params.learning_parameters.num_checkpoints = num_checkpoints
 
         logger.debug('Setup environment')
         self.environment, self.task = self._create_environment_and_task(params,
