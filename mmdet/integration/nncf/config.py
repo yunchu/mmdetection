@@ -40,8 +40,7 @@ def compose_nncf_config(nncf_config, enabled_options):
 
         for part in enabled_options:
             assert part in order_of_parts, (
-                    f'The part {part} is selected, but it is absent in order_of_parts={order_of_parts},'
-                    f' see the optimisation config file {config_path}')
+                    f'The part {part} is selected, but it is absent in order_of_parts={order_of_parts}')
 
         optimisation_parts_to_choose = [part for part in order_of_parts if part in enabled_options]
 
@@ -50,13 +49,12 @@ def compose_nncf_config(nncf_config, enabled_options):
 
     for part in optimisation_parts_to_choose:
         assert part in optimisation_parts, (
-                f'Error: the optimisation config does not contain the part "{part}", '
-                f'whereas it was selected; see the optimisation config file "{config_path}"')
+                f'Error: the optimisation config does not contain the part "{part}"')
         optimisation_part_dict = optimisation_parts[part]
         try:
             nncf_config_part = merge_dicts_and_lists_b_into_a(nncf_config_part, optimisation_part_dict)
         except AssertionError as cur_error:
-            err_descr = (f'Error during merging the parts of nncf configs from file "{config_path}":\n'
+            err_descr = (f'Error during merging the parts of nncf configs:\n'
                 f'the current part={part}, '
                 f'the order of merging parts into base is {optimisation_parts_to_choose}.\n'
                 f'The error is:\n{cur_error}')
