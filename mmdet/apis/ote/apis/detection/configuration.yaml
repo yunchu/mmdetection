@@ -78,23 +78,6 @@ learning_parameters:
     value: 100
     visible_in_ui: true
     warning: null
-  num_checkpoints:
-    affects_outcome_of: NONE
-    default_value: 5
-    description: ''
-    editable: true
-    header: Number of checkpoints that is done during the single training round
-    max_value: 100
-    min_value: 1
-    type: INTEGER
-    ui_rules:
-      action: DISABLE_EDITING
-      operator: AND
-      rules: []
-      type: UI_RULES
-    value: 5
-    visible_in_ui: true
-    warning: null
   num_iters:
     affects_outcome_of: TRAINING
     default_value: 1
@@ -115,13 +98,13 @@ learning_parameters:
     warning: null
   num_workers:
     affects_outcome_of: NONE
-    default_value: 0
+    default_value: 4
     description: Increasing this value might improve training speed however it might
       cause out of memory errors. If the number of workers is set to zero, data loading
       will happen in the main training thread.
     editable: true
     header: Number of cpu threads to use during batch generation
-    max_value: 8
+    max_value: 36
     min_value: 0
     type: INTEGER
     ui_rules:
@@ -129,7 +112,7 @@ learning_parameters:
       operator: AND
       rules: []
       type: UI_RULES
-    value: 0
+    value: 4
     visible_in_ui: true
     warning: null
   type: PARAMETER_GROUP
@@ -181,7 +164,7 @@ pot_parameters:
     affects_outcome_of: NONE
     default_value: Performance
     description: Quantization preset that defines quantization scheme
-    editable: True
+    editable: true
     enum_name: POTQuantizationPreset
     header: Preset
     options:
@@ -194,13 +177,13 @@ pot_parameters:
       rules: []
       type: UI_RULES
     value: Performance
-    visible_in_ui: True
+    visible_in_ui: true
     warning: null
   stat_subset_size:
     affects_outcome_of: NONE
     default_value: 300
     description: Number of data samples used for post-training optimization
-    editable: True
+    editable: true
     header: Number of data samples
     max_value: 9223372036854775807
     min_value: 1
@@ -211,7 +194,7 @@ pot_parameters:
       rules: []
       type: UI_RULES
     value: 300
-    visible_in_ui: True
+    visible_in_ui: true
     warning: null
   type: PARAMETER_GROUP
   visible_in_ui: true
@@ -219,10 +202,10 @@ nncf_optimization:
   description: Optimization by NNCF
   header: Optimization by NNCF
   enable_quantization:
-    affects_outcome_of: INFERENCE
-    default_value: True
+    affects_outcome_of: TRAINING
+    default_value: true
     description: Enable quantization algorithm
-    editable: false
+    editable: true
     header: Enable quantization algorithm
     type: BOOLEAN
     ui_rules:
@@ -231,10 +214,10 @@ nncf_optimization:
       rules: []
       type: UI_RULES
     value: true
-    visible_in_ui: false
+    visible_in_ui: true
     warning: null
   enable_pruning:
-    affects_outcome_of: INFERENCE
+    affects_outcome_of: TRAINING
     default_value: false
     description: Enable filter pruning algorithm
     editable: true
@@ -249,10 +232,10 @@ nncf_optimization:
     visible_in_ui: true
     warning: null
   maximal_accuracy_degradation:
-    affects_outcome_of: NONE
+    affects_outcome_of: TRAINING
     default_value: 1.0
-    description: The maximal allowed accuracy metric drop in absolute values
-    editable: True
+    description: The maximal allowed accuracy metric drop
+    editable: true
     header: Maximum accuracy degradation
     max_value: 100.0
     min_value: 0.0
@@ -263,7 +246,7 @@ nncf_optimization:
       rules: []
       type: UI_RULES
     value: 1.0
-    visible_in_ui: True
+    visible_in_ui: true
     warning: null
   type: PARAMETER_GROUP
-  visible_in_ui: True
+  visible_in_ui: true

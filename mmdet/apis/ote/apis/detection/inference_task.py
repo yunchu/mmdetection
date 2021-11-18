@@ -14,7 +14,6 @@
 
 import copy
 import io
-import logging
 import os
 import shutil
 import subprocess
@@ -51,8 +50,9 @@ from mmdet.datasets import build_dataloader, build_dataset
 from mmdet.models import build_detector
 from mmdet.parallel import MMDataCPU
 from mmdet.utils.collect_env import collect_env
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+logger = get_root_logger()
 
 
 class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IUnload):
@@ -64,6 +64,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         """"
         Task for inference object detection models using OTEDetection.
         """
+        logger.info('Loading OTEDetectionTask')
 
         logger.info('ENVIRONMENT:')
         for name, val in collect_env().items():
@@ -73,9 +74,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         self._task_environment = task_environment
 
-        logger.info(f"Loading OTEDetectionInferenceTask.")
         self._scratch_space = tempfile.mkdtemp(prefix="ote-det-scratch-")
-        logger.info(f"Scratch space created at {self._scratch_space}")
+        logger.info(f'Scratch space created at {self._scratch_space}')
 
         self._model_name = task_environment.model_template.name
         self._labels = task_environment.get_labels(False)
@@ -95,12 +95,14 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._precision = [ModelPrecision.FP32]
 
         # Create and initialize PyTorch model.
+        logger.info('Loading the model')
         self._model = self._load_model(task_environment.model)
 
         # Extra control variables.
         self._training_work_dir = None
         self._is_training = False
         self._should_stop = False
+        logger.info('Task initialization completed')
 
 
     @property
@@ -244,6 +246,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
     @debug_trace
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
+
+        logger.info('Infer the model on the dataset')
         set_hyperparams(self._config, self._hyperparams)
 
         # If confidence threshold is adaptive then up-to-date value should be stored in the model
@@ -269,6 +273,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             prediction_results, _ = self._infer_detector(model, self._config, dataset, dump_features=True, eval=False)
         self._add_predictions_to_dataset(prediction_results, dataset, self.confidence_threshold)
 
+        logger.info('Inference completed')
         return dataset
 
 
@@ -323,12 +328,13 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
         """ Computes performance on a resultset """
-
+        logger.info('Evaluating the metric')
         if evaluation_metric is not None:
             logger.warning(f'Requested to use {evaluation_metric} metric, but parameter is ignored. Use F-measure instead.')
         metric = MetricsHelper.compute_f_measure(output_result_set)
         logger.info(f"F-measure after evaluation: {metric.f_measure.value}")
         output_result_set.performance = metric.get_performance()
+        logger.info('Evaluation completed')
 
 
     @staticmethod
@@ -345,7 +351,6 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 is_in_docker = is_in_docker or any('docker' in line for line in f)
         is_in_docker = is_in_docker or os.path.exists('/.dockerenv')
         return is_in_docker
-
 
     def unload(self):
         """
@@ -368,16 +373,17 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
     def export(self,
                export_type: ExportType,
                output_model: ModelEntity):
+        logger.info('Exporting the model')
         assert export_type == ExportType.OPENVINO
         output_model.model_format = ModelFormat.OPENVINO
         output_model.optimization_type = ModelOptimizationType.MO
         with tempfile.TemporaryDirectory() as tempdir:
-            optimized_model_dir = os.path.join(tempdir, "export")
+            optimized_model_dir = os.path.join(tempdir, 'export')
             logger.info(f'Optimized model will be temporarily saved to "{optimized_model_dir}"')
             os.makedirs(optimized_model_dir, exist_ok=True)
             try:
                 from torch.jit._trace import TracerWarning
-                warnings.filterwarnings("ignore", category=TracerWarning)
+                warnings.filterwarnings('ignore', category=TracerWarning)
                 if torch.cuda.is_available():
                     model = self._model.cuda(self._config.gpu_ids[0])
                 else:
@@ -386,16 +392,17 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 bin_file = [f for f in os.listdir(tempdir) if f.endswith('.bin')][0]
                 xml_file = [f for f in os.listdir(tempdir) if f.endswith('.xml')][0]
                 with open(os.path.join(tempdir, bin_file), "rb") as f:
-                    output_model.set_data("openvino.bin", f.read())
+                    output_model.set_data('openvino.bin', f.read())
                 with open(os.path.join(tempdir, xml_file), "rb") as f:
-                    output_model.set_data("openvino.xml", f.read())
-                output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
+                    output_model.set_data('openvino.xml', f.read())
+                output_model.set_data('confidence_threshold', np.array([self.confidence_threshold], dtype=np.float32).tobytes())
                 output_model.precision = self._precision
                 output_model.optimization_methods = self._optimization_methods
                 output_model.model_status = ModelStatus.SUCCESS
             except Exception as ex:
                 output_model.model_status = ModelStatus.FAILED
-                raise RuntimeError("Optimization was unsuccessful.") from ex
+                raise RuntimeError('Optimization was unsuccessful.') from ex
+        logger.info('Exporting completed')
 
 
     def _delete_scratch_space(self):
