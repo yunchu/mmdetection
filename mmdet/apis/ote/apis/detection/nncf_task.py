@@ -224,7 +224,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
         self.save_model(output_model)
 
         output_model.model_status = ModelStatus.SUCCESS
-        output_model.model_format = ModelFormat.OPENVINO
+        output_model.model_format = ModelFormat.PYTORCH
         output_model.optimization_type = OptimizationType.NNCF
         output_model.optimization_methods = self._optimization_methods
         output_model.precision = self._precision
