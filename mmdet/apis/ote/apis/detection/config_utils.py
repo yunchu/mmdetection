@@ -18,6 +18,7 @@ import logging
 import math
 import os
 import tempfile
+import numpy as np
 from collections import defaultdict
 from typing import List, Optional
 
@@ -29,6 +30,12 @@ from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 from mmdet.utils.logger import get_root_logger
 
 from .configuration import OTEDetectionConfig
+
+try:
+    from sklearn.cluster import KMeans
+    kmeans_import = True
+except ImportError:
+    kmeans_import = False
 
 
 logger = get_root_logger()
@@ -277,7 +284,7 @@ def remove_from_config(config, key: str):
         else:
             raise ValueError(f'Unknown config type {type(config)}')
 
-def cluster_anchors(config : Config, dataset : DatasetEntity, model : ModelEntity):
+def cluster_anchors(config: Config, dataset: DatasetEntity, model):
     if not kmeans_import:
         raise ImportError('Sklearn package is not installed. To enable anchor boxes clustering, please install '
                           'packages from requirements/optional.txt or just scikit-learn package.')
@@ -331,11 +338,8 @@ def get_anchor_boxes(wh_stats, group_as):
     widths = centers[idx, 0]
     heights = centers[idx, 1]
 
-    group_as = np.cumsum([0] + group_as)
-    widths = [[widths[i] for i in range(group_as[j], group_as[j + 1])] for j in
-              range(len(group_as) - 1)]
-    heights = [[heights[i] for i in range(group_as[j], group_as[j + 1])] for j in
-               range(len(group_as) - 1)]
+    group_as = np.cumsum(group_as[:-1])
+    widths, heights = np.split(widths, group_as), np.split(heights, group_as)
     return widths, heights
 
 

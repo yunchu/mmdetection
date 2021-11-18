@@ -366,8 +366,7 @@ class SSDAnchorGenerator(AnchorGenerator):
                  ratios,
                  basesize_ratio_range,
                  input_size=300,
-                 scale_major=True,
-                 reclustering_anchors=False):
+                 scale_major=True):
         assert len(strides) == len(ratios)
         assert mmcv.is_tuple_of(basesize_ratio_range, float)
 
@@ -475,7 +474,8 @@ class SSDAnchorGeneratorClustered(AnchorGenerator):
     def __init__(self,
                  strides,
                  widths,
-                 heights):
+                 heights,
+                 reclustering_anchors=False):
         self.strides = [_pair(stride) for stride in strides]
         self.widths = widths
         self.heights = heights
