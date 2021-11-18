@@ -78,6 +78,12 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
+        
+        # Do clustering for SSD model
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                self._config, self._model = cluster_anchors(self._config, train_dataset, self._model)
+
         config = self._config
 
         # Create a copy of the network.
@@ -170,6 +176,11 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
+        if hasattr(self._model, 'bbox_head') and hasattr(self._model.bbox_head, 'anchor_generator'):
+            if getattr(self._model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                hyperparams_str['anchor_heights'] = self._model.bbox_head.anchor_generator.heights
+                hyperparams_str['anchor_widths'] = self._model.bbox_head.anchor_generator.widths
+
         labels = {label.name: label.color.rgb_tuple for label in self._labels}
         modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels,
             'confidence_threshold': self.confidence_threshold, 'VERSION': 1}

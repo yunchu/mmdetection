@@ -276,3 +276,72 @@ def remove_from_config(config, key: str):
             del config[key]
         else:
             raise ValueError(f'Unknown config type {type(config)}')
+
+def cluster_anchors(config : Config, dataset : DatasetEntity, model : ModelEntity):
+    if not kmeans_import:
+        raise ImportError('Sklearn package is not installed. To enable anchor boxes clustering, please install '
+                          'packages from requirements/optional.txt or just scikit-learn package.')
+
+    logger.info('Collecting statistics from training dataset to cluster anchor boxes...')
+    [target_wh] = [transforms.img_scale for transforms in config.data.test.pipeline
+                 if transforms.type == 'MultiScaleFlipAug']
+    prev_generator = config.model.bbox_head.anchor_generator
+    group_as = [len(width) for width in prev_generator.widths]
+    wh_stats = get_sizes_from_OTEdataset(dataset, target_wh)
+
+    if len(wh_stats) < sum(group_as):
+        logger.warning(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '
+                       f'at least {sum(group_as)}. Anchor box clustering was skipped.')
+        return config, model
+
+    widths, heights = get_anchor_boxes(wh_stats, group_as)
+    logger.info(f'Anchor boxes widths have been updated from {format_list_to_str(prev_generator.widths)} '
+                                                        f'to {format_list_to_str(widths)}')
+    logger.info(f'Anchor boxes heights have been updated from {format_list_to_str(prev_generator.heights)} '
+                                                         f'to {format_list_to_str(heights)}')
+    config_generator = config.model.bbox_head.anchor_generator
+    config_generator.widths, config_generator.heights = widths, heights
+
+    model_generator = model.bbox_head.anchor_generator
+    model_generator.widths, model_generator.heights = widths, heights
+    model_generator.base_anchors = model_generator.gen_base_anchors()
+
+    config.model.bbox_head.anchor_generator = config_generator
+    model.bbox_head.anchor_generator = model_generator
+    return config, model
+
+def get_sizes_from_OTEdataset(dataset, target_wh):
+    wh_stats = []
+    for item in dataset:
+        for ann in item.annotation_scene.annotations:
+            box = ann.shape
+            w = box.width * target_wh[0]
+            h = box.height * target_wh[1]
+            wh_stats.append((w, h))
+    return wh_stats
+
+
+def get_anchor_boxes(wh_stats, group_as):
+    kmeans = KMeans(init='k-means++', n_clusters=sum(group_as), random_state=0).fit(wh_stats)
+    centers = kmeans.cluster_centers_
+
+    areas = np.sqrt(np.prod(centers, axis=1))
+    idx = np.argsort(areas)
+
+    widths = centers[idx, 0]
+    heights = centers[idx, 1]
+
+    group_as = np.cumsum([0] + group_as)
+    widths = [[widths[i] for i in range(group_as[j], group_as[j + 1])] for j in
+              range(len(group_as) - 1)]
+    heights = [[heights[i] for i in range(group_as[j], group_as[j + 1])] for j in
+               range(len(group_as) - 1)]
+    return widths, heights
+
+
+def format_list_to_str(value_lists):
+    """ Decrease floating point digits in logs """
+    str_value = ''
+    for value_list in value_lists:
+        str_value += '[' + ', '.join(f'{value:.2f}' for value in value_list) + '], '
+    return f'[{str_value[:-2]}]'
