@@ -110,8 +110,9 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                 dict(
                     model_name=[
                        'Custom_Object_Detection_Gen3_ATSS',
+                       'Custom_Object_Detection_Gen3_SSD',
                     ],
-                    dataset_name='bbcd',
+                    dataset_name=['bbcd','weed-coco'],
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE,
                     batch_size=KEEP_CONFIG_FIELD_VALUE,
                     usecase=REALLIFE_USECASE_CONSTANT,
