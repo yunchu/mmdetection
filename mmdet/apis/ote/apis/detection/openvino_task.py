@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
-import logging
 import os
 import tempfile
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -48,8 +47,9 @@ from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
 
 from .configuration import OTEDetectionConfig
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+logger = get_root_logger()
 
 
 def get_output(net, outputs, name):
@@ -190,10 +190,12 @@ class OTEOpenVinoDataLoader(DataLoader):
 
 class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
+        logger.info('Loading OpenVINO OTEDetectionTask')
         self.task_environment = task_environment
         self.model = self.task_environment.model
         self.confidence_threshold: float = 0.0
         self.inferencer = self.load_inferencer()
+        logger.info('OpenVINO task initialization completed')
 
     @property
     def hparams(self):
@@ -208,6 +210,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                                            self.confidence_threshold)
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
+        logger.info('Start OpenVINO inference')
         update_progress_callback = default_progress_callback
         if inference_parameters is not None:
             update_progress_callback = inference_parameters.update_progress
@@ -216,23 +219,27 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             predicted_scene = self.inferencer.predict(dataset_item.numpy)
             dataset_item.append_annotations(predicted_scene.annotations)
             update_progress_callback(int(i / dataset_size * 100))
+        logger.info('OpenVINO inference completed')
         return dataset
 
     def evaluate(self,
                  output_result_set: ResultSetEntity,
                  evaluation_metric: Optional[str] = None):
+        logger.info('Start OpenVINO metric evaluation')
         if evaluation_metric is not None:
             logger.warning(f'Requested to use {evaluation_metric} metric, but parameter is ignored. Use F-measure instead.')
         output_result_set.performance = MetricsHelper.compute_f_measure(output_result_set).get_performance()
+        logger.info('OpenVINO metric evaluation completed')
 
     def optimize(self,
                  optimization_type: OptimizationType,
                  dataset: DatasetEntity,
                  output_model: ModelEntity,
                  optimization_parameters: Optional[OptimizationParameters]):
+        logger.info('Start POT optimization')
 
         if optimization_type is not OptimizationType.POT:
-            raise ValueError("POT is the only supported optimization type for OpenVino models")
+            raise ValueError('POT is the only supported optimization type for OpenVino models')
 
         data_loader = OTEOpenVinoDataLoader(dataset, self.inferencer)
 
@@ -300,3 +307,4 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
 
         self.model = output_model
         self.inferencer = self.load_inferencer()
+        logger.info('POT optimization completed')

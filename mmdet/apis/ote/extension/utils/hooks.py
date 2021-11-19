@@ -23,8 +23,10 @@ from mmcv.runner import BaseRunner, EpochBasedRunner
 from mmcv.runner.dist_utils import master_only
 from mmcv.utils import print_log
 
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_root_logger()
 
 
 @HOOKS.register_module()

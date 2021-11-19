@@ -65,7 +65,7 @@ lr_config = dict(
     warmup_ratio=0.3333333333333333)
 checkpoint_config = dict(interval=100)
 log_config = dict(
-    interval=50,
+    interval=1,
     hooks=[
         dict(type='TextLoggerHook'),
         # dict(type='TensorboardLoggerHook'),
