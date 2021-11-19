@@ -50,8 +50,10 @@ from mmdet.integration.nncf import is_state_nncf
 from mmdet.integration.nncf import wrap_nncf_model
 from mmdet.integration.nncf import is_accuracy_aware_training_set
 from mmdet.integration.nncf.config import compose_nncf_config
+from mmdet.utils.logger import get_root_logger
 
-logger = logging.getLogger(__name__)
+
+logger = get_root_logger()
 
 
 class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
@@ -222,7 +224,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
         self.save_model(output_model)
 
         output_model.model_status = ModelStatus.SUCCESS
-        output_model.model_format = ModelFormat.OPENVINO
+        output_model.model_format = ModelFormat.BASE_FRAMEWORK
         output_model.optimization_type = OptimizationType.NNCF
         output_model.optimization_methods = self._optimization_methods
         output_model.precision = self._precision
