@@ -5,6 +5,7 @@ from typing import List, Optional
 import numpy as np
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
 from ote_sdk.entities.dataset_item import DatasetItemEntity
+from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.image import Image
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.entities.scored_label import ScoredLabel
@@ -295,3 +296,45 @@ def load_dataset_items_coco_format(
         dataset_items.append(dataset_item)
 
     return dataset_items
+
+
+def get_sizes_from_DatasetEntity(dataset: DatasetEntity, target_wh: list):
+    """
+    Function to get sizes of instances in DatasetEntity and to resize it to the target size. 
+
+    :param dataset: DatasetEntity in which to get statistics
+    :param target_wh: target width and height of the dataset
+    :return list: tuples with width and height of each instance
+    """
+    wh_stats = []
+    for item in dataset:
+        for ann in item.annotation_scene.annotations:
+            box = ann.shape
+            w = box.width * target_wh[0]
+            h = box.height * target_wh[1]
+            wh_stats.append((w, h))
+    return wh_stats
+
+
+def get_anchor_boxes(wh_stats, group_as):
+    from sklearn.cluster import KMeans
+    kmeans = KMeans(init='k-means++', n_clusters=sum(group_as), random_state=0).fit(wh_stats)
+    centers = kmeans.cluster_centers_
+
+    areas = np.sqrt(np.prod(centers, axis=1))
+    idx = np.argsort(areas)
+
+    widths = centers[idx, 0]
+    heights = centers[idx, 1]
+
+    group_as = np.cumsum(group_as[:-1])
+    widths, heights = np.split(widths, group_as), np.split(heights, group_as)
+    return widths, heights
+
+
+def format_list_to_str(value_lists):
+    """ Decrease floating point digits in logs """
+    str_value = ''
+    for value_list in value_lists:
+        str_value += '[' + ', '.join(f'{value:.2f}' for value in value_list) + '], '
+    return f'[{str_value[:-2]}]'

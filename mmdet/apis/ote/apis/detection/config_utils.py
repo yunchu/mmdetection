@@ -27,6 +27,7 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 
+from mmdet.apis.ote.extension.datasets.data_utils import get_anchor_boxes, get_sizes_from_DatasetEntity, format_list_to_str
 from mmdet.utils.logger import get_root_logger
 
 from .configuration import OTEDetectionConfig
@@ -294,7 +295,7 @@ def cluster_anchors(config: Config, dataset: DatasetEntity, model):
                  if transforms.type == 'MultiScaleFlipAug']
     prev_generator = config.model.bbox_head.anchor_generator
     group_as = [len(width) for width in prev_generator.widths]
-    wh_stats = get_sizes_from_OTEdataset(dataset, target_wh)
+    wh_stats = get_sizes_from_DatasetEntity(dataset, target_wh)
 
     if len(wh_stats) < sum(group_as):
         logger.warning(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '
@@ -316,36 +317,3 @@ def cluster_anchors(config: Config, dataset: DatasetEntity, model):
     config.model.bbox_head.anchor_generator = config_generator
     model.bbox_head.anchor_generator = model_generator
     return config, model
-
-def get_sizes_from_OTEdataset(dataset, target_wh):
-    wh_stats = []
-    for item in dataset:
-        for ann in item.annotation_scene.annotations:
-            box = ann.shape
-            w = box.width * target_wh[0]
-            h = box.height * target_wh[1]
-            wh_stats.append((w, h))
-    return wh_stats
-
-
-def get_anchor_boxes(wh_stats, group_as):
-    kmeans = KMeans(init='k-means++', n_clusters=sum(group_as), random_state=0).fit(wh_stats)
-    centers = kmeans.cluster_centers_
-
-    areas = np.sqrt(np.prod(centers, axis=1))
-    idx = np.argsort(areas)
-
-    widths = centers[idx, 0]
-    heights = centers[idx, 1]
-
-    group_as = np.cumsum(group_as[:-1])
-    widths, heights = np.split(widths, group_as), np.split(heights, group_as)
-    return widths, heights
-
-
-def format_list_to_str(value_lists):
-    """ Decrease floating point digits in logs """
-    str_value = ''
-    for value_list in value_lists:
-        str_value += '[' + ', '.join(f'{value:.2f}' for value in value_list) + '], '
-    return f'[{str_value[:-2]}]'
