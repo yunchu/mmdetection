@@ -177,7 +177,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
         if hasattr(self._model, 'bbox_head') and hasattr(self._model.bbox_head, 'anchor_generator'):
-            if getattr(self._model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
                 hyperparams_str['anchor_heights'] = self._model.bbox_head.anchor_generator.heights
                 hyperparams_str['anchor_widths'] = self._model.bbox_head.anchor_generator.widths
 
