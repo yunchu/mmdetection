@@ -16,9 +16,9 @@ import copy
 import glob
 import logging
 import math
+import numpy as np
 import os
 import tempfile
-import numpy as np
 from collections import defaultdict
 from typing import List, Optional
 
@@ -27,7 +27,8 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 
-from mmdet.apis.ote.extension.datasets.data_utils import get_anchor_boxes, get_sizes_from_DatasetEntity, format_list_to_str
+from mmdet.apis.ote.extension.datasets.data_utils import get_anchor_boxes, get_sizes_from_dataset_entity, format_list_to_str
+from mmdet.models.detectors import BaseDetector
 from mmdet.utils.logger import get_root_logger
 
 from .configuration import OTEDetectionConfig
@@ -285,7 +286,7 @@ def remove_from_config(config, key: str):
         else:
             raise ValueError(f'Unknown config type {type(config)}')
 
-def cluster_anchors(config: Config, dataset: DatasetEntity, model):
+def cluster_anchors(config: Config, dataset: DatasetEntity, model: BaseDetector):
     if not kmeans_import:
         raise ImportError('Sklearn package is not installed. To enable anchor boxes clustering, please install '
                           'packages from requirements/optional.txt or just scikit-learn package.')
@@ -295,7 +296,7 @@ def cluster_anchors(config: Config, dataset: DatasetEntity, model):
                  if transforms.type == 'MultiScaleFlipAug']
     prev_generator = config.model.bbox_head.anchor_generator
     group_as = [len(width) for width in prev_generator.widths]
-    wh_stats = get_sizes_from_DatasetEntity(dataset, target_wh)
+    wh_stats = get_sizes_from_dataset_entity(dataset, target_wh)
 
     if len(wh_stats) < sum(group_as):
         logger.warning(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '

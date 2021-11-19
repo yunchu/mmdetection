@@ -113,11 +113,10 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             self.confidence_threshold = model_data.get('confidence_threshold', self.confidence_threshold)
-            if model_data.get('config'):
-                config_data = model_data['config']
-                if config_data.get('anchor_heights') and config_data.get('anchor_widths'):
-                    self._config.model.bbox_head.anchor_generator.heights = config_data['anchor_heights']
-                    self._config.model.bbox_head.anchor_generator.widths = config_data['anchor_widths']
+            if model_data.get('anchors'):
+                anchors = model_data['anchors']
+                self._config.model.bbox_head.anchor_generator.heights = anchors['heights']
+                self._config.model.bbox_head.anchor_generator.widths = anchors['widths']
 
             model = self._create_model(self._config, from_scratch=True)
 

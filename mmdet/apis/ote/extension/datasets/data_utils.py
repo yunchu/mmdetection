@@ -298,7 +298,7 @@ def load_dataset_items_coco_format(
     return dataset_items
 
 
-def get_sizes_from_DatasetEntity(dataset: DatasetEntity, target_wh: list):
+def get_sizes_from_dataset_entity(dataset: DatasetEntity, target_wh: list):
     """
     Function to get sizes of instances in DatasetEntity and to resize it to the target size. 
 
@@ -308,7 +308,7 @@ def get_sizes_from_DatasetEntity(dataset: DatasetEntity, target_wh: list):
     """
     wh_stats = []
     for item in dataset:
-        for ann in item.annotation_scene.annotations:
+        for ann in item.get_annotations():
             box = ann.shape
             w = box.width * target_wh[0]
             h = box.height * target_wh[1]
