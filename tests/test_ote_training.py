@@ -70,6 +70,12 @@ def KEEP_CONFIG_FIELD_VALUE():
     """
     return 'KEEP_CONFIG_FIELD_VALUE'
 
+def REALLIFE_USECASE_CONSTANT():
+    """
+    This is a constant for pointing usecase for reallife training tests
+    """
+    return 'reallife'
+
 def DATASET_PARAMETERS_FIELDS():
     return ('annotations_train',
             'images_train_dir',
@@ -193,27 +199,54 @@ def cur_test_expected_metrics_callback_fx(expected_metrics_all_tests_fx, current
     * or None if the test validation should be skipped.
 
     The expected metrics for a test is a dict with the structure that stores the
-    requirements on metrics on the current test, e.g.
+    requirements on metrics on the current test. In this dict
+    * each key is a dot-separated metric "address" in the structure received as the result of the test
+    * each value is a structure describing a requirement for this metric
+    e.g.
     ```
     {
       'metrics.accuracy.f-measure': {
               'target_value': 0.81,
-              'max_drop': 0.005
+              'max_diff': 0.005
           }
     }
-      ```
+    ```
 
-    Note that the fixture returns a callback instead of returning the expected metrics
-    themselves, to avoid attempts to read expected metrics for the
-    stages that do not make validation at all -- now the callback is called
-    if and only if validation is made for the stage.
+    Note that the fixture returns a callback instead of returning the expected metrics structure
+    themselves, to avoid attempts to read expected metrics for the stages that do not make validation
+    at all -- now the callback is called if and only if validation is made for the stage.
     (E.g. the stage 'export' does not make validation, but the stage 'export_evaluation' does.)
 
     Also note that if the callback is called, but the expected metrics for the current test
     are not found in the structure with expected metrics for all tests, then the callback
     raises exception ValueError to fail the test.
+
+    And also note that each requirement for each metric is a dict with the following structure:
+    * The dict points a target value of the metric.
+      The target_value may be pointed
+      ** either by key 'target_value' (in this case the value is float),
+      ** or by the key 'base', in this case the value is a dot-separated address to another value in the
+         storage of previous stages' results, e.g.
+             'base': 'training_evaluation.metrics.accuracy.f-measure'
+
+    * The dict points a range of acceptable values for the metric.
+      The range for the metric values may be pointed
+      ** either by key 'max_diff' (with float value),
+         in this case the acceptable range will be
+         [target_value - max_diff, target_value + max_diff]
+         (inclusively).
+
+      ** or the range may be pointed by keys 'max_diff_if_less_threshold' and/or 'max_diff_if_greater_threshold'
+         (with float values), in this case the acceptable range is
+         `[target_value - max_diff_if_less_threshold, target_value + max_diff_if_greater_threshold]`
+         (also inclusively).
+         This allows to point non-symmetric ranges w.r.t. the target_value.
+         One of 'max_diff_if_less_threshold' or 'max_diff_if_greater_threshold' may be absent, in this case
+         it is set to `+infinity`, so the range will be half-bounded.
+         E.g. if `max_diff_if_greater_threshold` is absent, the range will be
+         [target_value - max_diff_if_less_threshold, +infinity]
     """
-    if 'reallife' != current_test_parameters_fx['usecase']:
+    if REALLIFE_USECASE_CONSTANT() != current_test_parameters_fx['usecase']:
         return None
 
     # make a copy to avoid later changes in the structs
@@ -823,19 +856,22 @@ def get_value_from_dict_by_dot_separated_address(struct, address):
             return cur_struct
         assert isinstance(cur_struct, dict)
         if addr[0] not in cur_struct:
-            raise ValueError(f'Cannot find address {address} in struct {struct}: {addr} is absent in {cur_struct}')
+            raise ValueError(f'Cannot find address {address} in struct {struct}: {addr[0]} is absent in {cur_struct}')
         return _get(cur_struct[addr[0]], addr[1:])
 
     assert isinstance(address, str), f'The parameter address should be string, address={address}'
-    try:
-        res = _get(struct, address.split('.'))
-    except ValueError as e:
-        raise ValueError(f'Cannot find address {address} in the struct {pformat(struct)}') from e
-    return res
+    return _get(struct, address.split('.'))
 
 class Validator:
+    """
+    The class receives info on results metric of the current test stage and
+    compares it with the expected metrics.
+    """
     def __init__(self, cur_test_expected_metrics_callback: Union[None, Callable[[],Dict]]):
         self.cur_test_expected_metrics_callback = cur_test_expected_metrics_callback
+
+    # TODO(lbeynens): add a method to extract dependency info from expected metrics
+    #                 to add the stages we depend on to the dependency list.
 
     @staticmethod
     def _get_min_max_value_from_expected_metrics(cur_metric_requirements: Dict,
@@ -895,7 +931,7 @@ class Validator:
             max_diff = cur_metric_requirements['max_diff']
             max_diff = float(max_diff)
             if not max_diff >= 0:
-                raise ValueError(f'Wrong max_diff {max_diff}')
+                raise ValueError(f'Wrong max_diff {max_diff} -- it should be a non-negative number')
             return (target_value, target_value - max_diff, target_value + max_diff)
 
         max_diff_if_less_threshold = cur_metric_requirements.get('max_diff_if_less_threshold')
@@ -905,13 +941,34 @@ class Validator:
                              f'max_diff_if_greater_threshold are None, '
                              f'cur_metric_requirements={pformat(cur_metric_requirements)}')
 
-        max_value = target_value + max_diff_if_greater_threshold if max_diff_if_greater_threshold else None
-        min_value = target_value - max_diff_if_less_threshold if max_diff_if_less_threshold else None
+        if max_diff_if_greater_threshold is not None:
+            max_diff_if_greater_threshold = float(max_diff_if_greater_threshold)
+            if not max_diff_if_greater_threshold >= 0:
+                raise ValueError(f'Wrong max_diff_if_greater_threshold {max_diff_if_greater_threshold} '
+                                 f'-- it should be a non-negative number')
+
+            max_value = target_value + max_diff_if_greater_threshold
+        else:
+            max_value = None
+
+        if max_diff_if_less_threshold is not None:
+            max_diff_if_less_threshold = float(max_diff_if_less_threshold)
+            if not max_diff_if_less_threshold >= 0:
+                raise ValueError(f'Wrong max_diff_if_less_threshold {max_diff_if_less_threshold} '
+                                 f'-- it should be a non-negative number')
+
+            min_value = target_value - max_diff_if_less_threshold
+        else:
+            min_value = None
+
         return (target_value, min_value, max_value)
 
     @staticmethod
     def _compare(current_metric: float, cur_res_addr: str,
                  target_value: float, min_value: Union[float, None], max_value: Union[float, None]):
+        assert all(isinstance(v, float) for v in [current_metric, target_value] )
+        assert all((v is None) or isinstance(v, float) for v in [min_value, max_value])
+
         if min_value is not None and max_value is not None:
             assert min_value <= target_value <= max_value
 
@@ -970,7 +1027,8 @@ class Validator:
         """
         if self.cur_test_expected_metrics_callback is None:
             # most probably, it is not a reallife test
-            logger.debug(f'Validation: skipped, since there should not be expected metrics for this test')
+            logger.info(f'Validation: skipped, since there should not be expected metrics for this test, '
+                        f'most probably the test is not run in "{REALLIFE_USECASE_CONSTANT()}" usecase')
             return
 
         logger.info('Validation: begin')
@@ -984,13 +1042,14 @@ class Validator:
         is_passed = True
         fail_reasons = []
         for k, v in cur_test_expected_metrics.items():
+            # TODO(lbeynens): add possibility to point a list of requirements for a metric
             cur_res_addr = k
             cur_metric_requirements = v
             logger.info(f'Validation: begin check {cur_res_addr}')
             try:
                 current_metric = get_value_from_dict_by_dot_separated_address(current_result, cur_res_addr)
                 current_metric = float(current_metric)
-            except ValueError as e:
+            except (ValueError, TypeError) as e:
                 raise ValueError(f'Cannot get metric {cur_res_addr} from the current result {current_result}') from e
 
             logger.debug(f'current_metric = {current_metric}')
@@ -998,7 +1057,7 @@ class Validator:
                 target_value, min_value, max_value = \
                         self._get_min_max_value_from_expected_metrics(cur_metric_requirements,
                                                                       test_results_storage)
-            except ValueError as e:
+            except (ValueError, TypeError) as e:
                 raise ValueError(f'Error when parsing expected metrics for the metric {cur_res_addr}') from e
 
             cur_is_passed, cur_fail_reason = self._compare(current_metric, cur_res_addr,
@@ -1056,7 +1115,8 @@ class OTETestStage:
         if not self.action.with_validation:
             return
         if validator is None:
-            logger.debug('The validator is None -- the validation should be skipped')
+            logger.debug('The validator is None -- the validation should be skipped, '
+                         'most probably this test stage was run from a dependency chain')
             return
 
         validator.validate(self.stage_results, test_results_storage)
@@ -1147,15 +1207,17 @@ class OTEIntegrationTestCase:
         pot_stage = OTETestStage(action=OTETestPotAction(),
                                  depends_stages=[export_stage])
         pot_evaluation_stage = OTETestStage(action=OTETestPotEvaluationAction(),
-                                            depends_stages=[pot_stage])
+                                            depends_stages=[pot_stage, training_evaluation_stage])
         nncf_stage = OTETestStage(action=OTETestNNCFAction(),
                                   depends_stages=[training_stage])
         nncf_evaluation_stage = OTETestStage(action=OTETestNNCFEvaluationAction(),
-                                             depends_stages=[nncf_stage])
+                                             depends_stages=[nncf_stage, training_evaluation_stage])
         nncf_export_stage = OTETestStage(action=OTETestNNCFExportAction(),
                                          depends_stages=[nncf_stage])
         nncf_export_evaluation_stage = OTETestStage(action=OTETestNNCFExportEvaluationAction(),
-                                                    depends_stages=[nncf_export_stage])
+                                                    depends_stages=[nncf_export_stage, nncf_evaluation_stage])
+        # TODO(lbeynens) if we could extract info on dependency from expected metrics, we could remove
+        #                nncf_evaluation_stage from the `depends_stages` for nncf_export_evaluation_stage
 
         list_all_stages = [training_stage, training_evaluation_stage,
                            export_stage, export_evaluation_stage,
@@ -1248,7 +1310,7 @@ class TestOTEIntegration:
                 dataset_name='bbcd',
                 num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
                 batch_size=KEEP_CONFIG_FIELD_VALUE(),
-                usecase='reallife',
+                usecase=REALLIFE_USECASE_CONSTANT(),
             ),
     ]
 
