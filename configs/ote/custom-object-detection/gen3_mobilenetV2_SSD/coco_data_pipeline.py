@@ -40,6 +40,7 @@ data = dict(
     train=dict(
         type='RepeatDataset',
         times=1,
+        adaptive_repeat_times=True,
         dataset=dict(
             type=dataset_type,
             ann_file='data/coco/annotations/instances_train2017.json',

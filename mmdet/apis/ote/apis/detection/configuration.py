@@ -79,22 +79,13 @@ class OTEDetectionConfig(ConfigurableParameters):
         )
 
         num_workers = configurable_integer(
-            default_value=0,
+            default_value=4,
             min_value=0,
-            max_value=8,
+            max_value=36,
             header="Number of cpu threads to use during batch generation",
             description="Increasing this value might improve training speed however it might cause out of memory "
                         "errors. If the number of workers is set to zero, data loading will happen in the main "
                         "training thread.",
-            affects_outcome_of=ModelLifecycle.NONE
-        )
-
-        num_checkpoints = configurable_integer(
-            default_value=5,
-            min_value=1,
-            max_value=100,
-            header="Number of checkpoints that is done during the single training round",
-            description="",
             affects_outcome_of=ModelLifecycle.NONE
         )
 
