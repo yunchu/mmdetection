@@ -60,7 +60,7 @@ from openvino.model_zoo.model_api.adapters import create_core, OpenvinoAdapter
 from .configuration import OTEDetectionConfig
 from mmdet.utils.logger import get_root_logger
 
-from . import model_wrapers
+from . import model_wrappers
 
 logger = get_root_logger()
 
@@ -94,9 +94,9 @@ class OpenVINODetectionInferencer(BaseInferencer):
                                   filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
                                   'labels': label_names}
             self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration)
+            self.model.load()
         except ValueError as e:
             print(e)
-        self.exec_net = self.ie.load_network(self.model.net, device_name=device)
         self.converter = DetectionBoxToAnnotationConverter(self.labels)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -108,7 +108,7 @@ class OpenVINODetectionInferencer(BaseInferencer):
         return self.converter.convert_to_annotation(detections, metadata)
 
     def forward(self, inputs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
-        return self.exec_net.infer(inputs)
+        return self.model.infer_sync(inputs)
 
 
 class OTEOpenVinoDataLoader(DataLoader):
@@ -201,7 +201,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
                 json.dump(parameters, f)
             # generate model.py
             if (inspect.getmodule(self.inferencer.model) in
-                [module[1] for module in inspect.getmembers(model_wrapers, inspect.ismodule)]):
+                [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
                 copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
