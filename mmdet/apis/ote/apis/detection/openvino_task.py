@@ -216,7 +216,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             update_progress_callback = inference_parameters.update_progress
         dataset_size = len(dataset)
         for i, dataset_item in enumerate(dataset, 1):
-            dataset_item.annotation_scene = self.inferencer.predict(dataset_item.numpy)
+            predicted_scene = self.inferencer.predict(dataset_item.numpy)
+            dataset_item.append_annotations(predicted_scene.annotations)
             update_progress_callback(int(i / dataset_size * 100))
         logger.info('OpenVINO inference completed')
         return dataset
