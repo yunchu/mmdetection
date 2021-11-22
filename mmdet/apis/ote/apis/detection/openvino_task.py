@@ -12,11 +12,13 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
+import attr
 import logging
 import inspect
 import json
 import os
-from shutil import copyfile, copytree
+from pathlib import Path
+from shutil import Error, copyfile, copytree
 import sys
 import subprocess
 import tempfile
@@ -47,15 +49,18 @@ from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
+from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
 import ote_sdk.usecases.exportable_code.demo as demo
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
 
 from openvino.inference_engine import ExecutableNetwork, IECore, InferRequest
-from openvino.model_zoo.model_api import models
+from openvino.model_zoo.model_api.models import Model
+from openvino.model_zoo.model_api.adapters import create_core, OpenvinoAdapter
 from .configuration import OTEDetectionConfig
 
+from . import model_wrapers
 logger = logging.getLogger(__name__)
 
 
@@ -81,29 +86,25 @@ class OpenVINODetectionInferencer(BaseInferencer):
 
         """
         self.labels = labels
-        model_cls = models.get_model_class(hparams.inference_parameters.class_name.value)
-
-        self.ie = IECore()
-        self.model = model_cls(self.ie, model_file, weight_file,
-                               threshold=hparams.inference_parameters.postprocessing.confidence_threshold)
+        try:
+            model_adapter = OpenvinoAdapter(create_core(), model_file, weight_file, device=device, max_num_requests=num_requests)
+            label_names = [label.name for label in self.labels]
+            self.configuration = {**attr.asdict(hparams.inference_parameters.postprocessing,
+                                  filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
+                                  'labels': label_names}
+            self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration)
+        except ValueError as e:
+            print(e)
         self.exec_net = self.ie.load_network(self.model.net, device_name=device)
+        self.converter = DetectionBoxToAnnotationConverter(self.labels)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         return self.model.preprocess(image)
 
     def post_process(self, prediction: Dict[str, np.ndarray], metadata: Dict[str, Any]) -> AnnotationSceneEntity:
         detections = self.model.postprocess(prediction, metadata)
-        annotations = []
-        for box in detections:
-            assigned_label = [ScoredLabel(self.labels[box.id], probability=box.score)]
-            coords = np.array(box.get_coords()) / np.tile(metadata['original_shape'][1::-1], 2)
-            annotations.append(Annotation(
-                Rectangle(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
-                labels=assigned_label))
 
-        return AnnotationSceneEntity(
-            kind=AnnotationSceneKind.PREDICTION,
-            annotations=annotations)
+        return self.converter.convert_to_annotation(detections, metadata)
 
     def forward(self, inputs: Dict[str, np.ndarray]) -> Dict[str, np.ndarray]:
         return self.exec_net.infer(inputs)
@@ -129,22 +130,23 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         self.task_environment = task_environment
         self.model = self.task_environment.model
-        self._hparams = self.task_environment.get_hyper_parameters(OTEDetectionConfig)
-        try:
-            self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
-            self._hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
-        except KeyError:
-            self.confidence_threshold = self.hparams.inference_parameters.postprocessing.confidence_threshold
-        self.model_name = task_environment.model_template.name
+        self.confidence_threshold: float = 0.0
+        self.model_name = task_environment.model_template.name.replace(" ", "_")
         self.inferencer = self.load_inferencer()
 
     @property
     def hparams(self):
-        return self._hparams
+        return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
 
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
-        return OpenVINODetectionInferencer(self.hparams,
+        _hparams = self.hparams
+        try:
+            self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
+            _hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
+        except KeyError:
+            self.confidence_threshold = _hparams.inference_parameters.postprocessing.confidence_threshold
+        return OpenVINODetectionInferencer(_hparams,
                                            labels,
                                            self.model.get_data("openvino.xml"),
                                            self.model.get_data("openvino.bin"))
@@ -171,13 +173,10 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
-        is_new_model = 'model_api' not in model_file
         parameters['name_of_model'] = self.model_name
         parameters['type_of_model'] = self.hparams.inference_parameters.class_name.value
-        parameters['is_new_model'] = is_new_model
-        parameters['model_parameters'] = {
-            'threshold': self.inferencer.model.threshold
-        }
+        parameters['converter_type'] = 'DETECTION'
+        parameters['model_parameters'] = self.inferencer.configuration
         name_of_package = parameters['name_of_model'].lower()
         with tempfile.TemporaryDirectory() as tempdir:
             copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
@@ -193,7 +192,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             with open(config_path, "w") as f:
                 json.dump(parameters, f)
             # generate model.py
-            if is_new_model:
+            if (inspect.getmodule(self.inferencer.model) in
+                [module[1] for module in inspect.getmembers(model_wrapers, inspect.ismodule)]):
                 copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
