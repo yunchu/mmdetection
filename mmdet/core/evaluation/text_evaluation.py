@@ -104,8 +104,6 @@ def get_intersection(polygon1, polygon2):
     """ Returns are of intersection of two polygons. """
 
     intersection = polygon1 & polygon2
-    if len(intersection) == 0:
-        return 0
     return intersection.area
 
 
