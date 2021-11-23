@@ -81,6 +81,7 @@ def extract_detections(output, net, input_size):
     output['labels'] = output['labels'][valid_detections_mask]
     output['boxes'] = output['boxes'][valid_detections_mask]
     output['boxes'][:, :4] /= np.tile(input_size, 2)[None]
+    output['boxes'] = output['boxes'].astype(float)
     return output
 
 
