@@ -16,7 +16,12 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-import Polygon as plg
+
+# ATTENTION! the obsolete Polygon3 was replaced with shapely.geometry.Polygon,
+#            but the changes were not debugged properly.
+#            Please, debug it as soon as it is required.
+from shapely.geometry import Polygon
+
 import pycocotools.mask as mask_utils
 
 IOU_CONSTRAINT = 0.5
@@ -24,11 +29,15 @@ AREA_PRECISION_CONSTRAINT = 0.5
 
 
 def polygon_from_points(points):
-    """ Returns a Polygon object to use with the Polygon2 class from a list of points:
+    """ Returns a Polygon object to use with the Polygon class from a list of points:
         x1,y1,x2,y2,x3,y3,x4,y4,... """
 
     point_mat = np.array(points).reshape(-1, 2)
-    return plg.Polygon(point_mat)
+    return Polygon(point_mat)
+
+
+def get_points_from_polygon(polygon):
+    return list(polygon.exterior.coords)
 
 
 def xywh_to_4_points(points):
@@ -42,11 +51,12 @@ def draw_gt_polygons(image, gt_polygons, gt_dont_care_nums):
     """ Draws groundtruth polygons on image. """
 
     for point_idx, polygon in enumerate(gt_polygons):
+        polygon_points = get_points_from_polygon(polygon)
         color = (128, 128, 128) if point_idx in gt_dont_care_nums else (255, 0, 0)
-        plen = len(polygon[0])
+        plen = len(polygon_points)
         for i in range(plen):
-            pt1 = int(polygon[0][i][0]), int(polygon[0][i][1])
-            pt2 = int(polygon[0][(i + 1) % plen][0]), int(polygon[0][(i + 1) % plen][1])
+            pt1 = int(polygon_points[i][0]), int(polygon_points[i][1])
+            pt2 = int(polygon_points[(i + 1) % plen][0]), int(polygon_points[(i + 1) % plen][1])
             cv2.line(image, pt1, pt2, color, 2)
     return image
 
@@ -59,19 +69,20 @@ def draw_pr_polygons(image, pr_polygons,
 
     for point_idx, _ in enumerate(pr_polygons):
         polygon = pr_polygons[point_idx]
+        polygon_points = get_points_from_polygon(polygon)
         color = (0, 0, 255)
         if point_idx in pr_dont_care_nums:
             color = (255, 255, 255)
         if point_idx in pr_matched_nums:
             color = (0, 255, 0)
             if pr_transcriptions:
-                pt1 = int(polygon[0][0][0]), int(polygon[0][0][1])
+                pt1 = int(polygon_points[0][0]), int(polygon_points[0][1])
                 cv2.putText(image, pr_transcriptions[point_idx], pt1,
                             cv2.FONT_HERSHEY_SIMPLEX, 1.0, (0, 255, 0), 2)
-            plen = len(polygon[0])
+            plen = len(polygon_points)
             for i in range(plen):
-                pt1 = int(polygon[0][i][0]), int(polygon[0][i][1])
-                pt2 = int(polygon[0][(i + 1) % plen][0]), int(polygon[0][(i + 1) % plen][1])
+                pt1 = int(polygon_points[i][0]), int(polygon_points[i][1])
+                pt2 = int(polygon_points[(i + 1) % plen][0]), int(polygon_points[(i + 1) % plen][1])
                 cv2.line(image, pt1, pt2, color, 2)
     return image
 
@@ -79,7 +90,7 @@ def draw_pr_polygons(image, pr_polygons,
 def get_union(polygon1, polygon2):
     """ Returns area of union of two polygons. """
 
-    return polygon1.area() + polygon2.area() - get_intersection(polygon1, polygon2)
+    return polygon1.area + polygon2.area - get_intersection(polygon1, polygon2)
 
 
 def get_intersection_over_union(polygon1, polygon2):
@@ -95,7 +106,7 @@ def get_intersection(polygon1, polygon2):
     intersection = polygon1 & polygon2
     if len(intersection) == 0:
         return 0
-    return intersection.area()
+    return intersection.area
 
 
 def compute_ap(conf_list, match_list, num_gt_care):
@@ -233,7 +244,7 @@ def match_dont_care_objects(gt_polygons_list, gt_dont_care_polygon_nums,
             for dont_care_polygon_num in gt_dont_care_polygon_nums:
                 intersected_area = get_intersection(
                     gt_polygons_list[dont_care_polygon_num], pr_polygon)
-                pd_dimensions = pr_polygon.area()
+                pd_dimensions = pr_polygon.area
                 precision = 0 if pd_dimensions == 0 else intersected_area / pd_dimensions
                 if precision > AREA_PRECISION_CONSTRAINT:
                     pr_dont_care_polygon_nums.append(pr_polygon_idx)
@@ -370,13 +381,14 @@ def text_eval(pr_annotations, gt_annotations, conf_thr,
 
         if show_recall_graph:  # draw graphs with normalized recall of different size objects
             for point_idx, polygon in enumerate(gt_polygons_list):
-                width = max(np.abs(int(polygon[0][2][0]) - int(polygon[0][1][0])),
-                            np.abs(int(polygon[0][1][0]) - int(polygon[0][0][0])))
+                polygon_points = get_points_from_polygon(polygon)
+                width = max(np.abs(int(polygon_points[2][0]) - int(polygon_points[1][0])),
+                            np.abs(int(polygon_points[1][0]) - int(polygon_points[0][0])))
                 if width < 600:
                     all_width.append(width)
-                    all_areas.append(polygon.area())
+                    all_areas.append(polygon.area)
                     if point_idx in gt_matched_nums and len(pr_matched_nums) > 0:
-                        detected_areas.append(polygon.area())
+                        detected_areas.append(polygon.area)
                         detected_width.append(width)
 
     if show_recall_graph:

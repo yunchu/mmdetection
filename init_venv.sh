@@ -106,9 +106,8 @@ echo torchvision==${TORCHVISION_VERSION} >> ${CONSTRAINTS_FILE}
 pip install --no-cache-dir mmcv-full==${MMCV_VERSION} || exit 1
 
 # Install other requirements.
-# Install mmpycocotools and Polygon3 from source to make sure it is compatible with installed numpy version.
+# Install mmpycocotools from source to make sure it is compatible with installed numpy version.
 pip install --no-cache-dir --no-binary=mmpycocotools mmpycocotools || exit 1
-pip install --no-cache-dir --no-binary=Polygon3 Polygon3==3.0.8 || exit 1
 cat requirements.txt | xargs -n 1 -L 1 pip install --no-cache || exit 1
 
 pip install -e . || exit 1
