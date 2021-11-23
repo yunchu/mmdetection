@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from collections import namedtuple, OrderedDict
 from copy import deepcopy
 from pprint import pformat
-from typing import List, Optional, Union
+from typing import Callable, Dict, List, Optional, Union
 
 import pytest
 import yaml
@@ -52,6 +52,29 @@ from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco
 from mmdet.integration.nncf.utils import is_nncf_enabled
 
 logger = logging.getLogger(__name__)
+
+
+def DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST():
+    """
+    This string constant will be used as a special constant for a config field
+    value to point that the field should be filled in tests' code by some default
+    value specific for this field.
+    """
+    return 'DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST'
+
+def KEEP_CONFIG_FIELD_VALUE():
+    """
+    This string constant will be used as a special constant for a config field value to point
+    that the field should NOT be changed in tests -- its value should be taken
+    from the template file or the config file of the model.
+    """
+    return 'KEEP_CONFIG_FIELD_VALUE'
+
+def REALLIFE_USECASE_CONSTANT():
+    """
+    This is a constant for pointing usecase for reallife training tests
+    """
+    return 'reallife'
 
 def DATASET_PARAMETERS_FIELDS():
     return ('annotations_train',
@@ -110,6 +133,139 @@ def template_paths_fx(request):
         data[name] = p
     data[ROOT_PATH_KEY] = ''
     return data
+
+@pytest.fixture
+def expected_metrics_all_tests_fx(request):
+    """
+    Return expected metrics for reallife tests read from a YAML file passed as the parameter --expected-metrics-file.
+    Note that the structure of expected metrics should be a dict that maps tests to the expected metric numbers.
+    The keys of the dict are the parameters' part of the test id-s -- see the function
+    TestOTEIntegration._generate_test_id.
+    The value for each key is a structure that stores a requirement on some metric.
+    The requirement can be either a target value (probably, with max size of quality drop)
+    or the reference to another stage of the same model (also probably with max size of quality drop).
+    E.g.
+    ```
+    'ACTION-training_evaluation,model-gen3_mobilenetV2_ATSS,dataset-bbcd,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
+        'metrics.accuracy.f-measure':
+            'target_value': 0.81
+            'max_drop': 0.005
+    'ACTION-export_evaluation,model-gen3_mobilenetV2_ATSS,dataset-bbcd,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
+        'metrics.accuracy.f-measure':
+            'base': 'training_evaluation.metrics.accuracy.f-measure'
+            'max_drop': 0.01
+    ```
+    """
+    path = request.config.getoption('--expected-metrics-file')
+    if path is None:
+        logger.warning(f'The command line parameter "--expected-metrics-file" is not set'
+                       f'whereas it is required to compare with target metrics'
+                       f' -- ALL THE COMPARISON WITH TARGET METRICS IN TESTS WILL BE FAILED')
+        return None
+    with open(path) as f:
+        expected_metrics_all_tests = yaml.safe_load(f)
+    assert isinstance(expected_metrics_all_tests, dict), f'Wrong metrics file {path}: {expected_metrics_all_tests}'
+    return expected_metrics_all_tests
+
+@pytest.fixture
+def current_test_parameters_fx(request):
+    """
+    This fixture returns the test parameter `test_parameters`.
+    """
+    cur_test_params = deepcopy(request.node.callspec.params)
+    assert 'test_parameters' in cur_test_params, \
+            f'The test {request.node.name} should be parametrized by parameter "test_parameters"'
+    return cur_test_params['test_parameters']
+
+@pytest.fixture
+def current_test_parameters_string_fx(request):
+    """
+    This fixture returns the part of the test id between square brackets
+    (i.e. the part of id that corresponds to the test parameters)
+    """
+    node_name = request.node.name
+    assert '[' in node_name, f'Wrong format of node name {node_name}'
+    assert node_name.endswith(']'), f'Wrong format of node name {node_name}'
+    index = node_name.find('[')
+    return node_name[index+1:-1]
+
+@pytest.fixture
+def cur_test_expected_metrics_callback_fx(expected_metrics_all_tests_fx, current_test_parameters_string_fx,
+                                          current_test_parameters_fx) -> Union[None, Callable[[],Dict]]:
+    """
+    This fixture returns
+    * either a callback -- a function without parameters that returns
+      expected metrics for the current test,
+    * or None if the test validation should be skipped.
+
+    The expected metrics for a test is a dict with the structure that stores the
+    requirements on metrics on the current test. In this dict
+    * each key is a dot-separated metric "address" in the structure received as the result of the test
+    * each value is a structure describing a requirement for this metric
+    e.g.
+    ```
+    {
+      'metrics.accuracy.f-measure': {
+              'target_value': 0.81,
+              'max_diff': 0.005
+          }
+    }
+    ```
+
+    Note that the fixture returns a callback instead of returning the expected metrics structure
+    themselves, to avoid attempts to read expected metrics for the stages that do not make validation
+    at all -- now the callback is called if and only if validation is made for the stage.
+    (E.g. the stage 'export' does not make validation, but the stage 'export_evaluation' does.)
+
+    Also note that if the callback is called, but the expected metrics for the current test
+    are not found in the structure with expected metrics for all tests, then the callback
+    raises exception ValueError to fail the test.
+
+    And also note that each requirement for each metric is a dict with the following structure:
+    * The dict points a target value of the metric.
+      The target_value may be pointed
+      ** either by key 'target_value' (in this case the value is float),
+      ** or by the key 'base', in this case the value is a dot-separated address to another value in the
+         storage of previous stages' results, e.g.
+             'base': 'training_evaluation.metrics.accuracy.f-measure'
+
+    * The dict points a range of acceptable values for the metric.
+      The range for the metric values may be pointed
+      ** either by key 'max_diff' (with float value),
+         in this case the acceptable range will be
+         [target_value - max_diff, target_value + max_diff]
+         (inclusively).
+
+      ** or the range may be pointed by keys 'max_diff_if_less_threshold' and/or 'max_diff_if_greater_threshold'
+         (with float values), in this case the acceptable range is
+         `[target_value - max_diff_if_less_threshold, target_value + max_diff_if_greater_threshold]`
+         (also inclusively).
+         This allows to point non-symmetric ranges w.r.t. the target_value.
+         One of 'max_diff_if_less_threshold' or 'max_diff_if_greater_threshold' may be absent, in this case
+         it is set to `+infinity`, so the range will be half-bounded.
+         E.g. if `max_diff_if_greater_threshold` is absent, the range will be
+         [target_value - max_diff_if_less_threshold, +infinity]
+    """
+    if REALLIFE_USECASE_CONSTANT() != current_test_parameters_fx['usecase']:
+        return None
+
+    # make a copy to avoid later changes in the structs
+    expected_metrics_all_tests = deepcopy(expected_metrics_all_tests_fx)
+    current_test_parameters_string = deepcopy(current_test_parameters_string_fx)
+
+    def _get_expected_metrics_callback():
+        if expected_metrics_all_tests is None:
+            raise ValueError(f'The dict with expected metrics cannot be read, although it is required '
+                             f'for validation in the test "{current_test_parameters_string}"')
+        if current_test_parameters_string not in expected_metrics_all_tests:
+            raise ValueError(f'The parameters id string {current_test_parameters_string} is not inside '
+                             f'the dict with expected metrics -- cannot make validation, so test is failed')
+        expected_metrics = expected_metrics_all_tests[current_test_parameters_string]
+        if not isinstance(expected_metrics, dict):
+            raise ValueError(f'The expected metric for parameters id string {current_test_parameters_string} '
+                             f'should be a dict, whereas it is: {pformat(expected_metrics)}')
+        return expected_metrics
+    return _get_expected_metrics_callback
 
 def _make_path_be_abs(some_val, root_path):
     assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
@@ -170,10 +326,15 @@ def convert_hyperparams_to_dict(hyperparams):
 
 class BaseOTETestAction(ABC):
     _name = None
+    _with_validation = False
 
     @property
     def name(self):
         return type(self)._name
+
+    @property
+    def with_validation(self):
+        return type(self)._with_validation
 
     def _check_result_prev_stages(self, results_prev_stages, list_required_stages):
         for stage_name in list_required_stages:
@@ -243,8 +404,17 @@ class OTETestTrainingAction(BaseOTETestAction):
 
         logger.debug('Set hyperparameters')
         params = create(self.model_template.hyper_parameters.data)
-        params.learning_parameters.num_iters = self.num_training_iters
-        params.learning_parameters.batch_size = self.batch_size
+        if self.num_training_iters != KEEP_CONFIG_FIELD_VALUE():
+            params.learning_parameters.num_iters = int(self.num_training_iters)
+            logger.debug(f'Set params.learning_parameters.num_iters={params.learning_parameters.num_iters}')
+        else:
+            logger.debug(f'Keep params.learning_parameters.num_iters={params.learning_parameters.num_iters}')
+
+        if self.batch_size != KEEP_CONFIG_FIELD_VALUE():
+            params.learning_parameters.batch_size = int(self.batch_size)
+            logger.debug(f'Set params.learning_parameters.batch_size={params.learning_parameters.batch_size}')
+        else:
+            logger.debug(f'Keep params.learning_parameters.batch_size={params.learning_parameters.batch_size}')
 
         logger.debug('Setup environment')
         self.environment, self.task = self._create_environment_and_task(params,
@@ -301,8 +471,9 @@ def run_evaluation(dataset, task, model):
 
 class OTETestTrainingEvaluationAction(BaseOTETestAction):
     _name = 'training_evaluation'
+    _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_evaluation(self, data_collector,
@@ -311,7 +482,8 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, task, trained_model)
         data_collector.log_final_metric('evaluation_accuracy/' + score_name, score_value)
-        logger.info('End evaluation of trained model')
+        logger.info(f'End evaluation of trained model, results: {score_name}: {score_value}')
+        return score_name, score_value
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -323,8 +495,14 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
                 'trained_model': results_prev_stages['training']['output_model'],
         }
 
-        self._run_ote_evaluation(data_collector, **kwargs)
-        results = {}
+        score_name, score_value = self._run_ote_evaluation(data_collector, **kwargs)
+        results = {
+                'metrics': {
+                    'accuracy': {
+                        score_name: score_value
+                    }
+                }
+        }
         return results
 
 def run_export(environment, dataset, task, action_name):
@@ -385,8 +563,9 @@ def create_openvino_task(model_template, environment):
 
 class OTETestExportEvaluationAction(BaseOTETestAction):
     _name = 'export_evaluation'
+    _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_export_evaluation(self, data_collector,
@@ -398,6 +577,7 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, exported_model)
         data_collector.log_final_metric('evaluation_accuracy_exported/' + score_name, score_value)
         logger.info('End evaluation of exported model')
+        return score_name, score_value
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -410,8 +590,14 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
                 'exported_model': results_prev_stages['export']['exported_model'],
         }
 
-        self._run_ote_export_evaluation(data_collector, **kwargs)
-        results = {}
+        score_name, score_value = self._run_ote_export_evaluation(data_collector, **kwargs)
+        results = {
+                'metrics': {
+                    'accuracy': {
+                        score_name: score_value
+                    }
+                }
+        }
         return results
 
 class OTETestPotAction(BaseOTETestAction):
@@ -461,8 +647,9 @@ class OTETestPotAction(BaseOTETestAction):
 
 class OTETestPotEvaluationAction(BaseOTETestAction):
     _name = 'pot_evaluation'
+    _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_pot_evaluation(self, data_collector,
@@ -474,6 +661,7 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
         score_name, score_value = run_evaluation(validation_dataset_pot, openvino_task_pot, optimized_model_pot)
         data_collector.log_final_metric('evaluation_accuracy_pot/' + score_name, score_value)
         logger.info('End evaluation of pot model')
+        return score_name, score_value
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -485,8 +673,14 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
                 'optimized_model_pot': results_prev_stages['pot']['optimized_model_pot'],
         }
 
-        self._run_ote_pot_evaluation(data_collector, **kwargs)
-        results = {}
+        score_name, score_value = self._run_ote_pot_evaluation(data_collector, **kwargs)
+        results = {
+                'metrics': {
+                    'accuracy': {
+                        score_name: score_value
+                    }
+                }
+        }
         return results
 
 class OTETestNNCFAction(BaseOTETestAction):
@@ -550,8 +744,9 @@ class OTETestNNCFAction(BaseOTETestAction):
 
 class OTETestNNCFEvaluationAction(BaseOTETestAction):
     _name = 'nncf_evaluation'
+    _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_nncf_evaluation(self, data_collector,
@@ -563,6 +758,7 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
         score_name, score_value = run_evaluation(validation_dataset, nncf_task, nncf_model)
         data_collector.log_final_metric('evaluation_accuracy_nncf/' + score_name, score_value)
         logger.info('End evaluation of nncf model')
+        return score_name, score_value
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -574,8 +770,14 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
                 'nncf_model': results_prev_stages['nncf']['nncf_model'],
         }
 
-        self._run_ote_nncf_evaluation(data_collector, **kwargs)
-        results = {}
+        score_name, score_value = self._run_ote_nncf_evaluation(data_collector, **kwargs)
+        results = {
+                'metrics': {
+                    'accuracy': {
+                        score_name: score_value
+                    }
+                }
+        }
         return results
 
 class OTETestNNCFExportAction(BaseOTETestAction):
@@ -610,8 +812,9 @@ class OTETestNNCFExportAction(BaseOTETestAction):
 
 class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
     _name = 'nncf_export_evaluation'
+    _with_validation = True
 
-    def __init__(self, subset=Subset.VALIDATION):
+    def __init__(self, subset=Subset.TESTING):
         self.subset = subset
 
     def _run_ote_nncf_export_evaluation(self, data_collector,
@@ -623,6 +826,7 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, nncf_exported_model)
         data_collector.log_final_metric('evaluation_accuracy_nncf_exported/' + score_name, score_value)
         logger.info('End evaluation of NNCF exported model')
+        return score_name, score_value
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -635,9 +839,239 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
                 'nncf_exported_model': results_prev_stages['nncf_export']['exported_model'],
         }
 
-        self._run_ote_nncf_export_evaluation(data_collector, **kwargs)
-        results = {}
+        score_name, score_value = self._run_ote_nncf_export_evaluation(data_collector, **kwargs)
+        results = {
+                'metrics': {
+                    'accuracy': {
+                        score_name: score_value
+                    }
+                }
+        }
         return results
+
+def get_value_from_dict_by_dot_separated_address(struct, address):
+    def _get(cur_struct, addr):
+        assert isinstance(addr, list)
+        if not addr:
+            return cur_struct
+        assert isinstance(cur_struct, dict)
+        if addr[0] not in cur_struct:
+            raise ValueError(f'Cannot find address {address} in struct {struct}: {addr[0]} is absent in {cur_struct}')
+        return _get(cur_struct[addr[0]], addr[1:])
+
+    assert isinstance(address, str), f'The parameter address should be string, address={address}'
+    return _get(struct, address.split('.'))
+
+class Validator:
+    """
+    The class receives info on results metric of the current test stage and
+    compares it with the expected metrics.
+    """
+    def __init__(self, cur_test_expected_metrics_callback: Union[None, Callable[[],Dict]]):
+        self.cur_test_expected_metrics_callback = cur_test_expected_metrics_callback
+
+    # TODO(lbeynens): add a method to extract dependency info from expected metrics
+    #                 to add the stages we depend on to the dependency list.
+
+    @staticmethod
+    def _get_min_max_value_from_expected_metrics(cur_metric_requirements: Dict,
+                                                 test_results_storage: Dict):
+        """
+        The method gets requirement for some metric and convert it to the triplet
+        (target_value, min_value, max_value).
+        Note that the target_value may be pointed either by key 'target_value' (in this case it is float),
+        or by the key 'base', in this case it is a dot-separated address to another value in the
+        storage of previous stages' results `test_results_storage`.
+
+        Note that the range for the metric values may be pointed by key 'max_diff',
+        in this case the range will be [target_value - max_diff, target_value + max_diff]
+        (inclusively).
+
+        But also the range may be pointed by keys 'max_diff_if_less_threshold' and
+        'max_diff_if_greater_threshold', in this case the range is
+        [target_value - max_diff_if_less_threshold, target_value + max_diff_if_greater_threshold]
+        (also inclusively). This allows to point non-symmetric ranges w.r.t. the target_value.
+
+        Also note that if one of 'max_diff_if_less_threshold' and 'max_diff_if_greater_threshold'
+        is absent, it is set to `+infinity`, so the range will be bounded from one side
+        (but not both of them, this will be an error)
+        """
+        keys = set(cur_metric_requirements.keys())
+        if 'target_value' not in keys and 'base' not in keys:
+            raise ValueError(f'Wrong cur_metric_requirements: either "target_value" or "base" '
+                             f' should be pointed in the structure, whereas '
+                             f'cur_metric_requirements={pformat(cur_metric_requirements)}')
+        if 'target_value' in keys and 'base' in keys:
+            raise ValueError(f'Wrong cur_metric_requirements: either "target_value" or "base" '
+                             f' should be pointed in the structure, but not both, whereas '
+                             f'cur_metric_requirements={pformat(cur_metric_requirements)}')
+        if ('max_diff' not in keys) and ('max_diff_if_less_threshold' not in keys) \
+                and ('max_diff_if_greater_threshold' not in keys):
+            raise ValueError(f'Wrong cur_metric_requirements: either "max_diff" or one/two of '
+                             f'"max_diff_if_less_threshold" and "max_diff_if_greater_threshold" should be '
+                             f'pointed in the structure, whereas '
+                             f'cur_metric_requirements={pformat(cur_metric_requirements)}')
+
+        if ('max_diff' in keys) and ('max_diff_if_less_threshold' in keys or 'max_diff_if_greater_threshold' in keys):
+            raise ValueError(f'Wrong cur_metric_requirements: either "max_diff" or one/two of '
+                             f'"max_diff_if_less_threshold" and "max_diff_if_greater_threshold" should be '
+                             f'pointed in the structure, but not both, whereas '
+                             f'cur_metric_requirements={pformat(cur_metric_requirements)}')
+
+        if 'target_value' in cur_metric_requirements:
+            target_value = float(cur_metric_requirements['target_value'])
+        elif 'base' in cur_metric_requirements:
+            base_metric_address = cur_metric_requirements['base']
+            target_value = get_value_from_dict_by_dot_separated_address(test_results_storage, base_metric_address)
+            target_value = float(target_value)
+        else:
+            raise RuntimeError(f'ERROR: Wrong parsing of metric requirements {cur_metric_requirements}')
+
+        if 'max_diff' in cur_metric_requirements:
+            max_diff = cur_metric_requirements['max_diff']
+            max_diff = float(max_diff)
+            if not max_diff >= 0:
+                raise ValueError(f'Wrong max_diff {max_diff} -- it should be a non-negative number')
+            return (target_value, target_value - max_diff, target_value + max_diff)
+
+        max_diff_if_less_threshold = cur_metric_requirements.get('max_diff_if_less_threshold')
+        max_diff_if_greater_threshold = cur_metric_requirements.get('max_diff_if_greater_threshold')
+        if max_diff_if_less_threshold is None and max_diff_if_greater_threshold is None:
+            raise ValueError(f'Wrong cur_metric_requirements: all of max_diff, max_diff_if_less_threshold, and '
+                             f'max_diff_if_greater_threshold are None, '
+                             f'cur_metric_requirements={pformat(cur_metric_requirements)}')
+
+        if max_diff_if_greater_threshold is not None:
+            max_diff_if_greater_threshold = float(max_diff_if_greater_threshold)
+            if not max_diff_if_greater_threshold >= 0:
+                raise ValueError(f'Wrong max_diff_if_greater_threshold {max_diff_if_greater_threshold} '
+                                 f'-- it should be a non-negative number')
+
+            max_value = target_value + max_diff_if_greater_threshold
+        else:
+            max_value = None
+
+        if max_diff_if_less_threshold is not None:
+            max_diff_if_less_threshold = float(max_diff_if_less_threshold)
+            if not max_diff_if_less_threshold >= 0:
+                raise ValueError(f'Wrong max_diff_if_less_threshold {max_diff_if_less_threshold} '
+                                 f'-- it should be a non-negative number')
+
+            min_value = target_value - max_diff_if_less_threshold
+        else:
+            min_value = None
+
+        return (target_value, min_value, max_value)
+
+    @staticmethod
+    def _compare(current_metric: float, cur_res_addr: str,
+                 target_value: float, min_value: Union[float, None], max_value: Union[float, None]):
+        assert all(isinstance(v, float) for v in [current_metric, target_value] )
+        assert all((v is None) or isinstance(v, float) for v in [min_value, max_value])
+
+        if min_value is not None and max_value is not None:
+            assert min_value <= target_value <= max_value
+
+            if min_value <= current_metric <= max_value:
+                logger.info(f'Validation: passed: The metric {cur_res_addr} is in the acceptable range '
+                            f'near the target value {target_value}: '
+                            f'{current_metric} is in [{min_value}, {max_value}]')
+                is_passed = True
+                cur_fail_reason = None
+            else:
+                cur_fail_reason = (f'Validation: failed: The metric {cur_res_addr} is NOT in the acceptable range '
+                                   f'near the target value {target_value}: '
+                                   f'{current_metric} is NOT in [{min_value}, {max_value}]')
+                logger.error(cur_fail_reason)
+                is_passed = False
+            return is_passed, cur_fail_reason
+
+        assert (min_value is not None) or (max_value is not None)
+        if min_value is not None:
+            cmp_op = lambda x: x >= min_value
+            cmp_str_true = 'greater or equal'
+            cmp_op_str_true = '>='
+            cmp_op_str_false = '<'
+            threshold = min_value
+        else:
+            cmp_op = lambda x: x <= max_value
+            cmp_str_true = 'less or equal'
+            cmp_op_str_true = '<='
+            cmp_op_str_false = '>'
+            threshold = max_value
+        acceptable_error = abs(threshold - target_value)
+        if cmp_op(current_metric):
+            logger.info(f'Validation: passed: The metric {cur_res_addr} is {cmp_str_true} '
+                        f'the target value {target_value} with acceptable error {acceptable_error}: '
+                        f'{current_metric} {cmp_op_str_true} {threshold}')
+            is_passed = True
+            cur_fail_reason = None
+        else:
+            cur_fail_reason = (f'Validation: failed: The metric {cur_res_addr} is NOT {cmp_str_true} '
+                               f'the target value {target_value} with acceptable error {acceptable_error}: '
+                               f'{current_metric} {cmp_op_str_false} {threshold}')
+            logger.error(cur_fail_reason)
+            is_passed = False
+        return is_passed, cur_fail_reason
+
+    def validate(self, current_result: Dict, test_results_storage: Dict):
+        """
+        The method validates results of the current test.
+        :param current_result -- dict with result of the current test
+        :param test_results_storage -- dict with results of previous tests
+                                       of this test case
+                                       (e.g. the same training parameters)
+
+        The function returns nothing, but may raise exceptions to fail the test.
+        If the structure stored expected metrics is wrong, the function raises ValueError.
+        """
+        if self.cur_test_expected_metrics_callback is None:
+            # most probably, it is not a reallife test
+            logger.info(f'Validation: skipped, since there should not be expected metrics for this test, '
+                        f'most probably the test is not run in "{REALLIFE_USECASE_CONSTANT()}" usecase')
+            return
+
+        logger.info('Validation: begin')
+
+        # calling the callback to receive expected metrics for the current test
+        cur_test_expected_metrics = self.cur_test_expected_metrics_callback()
+
+        assert isinstance(cur_test_expected_metrics, dict), \
+                f'Wrong current test expected metric: {cur_test_expected_metrics}'
+        logger.debug(f'Validation: received cur_test_expected_metrics={pformat(cur_test_expected_metrics)}')
+        is_passed = True
+        fail_reasons = []
+        for k, v in cur_test_expected_metrics.items():
+            # TODO(lbeynens): add possibility to point a list of requirements for a metric
+            cur_res_addr = k
+            cur_metric_requirements = v
+            logger.info(f'Validation: begin check {cur_res_addr}')
+            try:
+                current_metric = get_value_from_dict_by_dot_separated_address(current_result, cur_res_addr)
+                current_metric = float(current_metric)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f'Cannot get metric {cur_res_addr} from the current result {current_result}') from e
+
+            logger.debug(f'current_metric = {current_metric}')
+            try:
+                target_value, min_value, max_value = \
+                        self._get_min_max_value_from_expected_metrics(cur_metric_requirements,
+                                                                      test_results_storage)
+            except (ValueError, TypeError) as e:
+                raise ValueError(f'Error when parsing expected metrics for the metric {cur_res_addr}') from e
+
+            cur_is_passed, cur_fail_reason = self._compare(current_metric, cur_res_addr,
+                                                           target_value, min_value, max_value)
+            if not cur_is_passed:
+                is_passed = False
+                fail_reasons.append(cur_fail_reason)
+
+            logger.info(f'Validation: end check {cur_res_addr}')
+
+        logger.info(f'Validation: end, result={is_passed}')
+        if not is_passed:
+            fail_reasons = '\n'.join(fail_reasons)
+            pytest.fail(f'Validation failed:\n{fail_reasons}')
 
 class OTETestStage:
     """
@@ -656,6 +1090,7 @@ class OTETestStage:
         self.stored_exception = None
         self.action = action
         self.depends_stages = depends_stages if depends_stages else []
+        self.stage_results = None
         assert isinstance(self.depends_stages, list)
         assert all(isinstance(stage, OTETestStage) for stage in self.depends_stages)
         assert isinstance(self.action, BaseOTETestAction)
@@ -675,20 +1110,43 @@ class OTETestStage:
                        'caused exception -- re-raising it')
         raise self.stored_exception
 
-    def run_once(self, data_collector: DataCollector, test_results_storage: OrderedDict):
+    def _run_validation(self, test_results_storage: Dict,
+                        validator: Union[Validator, None]):
+        if not self.action.with_validation:
+            return
+        if validator is None:
+            logger.debug('The validator is None -- the validation should be skipped, '
+                         'most probably this test stage was run from a dependency chain')
+            return
+
+        validator.validate(self.stage_results, test_results_storage)
+
+    def run_once(self, data_collector: DataCollector, test_results_storage: OrderedDict,
+                 validator: Union[Validator, None]):
         logger.info(f'Begin stage "{self.name}"')
         assert isinstance(test_results_storage, OrderedDict)
         logger.debug(f'For test stage "{self.name}": test_results_storage.keys = {list(test_results_storage.keys())}')
 
         for dep_stage in self.depends_stages:
+            # Processing all dependency stages of the current test.
+            # Note that
+            # * the stages may run their own dependency stages -- they will compose so called "dependency chain"
+            # * the dependency stages are run with `validator = None`
+            #   to avoid validation of stages that are run from the dependency chain.
             logger.debug(f'For test stage "{self.name}": Before running dep. stage "{dep_stage.name}"')
-            dep_stage.run_once(data_collector, test_results_storage)
+            dep_stage.run_once(data_collector, test_results_storage, validator=None)
             logger.debug(f'For test stage "{self.name}": After running dep. stage "{dep_stage.name}"')
 
         if self.was_processed:
             self._reraise_stage_exception_if_was_failed()
             # if we are here, then the stage was processed without exceptions
             logger.info(f'The stage {self.name} was already processed SUCCESSFULLY')
+
+            # Run validation here for the rare case if this test now is being run *not* from a dependency chain
+            # (i.e. the test is run with `validator != None`),
+            # but the test already has been run from some dependency chain earlier.
+            self._run_validation(test_results_storage, validator)
+
             logger.info(f'End stage "{self.name}"')
             return
 
@@ -698,20 +1156,25 @@ class OTETestStage:
 
         try:
             logger.info(f'For test stage "{self.name}": Before running main action')
-            result_to_store = self.action(data_collector=data_collector,
-                                          results_prev_stages=test_results_storage)
+            self.stage_results = self.action(data_collector=data_collector,
+                                             results_prev_stages=test_results_storage)
             logger.info(f'For test stage "{self.name}": After running main action')
             self.was_processed = True
-            test_results_storage[self.name] = result_to_store
+            test_results_storage[self.name] = self.stage_results
             logger.debug(f'For test stage "{self.name}": after addition test_results_storage.keys = '
                          f'{list(test_results_storage.keys())}')
         except Exception as e:
             logger.info(f'For test stage "{self.name}": After running action for stage {self.name} -- CAUGHT EXCEPTION:\n{e}')
+            logger.info(f'End stage "{self.name}"')
             self.stored_exception = e
             self.was_processed = True
             raise e
-        finally:
-            logger.info(f'End stage "{self.name}"')
+
+        # The validation step is made outside the central try...except clause, since if the test was successful, but
+        # the quality numbers were lower than expected, the result of the stage still may be re-used
+        # in other stages.
+        self._run_validation(test_results_storage, validator)
+        logger.info(f'End stage "{self.name}"')
 
 class OTEIntegrationTestCase:
     _TEST_STAGES = ('training', 'training_evaluation',
@@ -744,15 +1207,17 @@ class OTEIntegrationTestCase:
         pot_stage = OTETestStage(action=OTETestPotAction(),
                                  depends_stages=[export_stage])
         pot_evaluation_stage = OTETestStage(action=OTETestPotEvaluationAction(),
-                                            depends_stages=[pot_stage])
+                                            depends_stages=[pot_stage, training_evaluation_stage])
         nncf_stage = OTETestStage(action=OTETestNNCFAction(),
                                   depends_stages=[training_stage])
         nncf_evaluation_stage = OTETestStage(action=OTETestNNCFEvaluationAction(),
-                                             depends_stages=[nncf_stage])
+                                             depends_stages=[nncf_stage, training_evaluation_stage])
         nncf_export_stage = OTETestStage(action=OTETestNNCFExportAction(),
                                          depends_stages=[nncf_stage])
         nncf_export_evaluation_stage = OTETestStage(action=OTETestNNCFExportEvaluationAction(),
-                                                    depends_stages=[nncf_export_stage])
+                                                    depends_stages=[nncf_export_stage, nncf_evaluation_stage])
+        # TODO(lbeynens) if we could extract info on dependency from expected metrics, we could remove
+        #                nncf_evaluation_stage from the `depends_stages` for nncf_export_evaluation_stage
 
         list_all_stages = [training_stage, training_evaluation_stage,
                            export_stage, export_evaluation_stage,
@@ -766,9 +1231,11 @@ class OTEIntegrationTestCase:
         # test results should be kept between stages
         self.test_results_storage = OrderedDict()
 
-    def run_stage(self, stage_name, data_collector):
+    def run_stage(self, stage_name: str, data_collector: DataCollector,
+                  validator: Validator):
         assert stage_name in self._TEST_STAGES, f'Wrong stage_name {stage_name}'
-        self._stages[stage_name].run_once(data_collector, self.test_results_storage)
+        self._stages[stage_name].run_once(data_collector, self.test_results_storage,
+                                          validator)
 
 # pytest magic
 def pytest_generate_tests(metafunc):
@@ -790,8 +1257,6 @@ class TestOTEIntegration:
     """
     PERFORMANCE_RESULTS = None # it is required for e2e system
 
-    DEFAULT_NUM_ITERS = 1
-    DEFAULT_BATCH_SIZE = 2
     SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID = OrderedDict([
             ('test_stage', 'ACTION'),
             ('model_name', 'model'),
@@ -813,28 +1278,22 @@ class TestOTEIntegration:
                                               'num_training_iters',
                                               'batch_size')
 
+    DEFAULT_NUM_ITERS = 1
+    DEFAULT_BATCH_SIZE = 2
+
     # Note that each test bunch describes a group of similar tests
     # If 'model_name' or 'dataset_name' are lists, cartesian product of tests will be run.
+    # Each item may contain the following fields:
+    #    * model_name
+    #    * dataset_name
+    #    * usecase
+    #    * num_training_iters -- either integer value, or DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST,
+    #                            or KEEP_CONFIG_FIELD_VALUE;
+    #                            if None or absent, then DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST is used
+    #    * batch_size -- either integer value, or DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST,
+    #                    or KEEP_CONFIG_FIELD_VALUE;
+    #                    if None or absent, then DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST is used
     test_bunches = [
-#           dict(
-#               model_name=[
-#                   'face-detection-0200',
-#                   'face-detection-0202',
-#                   'face-detection-0204',
-#                   'face-detection-0205',
-#                   'face-detection-0206',
-#                   'face-detection-0207',
-#               ],
-#               dataset_name='airport_faces',
-#               usecase='precommit',
-#           ),
-#           dict(
-#               model_name=[
-#                   'horizontal-text-detection-0001',
-#               ],
-#               dataset_name='horizontal_text_detection',
-#               usecase='precommit',
-#           ),
             dict(
                 model_name=[
                    'gen3_mobilenetV2_SSD',
@@ -844,37 +1303,15 @@ class TestOTEIntegration:
                 dataset_name='dataset1_tiled_shortened_500_A',
                 usecase='precommit',
             ),
-#            dict(
-#                model_name=[
-#                    'person-detection-0200',
-#                    'person-detection-0201',
-#                    'person-detection-0202',
-#                    'person-detection-0203'
-#                ],
-#                dataset_name='airport_person',
-#                usecase='precommit',
-#            ),
-#            dict(
-#                model_name=[
-#                    'person-vehicle-bike-detection-2000',
-#                    'person-vehicle-bike-detection-2001',
-#                    'person-vehicle-bike-detection-2002',
-#                    'person-vehicle-bike-detection-2003',
-#                    'person-vehicle-bike-detection-2004'
-#                ],
-#                dataset_name='airport_example',
-#                usecase='precommit',
-#            ),
-#            dict(
-#                model_name=[
-#                    'vehicle-detection-0200',
-#                    'vehicle-detection-0201',
-#                    'vehicle-detection-0202',
-#                    'vehicle-detection-0203',
-#                ],
-#                dataset_name='vehicle_detection',
-#                usecase='precommit',
-#            ),
+            dict(
+                model_name=[
+                   'gen3_mobilenetV2_ATSS',
+                ],
+                dataset_name='bbcd',
+                num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
+                batch_size=KEEP_CONFIG_FIELD_VALUE(),
+                usecase=REALLIFE_USECASE_CONSTANT(),
+            ),
     ]
 
     @staticmethod
@@ -883,13 +1320,18 @@ class TestOTEIntegration:
 
     @classmethod
     def _fill_test_parameters_default_values(cls, test_parameters):
-        test_parameters['num_training_iters'] = test_parameters.get('num_training_iters', cls.DEFAULT_NUM_ITERS)
-        test_parameters['batch_size'] = test_parameters.get('batch_size', cls.DEFAULT_BATCH_SIZE)
+        def __set_default_if_required(key, default_val):
+            val = test_parameters.get(key)
+            if val is None or val == DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST():
+                test_parameters[key] = default_val
+
+        __set_default_if_required('num_training_iters', cls.DEFAULT_NUM_ITERS)
+        __set_default_if_required('batch_size',  cls.DEFAULT_BATCH_SIZE)
 
     @classmethod
     def _generate_test_id(cls, test_parameters):
         id_parts = (
-                f'{short_par_name}={test_parameters[par_name]}'
+                f'{short_par_name}-{test_parameters[par_name]}'
                 for par_name, short_par_name in cls.SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID.items()
         )
         return ','.join(id_parts)
@@ -997,8 +1439,8 @@ class TestOTEIntegration:
 
             model_name = test_parameters['model_name']
             dataset_name = test_parameters['dataset_name']
-            num_training_iters = int(test_parameters['num_training_iters'])
-            batch_size = int(test_parameters['batch_size'])
+            num_training_iters = test_parameters['num_training_iters']
+            batch_size = test_parameters['batch_size']
 
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
             template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
@@ -1008,8 +1450,8 @@ class TestOTEIntegration:
         return cache['_test_case_']
 
     @pytest.fixture
-    def test_case_fx(self, request, dataset_definitions_fx, template_paths_fx,
-                cached_from_prev_test_fx):
+    def test_case_fx(self, current_test_parameters_fx, dataset_definitions_fx, template_paths_fx,
+                     cached_from_prev_test_fx):
         """
         This fixture returns the test case class OTEIntegrationTestCase that should be used for the current test.
         Note that the cache from the fixture cached_from_prev_test_fx allows to store the instance of the class
@@ -1021,18 +1463,13 @@ class TestOTEIntegration:
         If the main parameters used for this test differs w.r.t. the previous test, a new instance of
         TestOTEIntegration class will be created.
         """
-        cur_request_parameters = deepcopy(request.node.callspec.params)
-        if 'test_parameters' not in cur_request_parameters:
-            raise RuntimeError(f'Test {request.node.name} should be parametrized by parameter "test_parameters"')
-
-        test_parameters = cur_request_parameters['test_parameters']
         test_case = self._update_test_case_in_cache(cached_from_prev_test_fx,
-                                                    test_parameters,
+                                                    current_test_parameters_fx,
                                                     dataset_definitions_fx, template_paths_fx)
         return test_case
 
     @pytest.fixture
-    def data_collector_fx(self, request):
+    def data_collector_fx(self, request) -> DataCollector:
         setup = deepcopy(request.node.callspec.params)
         setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
         setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-test-type")
@@ -1051,5 +1488,8 @@ class TestOTEIntegration:
     @e2e_pytest_performance
     def test(self,
              test_parameters,
-             test_case_fx, data_collector_fx):
-        test_case_fx.run_stage(test_parameters['test_stage'], data_collector_fx)
+             test_case_fx, data_collector_fx,
+             cur_test_expected_metrics_callback_fx):
+        validator = Validator(cur_test_expected_metrics_callback_fx)
+        test_case_fx.run_stage(test_parameters['test_stage'], data_collector_fx,
+                               validator)
