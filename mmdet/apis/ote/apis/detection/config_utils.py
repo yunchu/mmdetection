@@ -16,6 +16,7 @@ import copy
 import glob
 import logging
 import math
+import numpy as np
 import os
 import tempfile
 from collections import defaultdict
@@ -26,9 +27,17 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
 
+from mmdet.apis.ote.extension.datasets.data_utils import get_anchor_boxes, get_sizes_from_dataset_entity, format_list_to_str
+from mmdet.models.detectors import BaseDetector
 from mmdet.utils.logger import get_root_logger
 
 from .configuration import OTEDetectionConfig
+
+try:
+    from sklearn.cluster import KMeans
+    kmeans_import = True
+except ImportError:
+    kmeans_import = False
 
 
 logger = get_root_logger()
@@ -276,3 +285,36 @@ def remove_from_config(config, key: str):
             del config[key]
         else:
             raise ValueError(f'Unknown config type {type(config)}')
+
+def cluster_anchors(config: Config, dataset: DatasetEntity, model: BaseDetector):
+    if not kmeans_import:
+        raise ImportError('Sklearn package is not installed. To enable anchor boxes clustering, please install '
+                          'packages from requirements/optional.txt or just scikit-learn package.')
+
+    logger.info('Collecting statistics from training dataset to cluster anchor boxes...')
+    [target_wh] = [transforms.img_scale for transforms in config.data.test.pipeline
+                 if transforms.type == 'MultiScaleFlipAug']
+    prev_generator = config.model.bbox_head.anchor_generator
+    group_as = [len(width) for width in prev_generator.widths]
+    wh_stats = get_sizes_from_dataset_entity(dataset, target_wh)
+
+    if len(wh_stats) < sum(group_as):
+        logger.warning(f'There are not enough objects to cluster: {len(wh_stats)} were detected, while it should be '
+                       f'at least {sum(group_as)}. Anchor box clustering was skipped.')
+        return config, model
+
+    widths, heights = get_anchor_boxes(wh_stats, group_as)
+    logger.info(f'Anchor boxes widths have been updated from {format_list_to_str(prev_generator.widths)} '
+                                                        f'to {format_list_to_str(widths)}')
+    logger.info(f'Anchor boxes heights have been updated from {format_list_to_str(prev_generator.heights)} '
+                                                         f'to {format_list_to_str(heights)}')
+    config_generator = config.model.bbox_head.anchor_generator
+    config_generator.widths, config_generator.heights = widths, heights
+
+    model_generator = model.bbox_head.anchor_generator
+    model_generator.widths, model_generator.heights = widths, heights
+    model_generator.base_anchors = model_generator.gen_base_anchors()
+
+    config.model.bbox_head.anchor_generator = config_generator
+    model.bbox_head.anchor_generator = model_generator
+    return config, model

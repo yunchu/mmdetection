@@ -474,7 +474,8 @@ class SSDAnchorGeneratorClustered(AnchorGenerator):
     def __init__(self,
                  strides,
                  widths,
-                 heights):
+                 heights,
+                 reclustering_anchors=False):
         self.strides = [_pair(stride) for stride in strides]
         self.widths = widths
         self.heights = heights
