@@ -16,13 +16,8 @@
 import cv2
 import matplotlib.pyplot as plt
 import numpy as np
-
-# ATTENTION! the obsolete Polygon3 was replaced with shapely.geometry.Polygon,
-#            but the changes were not debugged properly.
-#            Please, debug it as soon as it is required.
-from shapely.geometry import Polygon
-
 import pycocotools.mask as mask_utils
+from shapely.geometry import Polygon
 
 IOU_CONSTRAINT = 0.5
 AREA_PRECISION_CONSTRAINT = 0.5
