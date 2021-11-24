@@ -478,3 +478,10 @@ class ReduceLROnPlateauLrUpdaterHook(LrUpdaterHook):
                 logger=runner.logger)
             self.current_lr = max(self.current_lr * self.factor, self.min_lr)
         return self.current_lr
+
+    def before_run(self, runner):
+        # TODO: remove overloaded method after fixing the issue
+        #  https://github.com/open-mmlab/mmdetection/issues/6572
+        self.base_lr = [
+            group['lr'] for group in runner.optimizer.param_groups
+        ]
