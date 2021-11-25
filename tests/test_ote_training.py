@@ -1489,6 +1489,10 @@ class TestOTEIntegration:
                 setup['dataset_name'] = setup['test_parameters'].get('dataset_name')
             if 'model_name' not in setup:
                 setup['model_name'] = setup['test_parameters'].get('model_name')
+            if 'test_stage' not in setup:
+                setup['test_stage'] = setup['test_parameters'].get('test_stage')
+            if 'usecase' not in setup:
+                setup['usecase'] = setup['test_parameters'].get('usecase')
         logger.info(f'creating DataCollector: setup=\n{pformat(setup, width=140)}')
         data_collector = DataCollector(name='TestOTEIntegration',
                                        setup=setup)
