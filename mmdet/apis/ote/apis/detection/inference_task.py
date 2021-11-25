@@ -15,6 +15,7 @@
 import copy
 import io
 import os
+import pickle
 import shutil
 import tempfile
 import warnings
@@ -109,7 +110,11 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
     def _load_model(self, model: ModelEntity):
         if model is not None:
             # If a model has been trained and saved for the task already, create empty model and load weights here
+            
             buffer = io.BytesIO(model.get_data("weights.pth"))
+            data = pickle.load(buffer)
+            
+            buffer = io.BytesIO(data['model'])
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             self.confidence_threshold = model_data.get('confidence_threshold', self.confidence_threshold)
