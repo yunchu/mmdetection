@@ -55,6 +55,12 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         # Learning curves.
         for key, curve in learning_curves.items():
+            n, m = len(curve.x), len(curve.y)
+            if n != m:
+                logger.warning(f"Learning curve {key} has inconsistent number of coordinates ({n} vs {m}.")
+                n = min(n, m)
+                curve.x = curve.x[:n]
+                curve.y = curve.y[:n]
             metric_curve = CurveMetric(xs=curve.x, ys=curve.y, name=key)
             visualization_info = LineChartInfo(name=key, x_axis_label="Epoch", y_axis_label=key)
             output.append(LineMetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
@@ -78,7 +84,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
-        
+
         # Do clustering for SSD model
         if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
@@ -180,12 +186,12 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         labels = {label.name: label.color.rgb_tuple for label in self._labels}
         modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels,
             'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
-        
+
         if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
                 generator = self._model.bbox_head.anchor_generator
                 modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
-                
+
         torch.save(modelinfo, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
         output_model.precision = [ModelPrecision.FP32]
