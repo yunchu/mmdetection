@@ -19,6 +19,7 @@ from collections import defaultdict
 from glob import glob
 from typing import List, Optional
 
+import numpy as np
 import torch
 from ote_sdk.configuration import cfg_helper
 from ote_sdk.configuration.helper.utils import ids_to_strings
@@ -61,7 +62,10 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
                 n = min(n, m)
                 curve.x = curve.x[:n]
                 curve.y = curve.y[:n]
-            metric_curve = CurveMetric(xs=curve.x, ys=curve.y, name=key)
+            metric_curve = CurveMetric(
+                xs=np.nan_to_num(curve.x).tolist(),
+                ys=np.nan_to_num(curve.y).tolist(),
+                name=key)
             visualization_info = LineChartInfo(name=key, x_axis_label="Epoch", y_axis_label=key)
             output.append(LineMetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
 
