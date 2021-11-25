@@ -121,6 +121,10 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
             self.confidence_threshold = model_data.get('confidence_threshold',
                 self._hyperparams.postprocessing.confidence_threshold)
+            if model_data.get('anchors'):
+                anchors = model_data['anchors']
+                self._config.model.bbox_head.anchor_generator.heights = anchors['heights']
+                self._config.model.bbox_head.anchor_generator.widths = anchors['widths']
 
             model = self._create_model(self._config, from_scratch=True)
             try:
