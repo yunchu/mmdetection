@@ -194,7 +194,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
             if fmap is not None:
                 active_score = TensorEntity(name="representation_vector", numpy=fmap)
-                dataset_item.append_metadata_item(active_score)
+                dataset_item.append_metadata_item(active_score, model=self._task_environment.model)
 
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
