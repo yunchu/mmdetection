@@ -18,10 +18,10 @@ import logging
 import os
 import os.path as osp
 from abc import ABC, abstractmethod
-from collections import namedtuple, OrderedDict
+from collections import Counter, namedtuple, OrderedDict
 from copy import deepcopy
 from pprint import pformat
-from typing import Callable, Dict, List, Optional, Union
+from typing import Callable, Dict, List, Optional, Type, Union
 
 import pytest
 import yaml
@@ -327,6 +327,7 @@ def convert_hyperparams_to_dict(hyperparams):
 class BaseOTETestAction(ABC):
     _name = None
     _with_validation = False
+    _depends_stages_names = []
 
     @property
     def name(self):
@@ -335,6 +336,17 @@ class BaseOTETestAction(ABC):
     @property
     def with_validation(self):
         return type(self)._with_validation
+
+    @property
+    def depends_stages_names(self):
+        return type(self)._depends_stages_names
+
+    def __str__(self):
+        return (f'{type(self).__name__}('
+                f'name={self.name}, '
+                f'with_validation={self.with_validation}, '
+                f'depends_stages_names={self.depends_stages_names}'
+                f')')
 
     def _check_result_prev_stages(self, results_prev_stages, list_required_stages):
         for stage_name in list_required_stages:
@@ -349,9 +361,9 @@ class BaseOTETestAction(ABC):
 
 class OTETestTrainingAction(BaseOTETestAction):
     _name = 'training'
-    def __init__(self, dataset_params, template_file_path, num_training_iters, batch_size):
+    def __init__(self, dataset_params, template_path, num_training_iters, batch_size):
         self.dataset_params = dataset_params
-        self.template_file_path = template_file_path
+        self.template_path = template_path
         self.num_training_iters = num_training_iters
         self.batch_size = batch_size
 
@@ -372,7 +384,7 @@ class OTETestTrainingAction(BaseOTETestAction):
         return performance_to_score_name_value(training_performance)
 
     def _run_ote_training(self, data_collector):
-        logger.debug(f'self.template_file_path = {self.template_file_path}')
+        logger.debug(f'self.template_path = {self.template_path}')
         logger.debug(f'Using for train annotation file {self.dataset_params.annotations_train}')
         logger.debug(f'Using for val annotation file {self.dataset_params.annotations_val}')
 
@@ -400,7 +412,7 @@ class OTETestTrainingAction(BaseOTETestAction):
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
 
         logger.debug('Load model template')
-        self.model_template = parse_model_template(self.template_file_path)
+        self.model_template = parse_model_template(self.template_path)
 
         logger.debug('Set hyperparameters')
         params = create(self.model_template.hyper_parameters.data)
@@ -438,6 +450,7 @@ class OTETestTrainingAction(BaseOTETestAction):
 
         hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
         for k, v in hyperparams_dict.items():
+            logger.debug(f'Try to run update_metadata:\nk={k}\nv={pformat(v, width=140)}\n')
             data_collector.update_metadata(k, v)
 
     def __call__(self, data_collector: DataCollector,
@@ -472,6 +485,7 @@ def run_evaluation(dataset, task, model):
 class OTETestTrainingEvaluationAction(BaseOTETestAction):
     _name = 'training_evaluation'
     _with_validation = True
+    _depends_stages_names = ['training']
 
     def __init__(self, subset=Subset.TESTING):
         self.subset = subset
@@ -487,7 +501,7 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'dataset': results_prev_stages['training']['dataset'],
@@ -531,6 +545,7 @@ def run_export(environment, dataset, task, action_name):
 
 class OTETestExportAction(BaseOTETestAction):
     _name = 'export'
+    _depends_stages_names = ['training']
 
     def _run_ote_export(self, data_collector,
                         environment, dataset, task):
@@ -539,7 +554,7 @@ class OTETestExportAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'environment': results_prev_stages['training']['environment'],
@@ -564,6 +579,7 @@ def create_openvino_task(model_template, environment):
 class OTETestExportEvaluationAction(BaseOTETestAction):
     _name = 'export_evaluation'
     _with_validation = True
+    _depends_stages_names = ['training', 'export', 'training_evaluation']
 
     def __init__(self, subset=Subset.TESTING):
         self.subset = subset
@@ -581,7 +597,7 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training', 'export'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'model_template': results_prev_stages['training']['model_template'],
@@ -602,6 +618,7 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
 
 class OTETestPotAction(BaseOTETestAction):
     _name = 'pot'
+    _depends_stages_names = ['export']
 
     def __init__(self, pot_subset=Subset.TRAINING):
         self.pot_subset = pot_subset
@@ -630,7 +647,7 @@ class OTETestPotAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['export'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'model_template': results_prev_stages['training']['model_template'],
@@ -648,6 +665,7 @@ class OTETestPotAction(BaseOTETestAction):
 class OTETestPotEvaluationAction(BaseOTETestAction):
     _name = 'pot_evaluation'
     _with_validation = True
+    _depends_stages_names = ['training', 'pot', 'export_evaluation']
 
     def __init__(self, subset=Subset.TESTING):
         self.subset = subset
@@ -665,7 +683,7 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training', 'pot'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'dataset': results_prev_stages['training']['dataset'],
@@ -685,6 +703,7 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
 
 class OTETestNNCFAction(BaseOTETestAction):
     _name = 'nncf'
+    _depends_stages_names = ['training']
 
     def _run_ote_nncf(self, data_collector,
                       model_template, dataset, trained_model,
@@ -725,7 +744,7 @@ class OTETestNNCFAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'model_template': results_prev_stages['training']['model_template'],
@@ -745,6 +764,7 @@ class OTETestNNCFAction(BaseOTETestAction):
 class OTETestNNCFEvaluationAction(BaseOTETestAction):
     _name = 'nncf_evaluation'
     _with_validation = True
+    _depends_stages_names = ['training', 'nncf', 'training_evaluation']
 
     def __init__(self, subset=Subset.TESTING):
         self.subset = subset
@@ -762,7 +782,7 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training', 'nncf'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'dataset': results_prev_stages['training']['dataset'],
@@ -782,6 +802,7 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
 
 class OTETestNNCFExportAction(BaseOTETestAction):
     _name = 'nncf_export'
+    _depends_stages_names = ['training', 'nncf']
 
     def __init__(self, subset=Subset.VALIDATION):
         self.subset = subset
@@ -795,7 +816,7 @@ class OTETestNNCFExportAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training', 'nncf'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'nncf_environment': results_prev_stages['nncf']['nncf_environment'],
@@ -813,6 +834,7 @@ class OTETestNNCFExportAction(BaseOTETestAction):
 class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
     _name = 'nncf_export_evaluation'
     _with_validation = True
+    _depends_stages_names = ['training', 'nncf_export', 'nncf_evaluation']
 
     def __init__(self, subset=Subset.TESTING):
         self.subset = subset
@@ -830,7 +852,7 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
-        self._check_result_prev_stages(results_prev_stages, ['training', 'nncf_export'])
+        self._check_result_prev_stages(results_prev_stages, self.depends_stages_names)
 
         kwargs = {
                 'model_template': results_prev_stages['training']['model_template'],
@@ -1073,6 +1095,11 @@ class Validator:
             fail_reasons = '\n'.join(fail_reasons)
             pytest.fail(f'Validation failed:\n{fail_reasons}')
 
+class OTETestStagesStorageInterface(ABC):
+    @abstractmethod
+    def get_stage(self, name: str) -> 'OTETestStage':
+        raise NotImplementedError('The method get_stage is not implemented')
+
 class OTETestStage:
     """
     OTETestStage -- auxiliary class that
@@ -1085,19 +1112,45 @@ class OTETestStage:
             time the stage is called the exception is re-raised.
     """
     def __init__(self, action: BaseOTETestAction,
-                 depends_stages: Optional[List['OTETestStage']]=None):
+                 stages_storage: OTETestStagesStorageInterface):
         self.was_processed = False
         self.stored_exception = None
         self.action = action
-        self.depends_stages = depends_stages if depends_stages else []
+        self.stages_storage = stages_storage
         self.stage_results = None
-        assert isinstance(self.depends_stages, list)
-        assert all(isinstance(stage, OTETestStage) for stage in self.depends_stages)
+        assert isinstance(self.stages_storage, OTETestStagesStorageInterface)
         assert isinstance(self.action, BaseOTETestAction)
+
+    def __str__(self):
+        return (f'{type(self).__name__}('
+                f'action={self.action}, '
+                f'was_processed={self.was_processed}, '
+                f'stored_exception={self.stored_exception}, '
+                f'stage_results.keys={list(self.stage_results.keys())}, '
+                f'id(stages_storage)={id(self.stages_storage)}'
+                f')')
 
     @property
     def name(self):
         return self.action.name
+
+    def get_depends_stages(self):
+        logger.debug(f'get_depends_stages for stage {self.name}: begin')
+        depends_stages_names = self.action.depends_stages_names
+        assert isinstance(depends_stages_names, list)
+        assert all(isinstance(v, str) for v in depends_stages_names)
+
+        stages = []
+        for stage_name in depends_stages_names:
+            logger.debug(f'get_depends_stages: get stage with name {stage_name}')
+            cur_stage = self.stages_storage.get_stage(stage_name)
+            assert isinstance(cur_stage, OTETestStage), f'Wrong stage for stage_name={stage_name}'
+            assert cur_stage.name == stage_name, \
+                    f'For stage_name={stage_name} got the stage with name={cur_stage.name}'
+            logger.debug(f'get_depends_stages: cur_stage={cur_stage}')
+            stages.append(cur_stage)
+        logger.debug(f'get_depends_stages for stage {self.name}: end')
+        return stages
 
     def _reraise_stage_exception_if_was_failed(self):
         assert self.was_processed, \
@@ -1127,7 +1180,7 @@ class OTETestStage:
         assert isinstance(test_results_storage, OrderedDict)
         logger.debug(f'For test stage "{self.name}": test_results_storage.keys = {list(test_results_storage.keys())}')
 
-        for dep_stage in self.depends_stages:
+        for dep_stage in self.get_depends_stages():
             # Processing all dependency stages of the current test.
             # Note that
             # * the stages may run their own dependency stages -- they will compose so called "dependency chain"
@@ -1176,7 +1229,65 @@ class OTETestStage:
         self._run_validation(test_results_storage, validator)
         logger.info(f'End stage "{self.name}"')
 
-class OTEIntegrationTestCase:
+def _get_duplications(arr):
+    c = Counter(arr)
+    dups = [k for k, v in c.items() if v > 1]
+    return dups
+
+def generate_ote_integration_test_case_class(test_actions_classes: List[Type[BaseOTETestAction]]) -> Type:
+    # TODO(lbeynens): debug it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    test_actions_classes = deepcopy(test_actions_classes)
+
+    # check names' duplication
+    classes_names = [action_cls._name for action_cls in test_actions_classes]
+    name_dups = _get_duplications(classes_names)
+    if name_dups:
+        raise ValueError(f'Wrong input: there are duplications in names of actions; duplications = {name_dups}')
+
+    class _OTEIntegrationTestCase(OTETestStagesStorageInterface):
+        _TEST_STAGES = [action_cls._name for action_cls in test_actions_classes]
+
+        @classmethod
+        def get_list_of_test_stages(cls):
+            return cls._TEST_STAGES
+
+        def __init__(self, params_for_test_actions: Dict[str, Dict]):
+            self._stages = OrderedDict()
+            for action_cls in test_actions_classes:
+                cur_name = action_cls._name
+                cur_params = params_for_test_actions.get(cur_name)
+                if cur_params is None:
+                    cur_params = {}
+
+                logger.debug(f'initialization of test case: add action {cur_name} with params {cur_params}')
+                cur_action = action_cls(**cur_params)
+
+                # Note that `self` is used as stages_storage for OTETestStage below
+                cur_stage = OTETestStage(action=cur_action,
+                                         stages_storage=self)
+                self._stages[cur_name] = cur_stage
+
+            assert list(self._stages.keys()) == list(self._TEST_STAGES)
+
+            # test results should be kept between stages
+            self.test_results_storage = OrderedDict()
+
+        # implementation of method from OTETestStagesStorageInterface
+        def get_stage(self, name: str) -> 'OTETestStage':
+            return self._stages[name]
+
+        def run_stage(self, stage_name: str, data_collector: DataCollector,
+                      validator: Validator):
+            assert stage_name in self._TEST_STAGES, f'Wrong stage_name {stage_name}'
+            self._stages[stage_name].run_once(data_collector, self.test_results_storage,
+                                              validator)
+
+    return _OTEIntegrationTestCase
+
+def get_default_test_action_classes() -> List[Type[BaseOTETestAction]]:
+    pass #TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+
+class OTEIntegrationTestCase(OTETestStagesStorageInterface):
     _TEST_STAGES = ('training', 'training_evaluation',
                    'export', 'export_evaluation',
                    'pot', 'pot_evaluation',
@@ -1187,35 +1298,36 @@ class OTEIntegrationTestCase:
     def get_list_of_test_stages(cls):
         return cls._TEST_STAGES
 
-    def __init__(self, dataset_params: DatasetParameters, template_file_path: str,
-                 num_training_iters: int, batch_size: int):
-        self.dataset_params = dataset_params
-        self.template_file_path = template_file_path
-        self.num_training_iters = num_training_iters
-        self.batch_size = batch_size
+    def get_stage(self, name: str) -> 'OTETestStage':
+        return self._stages[name]
 
-        training_stage = OTETestStage(action=OTETestTrainingAction(self.dataset_params,
-                                                                   self.template_file_path,
-                                                                   self.num_training_iters,
-                                                                   self.batch_size))
+    def __init__(self, params_for_test_actions: Dict[str, Dict]):
+#        self.dataset_params = dataset_params
+#        self.template_path = template_path
+#        self.num_training_iters = num_training_iters
+#        self.batch_size = batch_size
+        training_params = params_for_test_actions['training']
+
+        training_stage = OTETestStage(action=OTETestTrainingAction(**training_params),
+                                      stages_storage=self)
         training_evaluation_stage = OTETestStage(action=OTETestTrainingEvaluationAction(),
-                                                 depends_stages=[training_stage])
+                                                 stages_storage=self)
         export_stage = OTETestStage(action=OTETestExportAction(),
-                                    depends_stages=[training_stage])
+                                    stages_storage=self)
         export_evaluation_stage = OTETestStage(action=OTETestExportEvaluationAction(),
-                                               depends_stages=[export_stage])
+                                               stages_storage=self)
         pot_stage = OTETestStage(action=OTETestPotAction(),
-                                 depends_stages=[export_stage])
+                                 stages_storage=self)
         pot_evaluation_stage = OTETestStage(action=OTETestPotEvaluationAction(),
-                                            depends_stages=[pot_stage, training_evaluation_stage])
+                                            stages_storage=self)
         nncf_stage = OTETestStage(action=OTETestNNCFAction(),
-                                  depends_stages=[training_stage])
+                                  stages_storage=self)
         nncf_evaluation_stage = OTETestStage(action=OTETestNNCFEvaluationAction(),
-                                             depends_stages=[nncf_stage, training_evaluation_stage])
+                                             stages_storage=self)
         nncf_export_stage = OTETestStage(action=OTETestNNCFExportAction(),
-                                         depends_stages=[nncf_stage])
+                                         stages_storage=self)
         nncf_export_evaluation_stage = OTETestStage(action=OTETestNNCFExportEvaluationAction(),
-                                                    depends_stages=[nncf_export_stage, nncf_evaluation_stage])
+                                                    stages_storage=self)
         # TODO(lbeynens) if we could extract info on dependency from expected metrics, we could remove
         #                nncf_evaluation_stage from the `depends_stages` for nncf_export_evaluation_stage
 
@@ -1257,6 +1369,7 @@ class TestOTEIntegration:
     """
     PERFORMANCE_RESULTS = None # it is required for e2e system
 
+    # TODO(lbeynens):3: replace with a classmethod
     SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID = OrderedDict([
             ('test_stage', 'ACTION'),
             ('model_name', 'model'),
@@ -1273,11 +1386,13 @@ class TestOTEIntegration:
     # for the previous one, the result of operations in OTEIntegrationTestCase should
     # be kept and re-used.
     # See the fixture test_case_fx and the method _update_test_case_in_cache below.
+    # TODO(lbeynens):3: replace with a classmethod
     TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR = ('model_name',
                                               'dataset_name',
                                               'num_training_iters',
                                               'batch_size')
 
+    # TODO(lbeynens):2: replace with dict
     DEFAULT_NUM_ITERS = 1
     DEFAULT_BATCH_SIZE = 2
 
@@ -1293,6 +1408,7 @@ class TestOTEIntegration:
     #    * batch_size -- either integer value, or DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST,
     #                    or KEEP_CONFIG_FIELD_VALUE;
     #                    if None or absent, then DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST is used
+    # TODO(lbeynens):3: replace with a classmethod
     test_bunches = [
             dict(
                 model_name=[
@@ -1445,7 +1561,16 @@ class TestOTEIntegration:
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
             template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
 
-            cache['_test_case_'] = OTEIntegrationTestCase(dataset_params, template_path, num_training_iters, batch_size)
+            params_for_test_actions = {
+                'training': {
+                    'dataset_params': dataset_params,
+                    'template_path': template_path,
+                    'num_training_iters': num_training_iters,
+                    'batch_size': batch_size,
+                }
+            }
+
+            cache['_test_case_'] = OTEIntegrationTestCase(params_for_test_actions)
 
         return cache['_test_case_']
 
