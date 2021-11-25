@@ -434,11 +434,12 @@ class OTETestTrainingAction(BaseOTETestAction):
 
         score_name, score_value = self._get_training_performance_as_score_name_value()
         logger.info(f'performance={self.output_model.performance}')
-        data_collector.log_final_metric('training_accuracy/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
 
-        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
-        for k, v in hyperparams_dict.items():
-            data_collector.update_metadata(k, v)
+#        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
+#        for k, v in hyperparams_dict.items():
+#            data_collector.update_metadata(k, v)
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -481,7 +482,8 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of trained model')
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, task, trained_model)
-        data_collector.log_final_metric('evaluation_accuracy/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info(f'End evaluation of trained model, results: {score_name}: {score_value}')
         return score_name, score_value
 
@@ -575,7 +577,8 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
         self.openvino_task = create_openvino_task(model_template, environment_for_export)
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, exported_model)
-        data_collector.log_final_metric('evaluation_accuracy_exported/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of exported model')
         return score_name, score_value
 
@@ -659,7 +662,8 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of pot model')
         validation_dataset_pot = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset_pot, openvino_task_pot, optimized_model_pot)
-        data_collector.log_final_metric('evaluation_accuracy_pot/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of pot model')
         return score_name, score_value
 
@@ -756,7 +760,8 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of nncf model')
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, nncf_task, nncf_model)
-        data_collector.log_final_metric('evaluation_accuracy_nncf/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of nncf model')
         return score_name, score_value
 
@@ -824,7 +829,8 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
         self.openvino_task = create_openvino_task(model_template, nncf_environment_for_export)
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, nncf_exported_model)
-        data_collector.log_final_metric('evaluation_accuracy_nncf_exported/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of NNCF exported model')
         return score_name, score_value
 
@@ -1471,12 +1477,18 @@ class TestOTEIntegration:
     @pytest.fixture
     def data_collector_fx(self, request) -> DataCollector:
         setup = deepcopy(request.node.callspec.params)
-        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
-        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-test-type")
-        setup["scenario"] = "api"
-        setup["test"] = request.node.name
-        setup["subject"] = "custom-object-detection"
-        setup["project"] = "ote"
+        setup['environment_name'] = os.environ.get('TT_ENVIRONMENT_NAME', 'no-env')
+        setup['test_type'] = os.environ.get('TT_TEST_TYPE', 'no-test-type') # TODO: get from e2e test type
+        setup['scenario'] = 'api' # TODO: get from e2e test type
+        setup['test'] = request.node.name
+        setup['subject'] = 'custom-object-detection'
+        setup['project'] = 'ote'
+        if 'test_parameters' in setup:
+            assert isinstance(setup['test_parameters'], dict)
+            if 'dataset_name' not in setup:
+                setup['dataset_name'] = setup['test_parameters'].get('dataset_name')
+            if 'model_name' not in setup:
+                setup['model_name'] = setup['test_parameters'].get('model_name')
         logger.info(f'creating DataCollector: setup=\n{pformat(setup, width=140)}')
         data_collector = DataCollector(name='TestOTEIntegration',
                                        setup=setup)
