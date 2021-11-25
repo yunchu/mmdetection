@@ -718,7 +718,7 @@ class OTETestNNCFAction(BaseOTETestAction):
                                 self.nncf_model,
                                 OptimizationParameters())
         assert self.nncf_model.model_status == ModelStatus.SUCCESS, 'NNCF optimization was not successful'
-        assert self.nncf_model.optimization_type == OptimizationType.NNCF, 'Wrong optimization type'
+        assert self.nncf_model.optimization_type == ModelOptimizationType.NNCF, 'Wrong optimization type'
         assert self.nncf_model.model_format == ModelFormat.BASE_FRAMEWORK, 'Wrong model format'
         logger.info('NNCF optimization is finished')
 

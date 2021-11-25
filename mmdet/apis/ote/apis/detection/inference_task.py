@@ -91,6 +91,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         # Set default model attributes.
         self._optimization_methods = []
         self._precision = [ModelPrecision.FP32]
+        self._optimization_type = ModelOptimizationType.MO
 
         # Create and initialize PyTorch model.
         logger.info('Loading the model')
@@ -326,7 +327,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         logger.info('Exporting the model')
         assert export_type == ExportType.OPENVINO
         output_model.model_format = ModelFormat.OPENVINO
-        output_model.optimization_type = ModelOptimizationType.MO
+        output_model.optimization_type = self._optimization_type
         with tempfile.TemporaryDirectory() as tempdir:
             optimized_model_dir = os.path.join(tempdir, 'export')
             logger.info(f'Optimized model will be temporarily saved to "{optimized_model_dir}"')
