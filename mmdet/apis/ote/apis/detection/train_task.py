@@ -15,7 +15,6 @@
 import copy
 import io
 import os
-import pickle
 from collections import defaultdict
 from glob import glob
 from typing import List, Optional
@@ -79,7 +78,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
-        
+
         # Do clustering for SSD model
         if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
@@ -175,32 +174,20 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
 
     def save_model(self, output_model: ModelEntity):
-        from ote_sdk.serialization.label_mapper import LabelSchemaMapper
-
-        serialized_label_schema = (LabelSchemaMapper().forward(self._task_environment.label_schema))
-
-        desearialized = LabelSchemaMapper().backward(serialized_label_schema)
-
-        assert self._task_environment.label_schema == desearialized, f'\n{self._task_environment.label_schema}\n{desearialized}'
-
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
 
-        labels = {label.name: label.color.rgb_tuple for label in self._labels}
-        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels,
+        # labels = {label.name: label.color.rgb_tuple for label in self._labels}
+        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'label_schema': self._task_environment.label_schema,
             'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
-        
+
         if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
                 generator = self._model.bbox_head.anchor_generator
                 modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
-                
+
         torch.save(modelinfo, buffer)
 
-        torch_model_bin = buffer.getvalue()
-
-        buffer = io.BytesIO()
-        pickle.dump({'model': torch_model_bin, 'label_schema': serialized_label_schema}, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
         output_model.precision = [ModelPrecision.FP32]
 
