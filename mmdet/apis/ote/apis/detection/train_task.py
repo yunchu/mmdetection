@@ -177,7 +177,6 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
 
-        # labels = {label.name: label.color.rgb_tuple for label in self._labels}
         modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'label_schema': self._task_environment.label_schema,
             'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
 
@@ -185,9 +184,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
                 generator = self._model.bbox_head.anchor_generator
                 modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
-
         torch.save(modelinfo, buffer)
-
         output_model.set_data("weights.pth", buffer.getvalue())
         output_model.precision = [ModelPrecision.FP32]
 
