@@ -184,6 +184,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
                 generator = self._model.bbox_head.anchor_generator
                 modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
+                
         torch.save(modelinfo, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
         output_model.precision = [ModelPrecision.FP32]
