@@ -505,7 +505,7 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
         }
         return results
 
-def run_export(environment, dataset, task, action_name):
+def run_export(environment, dataset, task, action_name, expected_optimization_type):
     logger.debug(f'For action "{action_name}": Copy environment for evaluation exported model')
 
     environment_for_export = deepcopy(environment)
@@ -522,7 +522,7 @@ def run_export(environment, dataset, task, action_name):
             f'In action "{action_name}": Export to OpenVINO was not successful'
     assert exported_model.model_format == ModelFormat.OPENVINO, \
             f'In action "{action_name}": Wrong model format after export'
-    assert exported_model.optimization_type == ModelOptimizationType.MO, \
+    assert exported_model.optimization_type == expected_optimization_type, \
             f'In action "{action_name}": Wrong optimization type'
 
     logger.debug(f'For action "{action_name}": Set exported model into environment for export')
@@ -535,7 +535,8 @@ class OTETestExportAction(BaseOTETestAction):
     def _run_ote_export(self, data_collector,
                         environment, dataset, task):
         self.environment_for_export, self.exported_model = \
-                run_export(environment, dataset, task, action_name=self.name)
+                run_export(environment, dataset, task, action_name=self.name,
+                           expected_optimization_type=ModelOptimizationType.MO)
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -625,7 +626,7 @@ class OTETestPotAction(BaseOTETestAction):
             OptimizationParameters())
         assert self.optimized_model_pot.model_status == ModelStatus.SUCCESS, 'POT optimization was not successful'
         assert self.optimized_model_pot.model_format == ModelFormat.OPENVINO, 'Wrong model format after pot'
-        assert self.optimized_model_pot.optimization_type == OptimizationType.POT, 'Wrong optimization type'
+        assert self.optimized_model_pot.optimization_type == ModelOptimizationType.POT, 'Wrong optimization type'
         logger.info('POT optimization is finished')
 
     def __call__(self, data_collector: DataCollector,
@@ -790,7 +791,8 @@ class OTETestNNCFExportAction(BaseOTETestAction):
                              nncf_environment, dataset, nncf_task):
         logger.info('Begin export of nncf model')
         self.environment_nncf_export, self.nncf_exported_model = \
-                run_export(nncf_environment, dataset, nncf_task, action_name=self.name)
+                run_export(nncf_environment, dataset, nncf_task, action_name=self.name,
+                           expected_optimization_type=ModelOptimizationType.NNCF)
         logger.info('End export of nncf model')
 
     def __call__(self, data_collector: DataCollector,
