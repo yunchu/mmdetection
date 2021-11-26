@@ -29,11 +29,12 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
 from ote_sdk.entities.label import LabelEntity
 from ote_sdk.entities.model import (
-    ModelStatus,
     ModelEntity,
     ModelFormat,
-    OptimizationMethod,
+    ModelOptimizationType,
     ModelPrecision,
+    ModelStatus,
+    OptimizationMethod,
 )
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
@@ -302,7 +303,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS
         output_model.model_format = ModelFormat.OPENVINO
-        output_model.optimization_type = OptimizationType.POT
+        output_model.optimization_type = ModelOptimizationType.POT
         output_model.optimization_methods = [OptimizationMethod.QUANTIZATION]
         output_model.precision = [ModelPrecision.INT8]
 
