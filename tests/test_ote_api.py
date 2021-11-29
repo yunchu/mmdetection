@@ -57,18 +57,25 @@ from mmdet.integration.nncf.utils import is_nncf_enabled
 DEFAULT_TEMPLATE_DIR = osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS')
 
 class ModelTemplate(unittest.TestCase):
+    def check_capabilities(self, template):
+        self.assertTrue(template.computes_representations())
+        self.assertFalse(template.computes_uncertainty_score())
+        self.assertEqual(len(template.capabilities), 1)
 
     @e2e_pytest_api
     def test_reading_gen3_ssd(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_SSD', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_SSD', 'template.yaml'))
+        self.check_capabilities(template)
 
     @e2e_pytest_api
     def test_reading_gen3_atss(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS', 'template.yaml'))
+        self.check_capabilities(template)
 
     @e2e_pytest_api
     def test_reading_gen3_vfnet(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template.yaml'))
+        self.check_capabilities(template)
 
 
 @e2e_pytest_api
