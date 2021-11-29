@@ -410,8 +410,7 @@ class API(unittest.TestCase):
         self.assertEqual(output_model.model_status, ModelStatus.SUCCESS)
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
         if 'anchors' not in modelinfo.keys():
-            self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'labels', 'confidence_threshold', 'VERSION'])
-        self.assertTrue('ellipse' in modelinfo['labels'])
+            self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'label_schema', 'confidence_threshold', 'VERSION'])
 
         # Run inference.
         validation_performance = self.eval(task, output_model, val_dataset)
