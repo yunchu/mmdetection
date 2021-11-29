@@ -324,6 +324,29 @@ def convert_hyperparams_to_dict(hyperparams):
         return d
     return _convert(hyperparams)
 
+def _create_object_detection_dataset_and_labels_schema(dataset_params):
+    logger.debug(f'Using for train annotation file {dataset_params.annotations_train}')
+    logger.debug(f'Using for val annotation file {dataset_params.annotations_val}')
+    labels_list = []
+    items = load_dataset_items_coco_format(
+        ann_file_path=dataset_params.annotations_train,
+        data_root_dir=dataset_params.images_train_dir,
+        subset=Subset.TRAINING,
+        labels_list=labels_list)
+    items.extend(load_dataset_items_coco_format(
+        ann_file_path=dataset_params.annotations_val,
+        data_root_dir=dataset_params.images_val_dir,
+        subset=Subset.VALIDATION,
+        labels_list=labels_list))
+    items.extend(load_dataset_items_coco_format(
+        ann_file_path=dataset_params.annotations_test,
+        data_root_dir=dataset_params.images_test_dir,
+        subset=Subset.TESTING,
+        labels_list=labels_list))
+    dataset = DatasetEntity(items=items)
+    labels_schema = LabelSchemaEntity.from_labels(labels_list)
+    return dataset, labels_schema
+
 class BaseOTETestAction(ABC):
     _name = None
     _with_validation = False
@@ -361,8 +384,9 @@ class BaseOTETestAction(ABC):
 
 class OTETestTrainingAction(BaseOTETestAction):
     _name = 'training'
-    def __init__(self, dataset_params, template_path, num_training_iters, batch_size):
-        self.dataset_params = dataset_params
+    def __init__(self, dataset, labels_schema, template_path, num_training_iters, batch_size):
+        self.dataset = dataset
+        self.labels_schema = labels_schema
         self.template_path = template_path
         self.num_training_iters = num_training_iters
         self.batch_size = batch_size
@@ -385,28 +409,6 @@ class OTETestTrainingAction(BaseOTETestAction):
 
     def _run_ote_training(self, data_collector):
         logger.debug(f'self.template_path = {self.template_path}')
-        logger.debug(f'Using for train annotation file {self.dataset_params.annotations_train}')
-        logger.debug(f'Using for val annotation file {self.dataset_params.annotations_val}')
-
-        labels_list = []
-        items = load_dataset_items_coco_format(
-            ann_file_path=self.dataset_params.annotations_train,
-            data_root_dir=self.dataset_params.images_train_dir,
-            subset=Subset.TRAINING,
-            labels_list=labels_list)
-        items.extend(load_dataset_items_coco_format(
-            ann_file_path=self.dataset_params.annotations_val,
-            data_root_dir=self.dataset_params.images_val_dir,
-            subset=Subset.VALIDATION,
-            labels_list=labels_list))
-        items.extend(load_dataset_items_coco_format(
-            ann_file_path=self.dataset_params.annotations_test,
-            data_root_dir=self.dataset_params.images_test_dir,
-            subset=Subset.TESTING,
-            labels_list=labels_list))
-        self.dataset = DatasetEntity(items=items)
-
-        self.labels_schema = LabelSchemaEntity.from_labels(labels_list)
 
         print(f'train dataset: {len(self.dataset.get_subset(Subset.TRAINING))} items')
         print(f'validation dataset: {len(self.dataset.get_subset(Subset.VALIDATION))} items')
@@ -1251,15 +1253,20 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
         def get_list_of_test_stages(cls):
             return cls._TEST_STAGES
 
-        def __init__(self, params_for_test_actions: Dict[str, Dict]):
+        def __init__(self, params_factories_for_test_actions: Dict[str, Callable[[], Dict]]):
+            logger.debug(f'initialization of test case: begin')
             self._stages = OrderedDict()
             for action_cls in test_actions_classes:
+                logger.debug(f'initialization of test case: action_cls={action_cls}')
                 cur_name = action_cls._name
-                cur_params = params_for_test_actions.get(cur_name)
-                if cur_params is None:
+                cur_params_factory = params_factories_for_test_actions.get(cur_name)
+                if cur_params_factory is not None:
+                    logger.debug(f'initialization of test case: calling params factory')
+                    cur_params = cur_params_factory()
+                else:
                     cur_params = {}
 
-                logger.debug(f'initialization of test case: add action {cur_name} with params {cur_params}')
+                logger.info(f'initialization of test case: add action {cur_name} with params {cur_params}')
                 cur_action = action_cls(**cur_params)
 
                 # Note that `self` is used as stages_storage for OTETestStage below
@@ -1301,12 +1308,10 @@ class OTEIntegrationTestCase(OTETestStagesStorageInterface):
     def get_stage(self, name: str) -> 'OTETestStage':
         return self._stages[name]
 
-    def __init__(self, params_for_test_actions: Dict[str, Dict]):
-#        self.dataset_params = dataset_params
-#        self.template_path = template_path
-#        self.num_training_iters = num_training_iters
-#        self.batch_size = batch_size
-        training_params = params_for_test_actions['training']
+    def __init__(self, params_factories_for_test_actions: Dict[str, Callable[[], Dict]]):
+        logger.debug(f'initialization of test case: before calling params factory for training')
+        training_params = params_factories_for_test_actions['training']()
+        logger.debug(f'initialization of test case: after calling params factory for training')
 
         training_stage = OTETestStage(action=OTETestTrainingAction(**training_params),
                                       stages_storage=self)
@@ -1535,14 +1540,12 @@ class TestOTEIntegration:
     @classmethod
     def _update_test_case_in_cache(cls, cache,
                                    test_parameters,
-                                   dataset_definitions, template_paths):
+                                   params_factories_for_test_actions):
         """
         If the main parameters of the test differs w.r.t. the previous test,
         the cache will be cleared and new instance of OTEIntegrationTestCase will be created.
         Otherwise the previous instance of OTEIntegrationTestCase will be re-used
         """
-        if dataset_definitions is None:
-            pytest.skip('The parameter "--dataset-definitions" is not set')
         params_defining_cache = {k: test_parameters[k] for k in cls.TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR}
 
         assert '_test_case_' not in params_defining_cache, \
@@ -1552,6 +1555,21 @@ class TestOTEIntegration:
 
         if '_test_case_' not in cache:
             logger.info('TestOTEIntegration: creating OTEIntegrationTestCase')
+            cache['_test_case_'] = OTEIntegrationTestCase(params_factories_for_test_actions)
+
+        return cache['_test_case_']
+
+    @pytest.fixture
+    def params_factories_for_test_actions_fx(self, current_test_parameters_fx,
+                                             dataset_definitions_fx, template_paths_fx) -> Dict[str,Callable[[], Dict]]:
+        logger.debug('params_factories_for_test_actions_fx: begin')
+
+        test_parameters = deepcopy(current_test_parameters_fx)
+        dataset_definitions = deepcopy(dataset_definitions_fx)
+        template_paths = deepcopy(template_paths_fx)
+        def _training_params_factory() -> Dict:
+            if dataset_definitions is None:
+                pytest.skip('The parameter "--dataset-definitions" is not set')
 
             model_name = test_parameters['model_name']
             dataset_name = test_parameters['dataset_name']
@@ -1561,21 +1579,26 @@ class TestOTEIntegration:
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
             template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
 
-            params_for_test_actions = {
-                'training': {
-                    'dataset_params': dataset_params,
-                    'template_path': template_path,
-                    'num_training_iters': num_training_iters,
-                    'batch_size': batch_size,
-                }
+            logger.debug('training params factory: Before creating dataset and labels_schema')
+            dataset, labels_schema = _create_object_detection_dataset_and_labels_schema(dataset_params)
+            logger.debug('training params factory: After creating dataset and labels_schema')
+
+            return {
+                'dataset': dataset,
+                'labels_schema': labels_schema,
+                'template_path': template_path,
+                'num_training_iters': num_training_iters,
+                'batch_size': batch_size,
             }
 
-            cache['_test_case_'] = OTEIntegrationTestCase(params_for_test_actions)
-
-        return cache['_test_case_']
+        params_factories_for_test_actions = {
+            'training': _training_params_factory
+        }
+        logger.debug('params_factories_for_test_actions_fx: end')
+        return params_factories_for_test_actions
 
     @pytest.fixture
-    def test_case_fx(self, current_test_parameters_fx, dataset_definitions_fx, template_paths_fx,
+    def test_case_fx(self, current_test_parameters_fx, params_factories_for_test_actions_fx,
                      cached_from_prev_test_fx):
         """
         This fixture returns the test case class OTEIntegrationTestCase that should be used for the current test.
@@ -1590,7 +1613,7 @@ class TestOTEIntegration:
         """
         test_case = self._update_test_case_in_cache(cached_from_prev_test_fx,
                                                     current_test_parameters_fx,
-                                                    dataset_definitions_fx, template_paths_fx)
+                                                    params_factories_for_test_actions_fx)
         return test_case
 
     @pytest.fixture
