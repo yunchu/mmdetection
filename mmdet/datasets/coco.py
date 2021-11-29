@@ -1,22 +1,21 @@
 import copy
+import cv2
 import itertools
 import logging
+import mmcv
+import numpy as np
+import os
 import os.path as osp
 import tempfile
 from collections import OrderedDict
-
-import cv2
-import mmcv
-import numpy as np
 from mmcv.utils import print_log
-import os
 from pycocotools.coco import COCO
 from pycocotools.cocoeval import COCOeval
 from pycocotools.mask import decode
 from terminaltables import AsciiTable
 
-from mmdet.core import eval_recalls
-from mmdet.core import text_eval
+from mmdet.core import eval_recalls, text_eval
+from mmdet.core.evaluation.f_score import FMeasure
 from .builder import DATASETS
 from .custom import CustomDataset
 
@@ -35,7 +34,8 @@ def get_polygon(segm, bbox, return_rect):
     xmin, ymin, xmax, ymax, conf = bbox
     if segm is not None:
         mask = decode(segm)
-        contours = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]
+        contours = cv2.findContours(
+            mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_NONE)[-2]
         if contours:
             contour = sorted(contours, key=lambda x: -cv2.contourArea(x))[0]
             if return_rect:
@@ -45,6 +45,7 @@ def get_polygon(segm, bbox, return_rect):
     contour = [xmin, ymin, xmax, ymin, xmax, ymax, xmin, ymax]
 
     return contour, conf
+
 
 @DATASETS.register_module()
 class CocoDataset(CustomDataset):
@@ -431,7 +432,9 @@ class CocoDataset(CustomDataset):
         """
 
         metrics = metric if isinstance(metric, list) else [metric]
-        allowed_metrics = ['bbox', 'segm', 'proposal', 'proposal_fast', 'f1']
+        allowed_metrics = [
+            'bbox', 'segm', 'proposal', 'proposal_fast', 'f1', 'f1-text'
+        ]
         for metric in metrics:
             if metric not in allowed_metrics:
                 raise KeyError(f'metric {metric} is not supported')
@@ -464,7 +467,7 @@ class CocoDataset(CustomDataset):
                 print_log(log_msg, logger=logger)
                 continue
 
-            metric_type = 'bbox' if metric == 'f1' else metric
+            metric_type = 'bbox' if 'f1' in metric else metric
             if metric_type not in result_files:
                 raise KeyError(f'{metric_type} is not in results')
             try:
@@ -476,7 +479,8 @@ class CocoDataset(CustomDataset):
                     level=logging.ERROR)
                 break
 
-            iou_type = 'bbox' if metric in {'proposal', 'f1'} else metric
+            iou_type = 'bbox' if metric in {
+                'proposal', 'f1', 'f1-text'} else metric
             cocoEval = COCOeval(cocoGt, cocoDt, iou_type)
             cocoEval.params.catIds = self.cat_ids
             cocoEval.params.imgIds = self.img_ids
@@ -519,7 +523,7 @@ class CocoDataset(CustomDataset):
                         f'{cocoEval.stats[coco_metric_names[item]]:.3f}')
                     eval_results[item] = val
             else:
-                if metric == 'f1':
+                if metric == 'f1-text':
                     predictions = []
                     for res in results:
                         if isinstance(res[0], list):
@@ -532,7 +536,8 @@ class CocoDataset(CustomDataset):
                         per_image_predictions = []
 
                         for bbox, segm in zip(boxes, segms):
-                            contour, conf = get_polygon(segm, bbox, return_rect=True)
+                            contour, conf = get_polygon(
+                                segm, bbox, return_rect=True)
                             per_image_predictions.append({
                                 'segmentation': contour,
                                 'score': conf,
@@ -548,8 +553,24 @@ class CocoDataset(CustomDataset):
                     print('Text detection recall={:.4f} precision={:.4f} hmean={:.4f}'.
                           format(recall, precision, hmean))
                     eval_results[metric + '/hmean'] = float(f'{hmean:.3f}')
-                    eval_results[metric + '/precision'] = float(f'{precision:.3f}')
+                    eval_results[metric +
+                                 '/precision'] = float(f'{precision:.3f}')
                     eval_results[metric + '/recall'] = float(f'{recall:.3f}')
+                    continue
+                elif metric == 'f1':
+                    f_measure = FMeasure(
+                        cocoDt, cocoGt, vary_confidence_threshold=True)
+                    eval_results[f'F1 best score'] = float(
+                        f'{f_measure.f_measure.value:.3f}')
+                    eval_results[f'F1 conf thres'] = float(
+                        f'{f_measure.best_confidence_threshold.value:.3f}')
+                    print(f'F1 best score = {f_measure.f_measure.value:.3f}')
+                    print(
+                        f'F1 conf thres = {f_measure.best_confidence_threshold.value:.3f}')
+                    for class_name, score_metric in f_measure.f_measure_per_label.items():
+                        eval_results[f'F1:{class_name}'] = float(
+                            f'{score_metric.value:.3f}')
+                        print(f'F1:{class_name} = {score_metric.value:.3f}')
                     continue
 
                 cocoEval.evaluate()
@@ -617,7 +638,8 @@ class ConcatenatedCocoDataset(CocoDataset):
             assert isinstance(dataset, CocoDataset), type(dataset)
             assert dataset.cat_ids == concatenated_dataset.datasets[0].cat_ids
             assert dataset.cat2label == concatenated_dataset.datasets[0].cat2label
-            assert str(dataset.pipeline) == str(concatenated_dataset.datasets[0].pipeline), f'{dataset.pipeline}'
+            assert str(dataset.pipeline) == str(
+                concatenated_dataset.datasets[0].pipeline), f'{dataset.pipeline}'
             assert dataset.proposals == concatenated_dataset.datasets[0].proposals
 
         self.CLASSES = concatenated_dataset.datasets[0].CLASSES
@@ -646,7 +668,8 @@ class ConcatenatedCocoDataset(CocoDataset):
             for im_info in dataset.data_infos:
                 im_info = dict(im_info)
                 im_info['id'] += img_shift
-                im_info['filename'] = os.path.join(dataset.img_prefix, im_info['filename'])
+                im_info['filename'] = os.path.join(
+                    dataset.img_prefix, im_info['filename'])
                 self.data_infos.append(im_info)
 
             if self.coco is None:
@@ -655,7 +678,8 @@ class ConcatenatedCocoDataset(CocoDataset):
                                      'categories': dataset.coco.dataset['categories']}
             else:
                 for cat in dataset.coco.catToImgs:
-                    self.coco.catToImgs[cat].extend([img_id + img_shift for img_id in dataset.coco.catToImgs[cat]])
+                    self.coco.catToImgs[cat].extend(
+                        [img_id + img_shift for img_id in dataset.coco.catToImgs[cat]])
 
                 ann_shift = max(self.coco.anns) + 1
                 for k, v in dataset.coco.anns.items():
@@ -679,7 +703,9 @@ class ConcatenatedCocoDataset(CocoDataset):
                 if self.flag is None:
                     self.flag = dataset.flag
                 else:
-                    self.flag = np.concatenate([self.flag, dataset.flag], axis=0)
+                    self.flag = np.concatenate(
+                        [self.flag, dataset.flag], axis=0)
 
             if dataset.min_size != self.min_size:
-                raise Exception(f'Different min_size values are met {self.min_size} and {dataset.min_size}')
+                raise Exception(
+                    f'Different min_size values are met {self.min_size} and {dataset.min_size}')
