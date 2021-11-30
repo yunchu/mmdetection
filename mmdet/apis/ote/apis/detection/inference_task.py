@@ -51,6 +51,8 @@ from mmdet.parallel import MMDataCPU
 from mmdet.utils.collect_env import collect_env
 from mmdet.utils.logger import get_root_logger
 
+import time
+
 logger = get_root_logger()
 
 
@@ -102,6 +104,10 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._is_training = False
         self._should_stop = False
         logger.info('Task initialization completed')
+        
+        self.counter = 0
+        from collections import defaultdict
+        self.perf_counters = defaultdict(float)
 
     @property
     def _hyperparams(self):
@@ -165,31 +171,32 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         return model
 
 
+    def _get_shapes(self, all_bboxes, width, height, confidence_threshold):
+        shapes = []
+        for label_idx, detections in enumerate(all_bboxes):
+            for i in range(detections.shape[0]):
+                probability = float(detections[i, 4])
+                coords = detections[i, :4].astype(float).copy()
+                coords /= np.array([width, height, width, height], dtype=float)
+                coords = np.clip(coords, 0, 1)
+                if probability < confidence_threshold:
+                    continue
+                assigned_label = [ScoredLabel(self._labels[label_idx],
+                                              probability=probability)]
+                if coords[3] - coords[1] <= 0 or coords[2] - coords[0] <= 0:
+                    continue
+                shapes.append(Annotation(
+                    Rectangle(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
+                    labels=assigned_label))
+        return shapes
+
     def _add_predictions_to_dataset(self, prediction_results, dataset, confidence_threshold=0.0):
         """ Loop over dataset again to assign predictions. Convert from MMDetection format to OTE format. """
         for dataset_item, (all_bboxes, fmap) in zip(dataset, prediction_results):
             width = dataset_item.width
             height = dataset_item.height
 
-            shapes = []
-            for label_idx, detections in enumerate(all_bboxes):
-                for i in range(detections.shape[0]):
-                    probability = float(detections[i, 4])
-                    coords = detections[i, :4].astype(float).copy()
-                    coords /= np.array([width, height, width, height], dtype=float)
-                    coords = np.clip(coords, 0, 1)
-
-                    if probability < confidence_threshold:
-                        continue
-
-                    assigned_label = [ScoredLabel(self._labels[label_idx],
-                                                  probability=probability)]
-                    if coords[3] - coords[1] <= 0 or coords[2] - coords[0] <= 0:
-                        continue
-
-                    shapes.append(Annotation(
-                        Rectangle(x1=coords[0], y1=coords[1], x2=coords[2], y2=coords[3]),
-                        labels=assigned_label))
+            shapes = self._get_shapes(all_bboxes, width, height, confidence_threshold)
 
             dataset_item.append_annotations(shapes)
 
@@ -198,17 +205,21 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 dataset_item.append_metadata_item(active_score, model=self._task_environment.model)
 
 
+    def _init_counter(self, name):
+        if name not in self.perf_counters:
+             self.perf_counters[name] = 0
+
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
-
+        
+        #####################################################################################################################
+        start = time.perf_counter()
         logger.info('Infer the model on the dataset')
         set_hyperparams(self._config, self._hyperparams)
-
         # If confidence threshold is adaptive then up-to-date value should be stored in the model
         # and should not be changed during inference. Otherwise user-specified value should be taken.
         if not self._hyperparams.postprocessing.result_based_confidence_threshold:
             self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
-
         update_progress_callback = default_progress_callback
         if inference_parameters is not None:
             update_progress_callback = inference_parameters.update_progress
@@ -223,33 +234,105 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         logger.info(f'Confidence threshold {self.confidence_threshold}')
         model = self._model
+        self.perf_counters['set_hyperparams, create time_monitor, model = self._model'] += time.perf_counter() - start; start = None
+        #####################################################################################################################
+        
+        # THIS IS MEASURED INSIDE
         with model.register_forward_pre_hook(pre_hook), model.register_forward_hook(hook):
             prediction_results, _ = self._infer_detector(model, self._config, dataset, dump_features=True, eval=False)
+
+        #####################################################################################################################
+        start = time.perf_counter()
         self._add_predictions_to_dataset(prediction_results, dataset, self.confidence_threshold)
-
+        self.perf_counters['_add_predictions_to_dataset'] += time.perf_counter() - start; start = None
+        #####################################################################################################################
+        
         logger.info('Inference completed')
+        
+        s = 0
+        self.counter += 1
+        for k, v in self.perf_counters.items():
+            s += v
+        for k, v in self.perf_counters.items():
+            print(k, f'{v / self.counter:.3f} sec', f'{v / s:.3%}')
+        print('---------------------------------------------')
+        print(s, s / self.counter)
+        print('---------------------------------------------')
+        print('---------------------------------------------')
         return dataset
+    
+
+    def predict(self, image: np.ndarray):
+
+        widht, height = image.shape[:2][::-1]
+        import cv2
+        image = cv2.resize(image, (992, 736))
+        #image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+        image = image / 255.0
+        image = np.transpose(image, (2, 0, 1))
+        image = np.expand_dims(image, axis=0)
+        image = torch.from_numpy(image).type(torch.FloatTensor).cuda()
+        
+        print(image.dtype)
+        
+        self._model = self._model.cuda()
+        self._model.eval()
+        predictions = self._model.forward([image], img_metas=[
+            [
+                {
+                    'filename': 'Dataset item index 0',
+                    'ori_filename': 'Dataset item index 0',
+                    'ori_shape': (2160, 3840, 3),
+                    'img_shape': (736, 992, 3),
+                    'pad_shape': (736, 992, 3),
+                    'scale_factor': np.array([0.25833333, 0.34074074, 0.25833333, 0.34074074], dtype=np.float32),
+                    'flip': False,
+                    'flip_direction': None,
+                    'img_norm_cfg': {'mean': np.array([0., 0., 0.], dtype=np.float32), 'std': np.array([255., 255., 255.], dtype=np.float32),
+                                     'to_rgb': False}
+                    }
+                ]
+            ],
+            return_loss=False,
+            rescale=True)
+        
+        predictions = self._get_shapes(np.array(predictions[0]), widht, height, self.confidence_threshold)
+        
+        return predictions
 
 
-    @staticmethod
-    def _infer_detector(model: torch.nn.Module, config: Config, dataset: DatasetEntity, dump_features: bool = False,
+    def _infer_detector(self, model: torch.nn.Module, config: Config, dataset: DatasetEntity, dump_features: bool = False,
                         eval: Optional[bool] = False, metric_name: Optional[str] = 'mAP') -> Tuple[List, float]:
+        
+        #####################################################################################################################
+        start = time.perf_counter()
         model.eval()
+        self.perf_counters['_infer_detector::model.eval()'] += time.perf_counter() - start; start = None
+        #####################################################################################################################
+        
+        start = time.perf_counter()
         test_config = prepare_for_testing(config, dataset)
         mm_val_dataset = build_dataset(test_config.data.test)
         batch_size = 1
+        self.perf_counters['_infer_detector::prepare_for_testing, build_dataset.'] += time.perf_counter() - start; start = None
+        
+        #####################################################################################################################
+        start = time.perf_counter()
         mm_val_dataloader = build_dataloader(mm_val_dataset,
                                              samples_per_gpu=batch_size,
                                              workers_per_gpu=test_config.data.workers_per_gpu,
                                              num_gpus=1,
                                              dist=False,
                                              shuffle=False)
+        self.perf_counters['_infer_detector::build_dataloader'] += time.perf_counter() - start; start = None
+        #####################################################################################################################
+        
+        start = time.perf_counter()
         if torch.cuda.is_available():
             eval_model = MMDataParallel(model.cuda(test_config.gpu_ids[0]),
                                         device_ids=test_config.gpu_ids)
         else:
             eval_model = MMDataCPU(model)
-
         eval_predictions = []
         feature_maps = []
 
@@ -260,20 +343,31 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             feature_maps.append(None)
 
         hook = dump_features_hook if dump_features else dummy_dump_features_hook
+        
+        self.perf_counters['_infer_detector::MMDataParallel, dump_features_hook creation'] += time.perf_counter() - start; start = None
+        #####################################################################################################################
 
+        start = time.perf_counter()
         # Use a single gpu for testing. Set in both mm_val_dataloader and eval_model
         with eval_model.module.backbone.register_forward_hook(hook):
             for data in mm_val_dataloader:
                 with torch.no_grad():
                     result = eval_model(return_loss=False, rescale=True, **data)
                 eval_predictions.extend(result)
+        self.perf_counters['_infer_detector::result = eval_model'] += time.perf_counter() - start; start = None
 
+        #####################################################################################################################
+
+        start = time.perf_counter()
         metric = None
         if eval:
             metric = mm_val_dataset.evaluate(eval_predictions, metric=metric_name)[metric_name]
-
         assert len(eval_predictions) == len(feature_maps), f'{len(eval_predictions)} != {len(feature_maps)}'
         eval_predictions = zip(eval_predictions, feature_maps)
+        self.perf_counters['_infer_detector::metric = mm_val_dataset.evaluate, eval_predictions = zip'] += time.perf_counter() - start
+        
+        #####################################################################################################################
+
         return eval_predictions, metric
 
 
