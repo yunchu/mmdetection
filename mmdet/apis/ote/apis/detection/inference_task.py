@@ -203,6 +203,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         logger.info('Infer the model on the dataset')
         set_hyperparams(self._config, self._hyperparams)
+        # There is no need to have many workers for a couple of images.
+        self._config.data.workers_per_gpu = max(min(self._config.data.workers_per_gpu, len(dataset) - 1), 0)
 
         # If confidence threshold is adaptive then up-to-date value should be stored in the model
         # and should not be changed during inference. Otherwise user-specified value should be taken.
