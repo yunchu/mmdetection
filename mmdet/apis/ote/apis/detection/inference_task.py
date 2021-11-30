@@ -204,11 +204,6 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 active_score = TensorEntity(name="representation_vector", numpy=fmap)
                 dataset_item.append_metadata_item(active_score, model=self._task_environment.model)
 
-
-    def _init_counter(self, name):
-        if name not in self.perf_counters:
-             self.perf_counters[name] = 0
-
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
         """ Analyzes a dataset using the latest inference model. """
         
