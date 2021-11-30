@@ -1144,12 +1144,12 @@ class OTETestStage:
 
         stages = []
         for stage_name in depends_stages_names:
-            logger.debug(f'get_depends_stages: get stage with name {stage_name}')
+            logger.debug(f'get_depends_stages: get stage with name "{stage_name}"')
             cur_stage = self.stages_storage.get_stage(stage_name)
-            assert isinstance(cur_stage, OTETestStage), f'Wrong stage for stage_name={stage_name}'
+            assert isinstance(cur_stage, OTETestStage), f'Wrong stage for stage_name="{stage_name}"'
             assert cur_stage.name == stage_name, \
-                    f'For stage_name={stage_name} got the stage with name={cur_stage.name}'
-            logger.debug(f'get_depends_stages: cur_stage={cur_stage}')
+                    f'For stage_name="{stage_name}" got the stage with name="{cur_stage.name}"'
+            logger.debug(f'get_depends_stages: cur_stage="{cur_stage}"')
             stages.append(cur_stage)
         logger.debug(f'get_depends_stages for stage {self.name}: end')
         return stages
@@ -1236,8 +1236,22 @@ def _get_duplications(arr):
     dups = [k for k, v in c.items() if v > 1]
     return dups
 
+def _str_dict_with_shortened_vals(d, max_len=200):
+    assert isinstance(d, dict)
+    if not d:
+        return '{}'
+    def _shorten(v):
+        sv = str(v)
+        if len(sv) <= max_len:
+            return sv
+        return sv[:max_len] + '...'
+
+    s = '\n'.join(f'{k}: {_shorten(v)},' for k, v in d.items())
+    s = '\n    '.join(s.split('\n'))
+    s = '{\n    ' + s + '\n}'
+    return s
+
 def generate_ote_integration_test_case_class(test_actions_classes: List[Type[BaseOTETestAction]]) -> Type:
-    # TODO(lbeynens): debug it!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
     test_actions_classes = deepcopy(test_actions_classes)
 
     # check names' duplication
@@ -1251,13 +1265,14 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
 
         @classmethod
         def get_list_of_test_stages(cls):
-            return cls._TEST_STAGES
+            return deepcopy(cls._TEST_STAGES)
 
         def __init__(self, params_factories_for_test_actions: Dict[str, Callable[[], Dict]]):
             logger.debug(f'initialization of test case: begin')
             self._stages = OrderedDict()
             for action_cls in test_actions_classes:
                 logger.debug(f'initialization of test case: action_cls={action_cls}')
+
                 cur_name = action_cls._name
                 cur_params_factory = params_factories_for_test_actions.get(cur_name)
                 if cur_params_factory is not None:
@@ -1266,7 +1281,10 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
                 else:
                     cur_params = {}
 
-                logger.info(f'initialization of test case: add action {cur_name} with params {cur_params}')
+                assert isinstance(cur_params, dict), f'Wrong params received from factory: {cur_params}'
+                short_params_str = _str_dict_with_shortened_vals(cur_params)
+                logger.info(f'initialization of test case: add action "{cur_name}" with params={short_params_str}')
+
                 cur_action = action_cls(**cur_params)
 
                 # Note that `self` is used as stages_storage for OTETestStage below
@@ -1278,6 +1296,7 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
 
             # test results should be kept between stages
             self.test_results_storage = OrderedDict()
+            logger.debug(f'initialization of test case: end')
 
         # implementation of method from OTETestStagesStorageInterface
         def get_stage(self, name: str) -> 'OTETestStage':
@@ -1292,67 +1311,18 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
     return _OTEIntegrationTestCase
 
 def get_default_test_action_classes() -> List[Type[BaseOTETestAction]]:
-    pass #TODO!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+    return [OTETestTrainingAction,
+            OTETestTrainingEvaluationAction,
+            OTETestExportAction,
+            OTETestExportEvaluationAction,
+            OTETestPotAction,
+            OTETestPotEvaluationAction,
+            OTETestNNCFAction,
+            OTETestNNCFEvaluationAction,
+            OTETestNNCFExportAction,
+            OTETestNNCFExportEvaluationAction,
+    ]
 
-class OTEIntegrationTestCase(OTETestStagesStorageInterface):
-    _TEST_STAGES = ('training', 'training_evaluation',
-                   'export', 'export_evaluation',
-                   'pot', 'pot_evaluation',
-                   'nncf', 'nncf_evaluation',
-                   'nncf_export', 'nncf_export_evaluation')
-
-    @classmethod
-    def get_list_of_test_stages(cls):
-        return cls._TEST_STAGES
-
-    def get_stage(self, name: str) -> 'OTETestStage':
-        return self._stages[name]
-
-    def __init__(self, params_factories_for_test_actions: Dict[str, Callable[[], Dict]]):
-        logger.debug(f'initialization of test case: before calling params factory for training')
-        training_params = params_factories_for_test_actions['training']()
-        logger.debug(f'initialization of test case: after calling params factory for training')
-
-        training_stage = OTETestStage(action=OTETestTrainingAction(**training_params),
-                                      stages_storage=self)
-        training_evaluation_stage = OTETestStage(action=OTETestTrainingEvaluationAction(),
-                                                 stages_storage=self)
-        export_stage = OTETestStage(action=OTETestExportAction(),
-                                    stages_storage=self)
-        export_evaluation_stage = OTETestStage(action=OTETestExportEvaluationAction(),
-                                               stages_storage=self)
-        pot_stage = OTETestStage(action=OTETestPotAction(),
-                                 stages_storage=self)
-        pot_evaluation_stage = OTETestStage(action=OTETestPotEvaluationAction(),
-                                            stages_storage=self)
-        nncf_stage = OTETestStage(action=OTETestNNCFAction(),
-                                  stages_storage=self)
-        nncf_evaluation_stage = OTETestStage(action=OTETestNNCFEvaluationAction(),
-                                             stages_storage=self)
-        nncf_export_stage = OTETestStage(action=OTETestNNCFExportAction(),
-                                         stages_storage=self)
-        nncf_export_evaluation_stage = OTETestStage(action=OTETestNNCFExportEvaluationAction(),
-                                                    stages_storage=self)
-        # TODO(lbeynens) if we could extract info on dependency from expected metrics, we could remove
-        #                nncf_evaluation_stage from the `depends_stages` for nncf_export_evaluation_stage
-
-        list_all_stages = [training_stage, training_evaluation_stage,
-                           export_stage, export_evaluation_stage,
-                           pot_stage, pot_evaluation_stage,
-                           nncf_stage, nncf_evaluation_stage,
-                           nncf_export_stage, nncf_export_evaluation_stage]
-
-        self._stages = OrderedDict((stage.name, stage) for stage in list_all_stages)
-        assert list(self._stages.keys()) == list(self._TEST_STAGES)
-
-        # test results should be kept between stages
-        self.test_results_storage = OrderedDict()
-
-    def run_stage(self, stage_name: str, data_collector: DataCollector,
-                  validator: Validator):
-        assert stage_name in self._TEST_STAGES, f'Wrong stage_name {stage_name}'
-        self._stages[stage_name].run_once(data_collector, self.test_results_storage,
-                                          validator)
 
 # pytest magic
 def pytest_generate_tests(metafunc):
@@ -1373,6 +1343,7 @@ class TestOTEIntegration:
     It is responsible for all pytest magic.
     """
     PERFORMANCE_RESULTS = None # it is required for e2e system
+    OTEIntegrationTestCase = generate_ote_integration_test_case_class(get_default_test_action_classes())
 
     # TODO(lbeynens):3: replace with a classmethod
     SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID = OrderedDict([
@@ -1435,9 +1406,9 @@ class TestOTEIntegration:
             ),
     ]
 
-    @staticmethod
-    def _get_list_of_test_stages():
-        return OTEIntegrationTestCase.get_list_of_test_stages()
+    @classmethod
+    def _get_list_of_test_stages(cls):
+        return cls.OTEIntegrationTestCase.get_list_of_test_stages()
 
     @classmethod
     def _fill_test_parameters_default_values(cls, test_parameters):
@@ -1554,8 +1525,9 @@ class TestOTEIntegration:
         cls._clean_cache_if_parameters_changed(cache, params_defining_cache)
 
         if '_test_case_' not in cache:
-            logger.info('TestOTEIntegration: creating OTEIntegrationTestCase')
-            cache['_test_case_'] = OTEIntegrationTestCase(params_factories_for_test_actions)
+            logger.info('TestOTEIntegration: creating OTEIntegrationTestCase -- before creating')
+            cache['_test_case_'] = cls.OTEIntegrationTestCase(params_factories_for_test_actions)
+            logger.info('TestOTEIntegration: creating OTEIntegrationTestCase -- done')
 
         return cache['_test_case_']
 
