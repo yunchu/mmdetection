@@ -30,6 +30,7 @@ from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
+from ote_sdk.serialization.label_mapper import LabelSchemaMapper
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
 
@@ -186,9 +187,13 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
+        serialized_label_schema = LabelSchemaMapper.forward(self._task_environment.label_schema)
 
-        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'label_schema': self._task_environment.label_schema,
-            'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
+        modelinfo = {'model': self._model.state_dict(),
+                     'config': hyperparams_str,
+                     'label_schema': serialized_label_schema,
+                     'confidence_threshold': self.confidence_threshold,
+                     'VERSION': 1}
 
         if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
             if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
