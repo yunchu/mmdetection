@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from collections import Counter, namedtuple, OrderedDict
 from copy import deepcopy
 from pprint import pformat
-from typing import Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import pytest
 import yaml
@@ -189,6 +189,7 @@ def current_test_parameters_string_fx(request):
     index = node_name.find('[')
     return node_name[index+1:-1]
 
+#TODO(lbeynens): replace 'callback' with 'factory'
 @pytest.fixture
 def cur_test_expected_metrics_callback_fx(expected_metrics_all_tests_fx, current_test_parameters_string_fx,
                                           current_test_parameters_fx) -> Union[None, Callable[[],Dict]]:
@@ -1119,7 +1120,7 @@ class OTETestStage:
         self.stored_exception = None
         self.action = action
         self.stages_storage = stages_storage
-        self.stage_results = None
+        self.stage_results = {}
         assert isinstance(self.stages_storage, OTETestStagesStorageInterface)
         assert isinstance(self.action, BaseOTETestAction)
 
@@ -1251,6 +1252,17 @@ def _str_dict_with_shortened_vals(d, max_len=200):
     s = '{\n    ' + s + '\n}'
     return s
 
+class OTETestCaseInterface(OTETestStagesStorageInterface):
+    @classmethod
+    @abstractmethod
+    def get_list_of_test_stages(cls):
+        raise NotImplementedError('The method get_list_of_test_stages is not implemented')
+
+    @abstractmethod
+    def run_stage(self, stage_name: str, data_collector: DataCollector,
+                  validator: Validator):
+        raise NotImplementedError('The method run_stage is not implemented')
+
 def generate_ote_integration_test_case_class(test_actions_classes: List[Type[BaseOTETestAction]]) -> Type:
     test_actions_classes = deepcopy(test_actions_classes)
 
@@ -1260,7 +1272,7 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
     if name_dups:
         raise ValueError(f'Wrong input: there are duplications in names of actions; duplications = {name_dups}')
 
-    class _OTEIntegrationTestCase(OTETestStagesStorageInterface):
+    class _OTEIntegrationTestCase(OTETestCaseInterface):
         _TEST_STAGES = [action_cls._name for action_cls in test_actions_classes]
 
         @classmethod
@@ -1324,11 +1336,18 @@ def get_default_test_action_classes() -> List[Type[BaseOTETestAction]]:
     ]
 
 
+class OTETrainingTestInterface(ABC):
+    @classmethod
+    @abstractmethod
+    def get_list_of_tests(cls, usecase: Optional[str] = None):
+        raise NotImplementedError('The method is not implemented')
+
+
 # pytest magic
 def pytest_generate_tests(metafunc):
     if metafunc.cls is None:
         return
-    if not issubclass(metafunc.cls, TestOTEIntegration):
+    if not issubclass(metafunc.cls, OTETrainingTestInterface):
         return
 
     # It allows to filter by usecase
@@ -1337,99 +1356,123 @@ def pytest_generate_tests(metafunc):
     argnames, argvalues, ids = metafunc.cls.get_list_of_tests(usecase)
     metafunc.parametrize(argnames, argvalues, ids=ids, scope='class')
 
-class TestOTEIntegration:
-    """
-    The main class of running test in this file.
-    It is responsible for all pytest magic.
-    """
-    PERFORMANCE_RESULTS = None # it is required for e2e system
-    OTEIntegrationTestCase = generate_ote_integration_test_case_class(get_default_test_action_classes())
+class OTETestCreationParametersInterface(ABC):
+    @abstractmethod
+    def test_bunches(self) -> List[Dict[str, Any]]:
+        raise NotImplementedError('The method is not implemented')
 
-    # TODO(lbeynens):3: replace with a classmethod
-    SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID = OrderedDict([
-            ('test_stage', 'ACTION'),
-            ('model_name', 'model'),
-            ('dataset_name', 'dataset'),
-            ('num_training_iters', 'num_iters'),
-            ('batch_size', 'batch'),
-            ('usecase', 'usecase'),
-    ])
+    @abstractmethod
+    def test_case_class(self) -> Type[OTETestCaseInterface]:
+        raise NotImplementedError('The method is not implemented')
 
-    # This tuple TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR describes test bunches'
-    # fields that are important for creating OTEIntegrationTestCase instance.
-    #
-    # It is supposed that if for the next test these parameters are the same as
-    # for the previous one, the result of operations in OTEIntegrationTestCase should
-    # be kept and re-used.
-    # See the fixture test_case_fx and the method _update_test_case_in_cache below.
-    # TODO(lbeynens):3: replace with a classmethod
-    TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR = ('model_name',
-                                              'dataset_name',
-                                              'num_training_iters',
-                                              'batch_size')
+    @abstractmethod
+    def short_test_parameters_names_for_generating_id(self) -> OrderedDict:
+        raise NotImplementedError('The method is not implemented')
 
-    # TODO(lbeynens):2: replace with dict
-    DEFAULT_NUM_ITERS = 1
-    DEFAULT_BATCH_SIZE = 2
+    @abstractmethod
+    def test_parameters_defining_impl_behavior(self) -> List[str]:
+        raise NotImplementedError('The method is not implemented')
 
-    # Note that each test bunch describes a group of similar tests
-    # If 'model_name' or 'dataset_name' are lists, cartesian product of tests will be run.
-    # Each item may contain the following fields:
-    #    * model_name
-    #    * dataset_name
-    #    * usecase
-    #    * num_training_iters -- either integer value, or DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST,
-    #                            or KEEP_CONFIG_FIELD_VALUE;
-    #                            if None or absent, then DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST is used
-    #    * batch_size -- either integer value, or DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST,
-    #                    or KEEP_CONFIG_FIELD_VALUE;
-    #                    if None or absent, then DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST is used
-    # TODO(lbeynens):3: replace with a classmethod
-    test_bunches = [
-            dict(
-                model_name=[
-                   'gen3_mobilenetV2_SSD',
-                   'gen3_mobilenetV2_ATSS',
-                   'gen3_resnet50_VFNet',
-                ],
-                dataset_name='dataset1_tiled_shortened_500_A',
-                usecase='precommit',
-            ),
-            dict(
-                model_name=[
-                   'gen3_mobilenetV2_ATSS',
-                ],
-                dataset_name='bbcd',
-                num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
-                batch_size=KEEP_CONFIG_FIELD_VALUE(),
-                usecase=REALLIFE_USECASE_CONSTANT(),
-            ),
-    ]
+    @abstractmethod
+    def default_test_parameters(self) -> Dict[str, Any]:
+        raise NotImplementedError('The method is not implemented')
 
-    @classmethod
-    def _get_list_of_test_stages(cls):
-        return cls.OTEIntegrationTestCase.get_list_of_test_stages()
+class DefaultOTETestCreationParametersInterface(OTETestCreationParametersInterface):
+    def test_case_class(self) -> Type[OTETestCaseInterface]:
+        return generate_ote_integration_test_case_class(get_default_test_action_classes())
 
-    @classmethod
-    def _fill_test_parameters_default_values(cls, test_parameters):
-        def __set_default_if_required(key, default_val):
+    def short_test_parameters_names_for_generating_id(self) -> OrderedDict:
+        DEFAULT_SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID = OrderedDict([
+                ('test_stage', 'ACTION'),
+                ('model_name', 'model'),
+                ('dataset_name', 'dataset'),
+                ('num_training_iters', 'num_iters'),
+                ('batch_size', 'batch'),
+                ('usecase', 'usecase'),
+        ])
+        return deepcopy(DEFAULT_SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID)
+
+    def test_parameters_defining_impl_behavior(self) -> List[str]:
+        DEFAULT_TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR = ['model_name',
+                                                          'dataset_name',
+                                                          'num_training_iters',
+                                                          'batch_size']
+        return deepcopy(DEFAULT_TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR)
+
+    def default_test_parameters(self) -> Dict[str, Any]:
+        DEFAULT_TEST_PARAMETERS = {
+                'num_iters': 1,
+                'batch_size': 2,
+        }
+        return deepcopy(DEFAULT_TEST_PARAMETERS)
+
+class OTETestHelper:
+    class _Cache:
+        def __init__(self):
+            self._cache_parameters = {}
+            self._cached_value = None
+        def get(self):
+            return self._cached_value
+        def set(self, params, value):
+            logger.debug(f'cache.set new value for parameters {params}')
+            self._cache_parameters = deepcopy(params)
+            self._cached_value = value
+        def has_same_params(self, params):
+            res = (self._cache_parameters == params)
+            res_str = '==' if res else '!='
+            logger.debug(f'cache.has_same_params: '
+                         f'cache_parameters={self._cache_parameters} {res_str} {params}, res={res}')
+            return res
+
+    def __init__(self,
+                 test_creation_parameters):
+        assert isinstance(test_creation_parameters, OTETestCreationParametersInterface)
+
+        self.test_case_class = test_creation_parameters.test_case_class()
+        self.test_bunches = test_creation_parameters.test_bunches()
+
+        self.short_test_parameters_names_for_generating_id = \
+                test_creation_parameters.short_test_parameters_names_for_generating_id()
+        #TODO(beynens): rename to test_parameters_defining_test_case
+        self.test_parameters_defining_impl_behavior = \
+                test_creation_parameters.test_parameters_defining_impl_behavior()
+        self.default_test_parameters = \
+                test_creation_parameters.default_test_parameters()
+
+        self._cache = OTETestHelper._Cache()
+
+        assert issubclass(self.test_case_class, OTETestCaseInterface)
+        assert isinstance(self.short_test_parameters_names_for_generating_id, OrderedDict)
+        assert all(isinstance(k, str) and isinstance(v, str)
+                   for k, v in self.short_test_parameters_names_for_generating_id.items())
+        assert 'test_stage' in self.short_test_parameters_names_for_generating_id
+        assert 'model_name' in self.short_test_parameters_names_for_generating_id
+        assert 'dataset_name' in self.short_test_parameters_names_for_generating_id
+        assert 'usecase' in self.short_test_parameters_names_for_generating_id
+
+        assert isinstance(self.test_parameters_defining_impl_behavior, list)
+        assert all(isinstance(s, str) for s in self.test_parameters_defining_impl_behavior)
+
+        assert isinstance(self.default_test_parameters, dict)
+        assert all(isinstance(k, str) for k in self.default_test_parameters.keys())
+
+    def _get_list_of_test_stages(self):
+        return self.test_case_class.get_list_of_test_stages()
+
+    def _fill_test_parameters_default_values(self, test_parameters):
+        for key, default_val in self.default_test_parameters.items():
             val = test_parameters.get(key)
             if val is None or val == DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST():
                 test_parameters[key] = default_val
 
-        __set_default_if_required('num_training_iters', cls.DEFAULT_NUM_ITERS)
-        __set_default_if_required('batch_size',  cls.DEFAULT_BATCH_SIZE)
-
-    @classmethod
-    def _generate_test_id(cls, test_parameters):
+    def _generate_test_id(self, test_parameters):
         id_parts = (
                 f'{short_par_name}-{test_parameters[par_name]}'
-                for par_name, short_par_name in cls.SHORT_TEST_PARAMETERS_NAMES_FOR_GENERATING_ID.items()
+                for par_name, short_par_name in self.short_test_parameters_names_for_generating_id.items()
         )
         return ','.join(id_parts)
 
-    @classmethod
-    def get_list_of_tests(cls, usecase: Optional[str] = None):
+    def get_list_of_tests(self, usecase: Optional[str] = None):
         """
         The functions generates the lists of values for the tests from the field test_bunches of the class.
 
@@ -1447,7 +1490,7 @@ class TestOTEIntegration:
 
         If the parameter `usecase` is set, it makes filtering by usecase field of test bunches.
         """
-        test_bunches = cls.test_bunches
+        test_bunches = self.test_bunches
         assert all(isinstance(el, dict) for el in test_bunches)
 
         argnames = ('test_parameters',)
@@ -1471,65 +1514,69 @@ class TestOTEIntegration:
             model_dataset_pairs = list(itertools.product(model_names, dataset_names))
 
             for m, d in model_dataset_pairs:
-                for test_stage in cls._get_list_of_test_stages():
+                for test_stage in self._get_list_of_test_stages():
                     test_parameters = deepcopy(el)
                     test_parameters['test_stage'] = test_stage
                     test_parameters['model_name'] = m
                     test_parameters['dataset_name'] = d
-                    cls._fill_test_parameters_default_values(test_parameters)
+                    self._fill_test_parameters_default_values(test_parameters)
                     argvalues.append((test_parameters,))
-                    ids.append(cls._generate_test_id(test_parameters))
+                    ids.append(self._generate_test_id(test_parameters))
 
         return argnames, argvalues, ids
 
-    @pytest.fixture(scope='class')
-    def cached_from_prev_test_fx(self):
-        """
-        This fixture is intended for storying the test case class OTEIntegrationTestCase and parameters
-        for which the class is created.
-        This object should be persistent between tests while the tests use the same parameters
-        -- see the method _clean_cache_if_parameters_changed below that is used to clean
-        the test case if the parameters are changed.
-        """
-        return dict()
+    def get_test_case(self, test_parameters, params_factories_for_test_actions):
+        params_defining_cache = {k: test_parameters[k] for k in self.test_parameters_defining_impl_behavior}
+        if not self._cache.has_same_params(params_defining_cache):
+            logger.info(f'OTETestHelper: parameters were changed -- updating cache')
+            logger.info(f'OTETestHelper: before creating test case (class {self.test_case_class})')
+            test_case = self.test_case_class(params_factories_for_test_actions)
+            logger.info(f'OTETestHelper: after creating test case (class {self.test_case_class})')
+            self._cache.set(params_defining_cache, test_case)
+        else:
+            logger.info('OTETestHelper: parameters were not changed -- cache is kept')
 
-    @staticmethod
-    def _clean_cache_if_parameters_changed(cache, params_defining_cache):
-        is_ok = True
-        for k, v in params_defining_cache.items():
-            is_ok = is_ok and (cache.get(k) == v)
-        if is_ok:
-            logger.info('TestOTEIntegration: parameters were not changed -- cache is kept')
-            return
+        return self._cache.get()
 
-        for k in list(cache.keys()):
-            del cache[k]
-        for k, v in params_defining_cache.items():
-            cache[k] = v
-        logger.info('TestOTEIntegration: parameters were changed -- cache is cleaned')
+
+class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInterface):
+    def test_bunches(self) -> List[Dict[str, Any]]:
+        test_bunches = [
+                dict(
+                    model_name=[
+                       'gen3_mobilenetV2_SSD',
+                       'gen3_mobilenetV2_ATSS',
+                       'gen3_resnet50_VFNet',
+                    ],
+                    dataset_name='dataset1_tiled_shortened_500_A',
+                    usecase='precommit',
+                ),
+                dict(
+                    model_name=[
+                       'gen3_mobilenetV2_ATSS',
+                    ],
+                    dataset_name='bbcd',
+                    num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
+                    batch_size=KEEP_CONFIG_FIELD_VALUE(),
+                    usecase=REALLIFE_USECASE_CONSTANT(),
+                ),
+        ]
+        return deepcopy(test_bunches)
+
+class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
+    """
+    The main class of running test in this file.
+    """
+    PERFORMANCE_RESULTS = None # it is required for e2e system
+    helper = OTETestHelper(ObjectDetectionTrainingTestParameters())
 
     @classmethod
-    def _update_test_case_in_cache(cls, cache,
-                                   test_parameters,
-                                   params_factories_for_test_actions):
+    def get_list_of_tests(cls, usecase: Optional[str] = None):
         """
-        If the main parameters of the test differs w.r.t. the previous test,
-        the cache will be cleared and new instance of OTEIntegrationTestCase will be created.
-        Otherwise the previous instance of OTEIntegrationTestCase will be re-used
+        This method should be a classmethod. It is called before fixture initialization, during
+        tests discovering.
         """
-        params_defining_cache = {k: test_parameters[k] for k in cls.TEST_PARAMETERS_DEFINING_IMPL_BEHAVIOR}
-
-        assert '_test_case_' not in params_defining_cache, \
-                'ERROR: parameters defining test behavior should not contain special key "_test_case_"'
-
-        cls._clean_cache_if_parameters_changed(cache, params_defining_cache)
-
-        if '_test_case_' not in cache:
-            logger.info('TestOTEIntegration: creating OTEIntegrationTestCase -- before creating')
-            cache['_test_case_'] = cls.OTEIntegrationTestCase(params_factories_for_test_actions)
-            logger.info('TestOTEIntegration: creating OTEIntegrationTestCase -- done')
-
-        return cache['_test_case_']
+        return cls.helper.get_list_of_tests(usecase)
 
     @pytest.fixture
     def params_factories_for_test_actions_fx(self, current_test_parameters_fx,
@@ -1570,21 +1617,19 @@ class TestOTEIntegration:
         return params_factories_for_test_actions
 
     @pytest.fixture
-    def test_case_fx(self, current_test_parameters_fx, params_factories_for_test_actions_fx,
-                     cached_from_prev_test_fx):
+    def test_case_fx(self, current_test_parameters_fx, params_factories_for_test_actions_fx):
         """
         This fixture returns the test case class OTEIntegrationTestCase that should be used for the current test.
-        Note that the cache from the fixture cached_from_prev_test_fx allows to store the instance of the class
+        Note that the cache from the test helper allows to store the instance of the class
         between the tests.
         If the main parameters used for this test are the same as the main parameters used for the previous test,
         the instance of the test case class will be kept and re-used. It is helpful for tests that can
         re-use the result of operations (model training, model optimization, etc) made for the previous tests,
         if these operations are time-consuming.
         If the main parameters used for this test differs w.r.t. the previous test, a new instance of
-        TestOTEIntegration class will be created.
+        test case class will be created.
         """
-        test_case = self._update_test_case_in_cache(cached_from_prev_test_fx,
-                                                    current_test_parameters_fx,
+        test_case = type(self).helper.get_test_case(current_test_parameters_fx,
                                                     params_factories_for_test_actions_fx)
         return test_case
 
