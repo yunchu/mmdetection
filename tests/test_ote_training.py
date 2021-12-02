@@ -23,16 +23,16 @@ from typing import Any, Callable, Dict, List, Optional
 
 import pytest
 import yaml
-from e2e_test_system import DataCollector, e2e_pytest_performance
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.label_schema import LabelSchemaEntity
 from ote_sdk.entities.subset import Subset
 
 from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco_format
 
-from ote_training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
+from ote_sdk.algo_backends.test_helpers.e2e_test_system import DataCollector, e2e_pytest_performance
+from ote_sdk.algo_backends.test_helpers.training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
                                       REALLIFE_USECASE_CONSTANT)
-from ote_training_tests_helper import (OTETestHelper,
+from ote_sdk.algo_backends.test_helpers.training_tests_helper import (OTETestHelper,
                                        DefaultOTETestCreationParametersInterface,
                                        OTETrainingTestInterface)
 
@@ -394,12 +394,13 @@ class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
                                                     params_factories_for_test_actions_fx)
         return test_case
 
+    # TODO(lbeynens): move to common fixtures
     @pytest.fixture
     def data_collector_fx(self, request) -> DataCollector:
         setup = deepcopy(request.node.callspec.params)
         setup['environment_name'] = os.environ.get('TT_ENVIRONMENT_NAME', 'no-env')
         setup['test_type'] = os.environ.get('TT_TEST_TYPE', 'no-test-type') # TODO: get from e2e test type
-        setup['scenario'] = 'api' # TODO: get from e2e test type
+        setup['scenario'] = 'api' # TODO(lbeynens): get from a fixture!
         setup['test'] = request.node.name
         setup['subject'] = 'custom-object-detection'
         setup['project'] = 'ote'
