@@ -2,8 +2,8 @@ import logging
 import pytest
 from abc import ABC, abstractmethod
 from collections import OrderedDict
-from typing import Callable, Dict, Union
 from pprint import pformat
+from typing import Callable, Dict, Optional
 
 from e2e_test_system import DataCollector
 from ote_training_tests_actions import BaseOTETestAction
@@ -30,7 +30,7 @@ class Validator:
     The class receives info on results metric of the current test stage and
     compares it with the expected metrics.
     """
-    def __init__(self, cur_test_expected_metrics_callback: Union[None, Callable[[],Dict]]):
+    def __init__(self, cur_test_expected_metrics_callback: Optional[Callable[[],Dict]]):
         self.cur_test_expected_metrics_callback = cur_test_expected_metrics_callback
 
     # TODO(lbeynens): add a method to extract dependency info from expected metrics
@@ -128,7 +128,7 @@ class Validator:
 
     @staticmethod
     def _compare(current_metric: float, cur_res_addr: str,
-                 target_value: float, min_value: Union[float, None], max_value: Union[float, None]):
+                 target_value: float, min_value: Optional[float], max_value: Optional[float]):
         assert all(isinstance(v, float) for v in [current_metric, target_value] )
         assert all((v is None) or isinstance(v, float) for v in [min_value, max_value])
 
@@ -305,7 +305,7 @@ class OTETestStage:
         raise self.stored_exception
 
     def _run_validation(self, test_results_storage: Dict,
-                        validator: Union[Validator, None]):
+                        validator: Optional[Validator]):
         if not self.action.with_validation:
             return
         if validator is None:
@@ -316,7 +316,7 @@ class OTETestStage:
         validator.validate(self.stage_results, test_results_storage)
 
     def run_once(self, data_collector: DataCollector, test_results_storage: OrderedDict,
-                 validator: Union[Validator, None]):
+                 validator: Optional[Validator]):
         logger.info(f'Begin stage "{self.name}"')
         assert isinstance(test_results_storage, OrderedDict)
         logger.debug(f'For test stage "{self.name}": test_results_storage.keys = {list(test_results_storage.keys())}')

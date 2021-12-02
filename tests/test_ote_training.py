@@ -13,57 +13,31 @@
 # and limitations under the License.
 
 import glob
-import itertools
 import logging
 import os
 import os.path as osp
-from collections import Counter, namedtuple, OrderedDict
+from collections import namedtuple
 from copy import deepcopy
 from pprint import pformat
-from typing import Any, Callable, Dict, List, Optional, Tuple, Type, Union
+from typing import Any, Callable, Dict, List, Optional
 
 import pytest
 import yaml
 from e2e_test_system import DataCollector, e2e_pytest_performance
-from ote_sdk.configuration.helper import create
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.inference_parameters import InferenceParameters
 from ote_sdk.entities.label_schema import LabelSchemaEntity
-from ote_sdk.entities.model import (
-    ModelEntity,
-    ModelFormat,
-    ModelPrecision,
-    ModelStatus,
-    ModelOptimizationType,
-    OptimizationMethod,
-)
-from ote_sdk.entities.model_template import parse_model_template, TargetDevice
-from ote_sdk.entities.optimization_parameters import OptimizationParameters
-from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
-from ote_sdk.entities.task_environment import TaskEnvironment
-from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
-from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
 
-from mmdet.apis.ote.apis.detection.ote_utils import get_task_class
 from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco_format
-from mmdet.integration.nncf.utils import is_nncf_enabled
 
 from ote_training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
-                                      REALLIFE_USECASE_CONSTANT,
-                                      )
+                                      REALLIFE_USECASE_CONSTANT)
 from ote_training_tests_helper import (OTETestHelper,
                                        DefaultOTETestCreationParametersInterface,
                                        OTETrainingTestInterface)
 
 
-
-
-from abc import ABC, abstractmethod
-
 logger = logging.getLogger(__name__)
-
-
 
 def DATASET_PARAMETERS_FIELDS() -> List[str]:
     return deepcopy(['annotations_train',
@@ -181,7 +155,7 @@ def current_test_parameters_string_fx(request):
 #TODO(lbeynens): replace 'callback' with 'factory'
 @pytest.fixture
 def cur_test_expected_metrics_callback_fx(expected_metrics_all_tests_fx, current_test_parameters_string_fx,
-                                          current_test_parameters_fx) -> Union[None, Callable[[],Dict]]:
+                                          current_test_parameters_fx) -> Optional[Callable[[],Dict]]:
     """
     This fixture returns
     * either a callback -- a function without parameters that returns

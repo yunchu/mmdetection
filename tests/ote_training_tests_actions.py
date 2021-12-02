@@ -3,39 +3,28 @@ from abc import ABC, abstractmethod
 from collections import OrderedDict
 from copy import deepcopy
 from pprint import pformat
-from typing import Dict, List, Optional, Type
+from typing import List, Optional, Type
+
+from mmdet.apis.ote.apis.detection.ote_utils import get_task_class
+from mmdet.integration.nncf.utils import is_nncf_enabled
 
 from e2e_test_system import DataCollector
-
-
-from ote_training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
-                                       performance_to_score_name_value,
-                                       convert_hyperparams_to_dict)
-
-#TODO(lbeynens): remove from the ALL next import blocks unrequired imports
-from ote_sdk.entities.model_template import parse_model_template, TargetDevice
-from ote_sdk.configuration.helper import create #TODO(lbeynens): rename
-from ote_sdk.entities.datasets import DatasetEntity
+from ote_sdk.configuration.helper import create as ote_sdk_configuration_helper_create
 from ote_sdk.entities.inference_parameters import InferenceParameters
-from ote_sdk.entities.label_schema import LabelSchemaEntity
+from ote_sdk.entities.model import (ModelEntity,
+                                    ModelFormat,
+                                    ModelOptimizationType,
+                                    ModelStatus)
+from ote_sdk.entities.model_template import parse_model_template
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
-
-from mmdet.apis.ote.apis.detection.ote_utils import get_task_class
-from mmdet.integration.nncf.utils import is_nncf_enabled
-
-from ote_sdk.entities.model import (
-    ModelEntity,
-    ModelFormat,
-    ModelPrecision,
-    ModelStatus,
-    ModelOptimizationType,
-    OptimizationMethod,
-)
+from ote_training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
+                                       convert_hyperparams_to_dict,
+                                       performance_to_score_name_value)
 
 logger = logging.getLogger(__name__)
 
@@ -109,7 +98,7 @@ class OTETestTrainingAction(BaseOTETestAction):
         self.model_template = parse_model_template(self.template_path)
 
         logger.debug('Set hyperparameters')
-        params = create(self.model_template.hyper_parameters.data)
+        params = ote_sdk_configuration_helper_create(self.model_template.hyper_parameters.data)
         if self.num_training_iters != KEEP_CONFIG_FIELD_VALUE():
             params.learning_parameters.num_iters = int(self.num_training_iters)
             logger.debug(f'Set params.learning_parameters.num_iters={params.learning_parameters.num_iters}')

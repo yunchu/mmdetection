@@ -1,5 +1,7 @@
 from typing import Union
+
 from ote_sdk.entities.metrics import Performance, ScoreMetric
+
 
 def DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST():
     """

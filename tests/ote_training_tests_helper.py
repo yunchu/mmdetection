@@ -1,16 +1,14 @@
-import logging
 import itertools
+import logging
 from abc import ABC, abstractmethod
-from copy import deepcopy
 from collections import OrderedDict
+from copy import deepcopy
 from typing import Any, Dict, List, Optional, Type
 
 from ote_training_test_case import (OTETestCaseInterface,
-                                    generate_ote_integration_test_case_class,
-                                    )
-from ote_training_tests_common import DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST
+                                    generate_ote_integration_test_case_class)
 from ote_training_tests_actions import get_default_test_action_classes
-
+from ote_training_tests_common import DEFAULT_FIELD_VALUE_FOR_USING_IN_TEST
 
 logger = logging.getLogger(__name__)
 

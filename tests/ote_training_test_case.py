@@ -4,12 +4,11 @@ from collections import Counter, OrderedDict
 from copy import deepcopy
 from typing import Callable, Dict, List, Optional, Type
 
-from ote_training_tests_actions import BaseOTETestAction
-from ote_training_tests_stage import (OTETestStagesStorageInterface,
-                                      Validator,
-                                      OTETestStage)
 from e2e_test_system import DataCollector
-
+from ote_training_tests_actions import BaseOTETestAction
+from ote_training_tests_stage import (OTETestStage,
+                                      OTETestStagesStorageInterface,
+                                      Validator)
 
 logger = logging.getLogger(__name__)
 
@@ -103,4 +102,3 @@ def generate_ote_integration_test_case_class(test_actions_classes: List[Type[Bas
                                               validator)
 
     return _OTEIntegrationTestCase
-
