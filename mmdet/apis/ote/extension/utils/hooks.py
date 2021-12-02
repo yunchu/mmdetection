@@ -112,12 +112,24 @@ class OTELoggerHook(LoggerHook):
     def log(self, runner):
         tags = self.get_loggable_tags(runner, allow_text=False)
         if runner.max_epochs is not None:
-            normalized_iter = runner.max_epochs / runner.max_iters * self.get_iter(runner)
+            normalized_iter = self.get_iter(runner) / runner.max_iters * runner.max_epochs
         else:
             normalized_iter = self.get_iter(runner)
         for tag, value in tags.items():
-            self.curves[tag].x.append(normalized_iter)
-            self.curves[tag].y.append(value)
+            curve = self.curves[tag]
+            # Remove duplicates.
+            if len(curve.x) > 0 and curve.x[-1] == normalized_iter:
+                curve.x.pop()
+                curve.y.pop()
+            curve.x.append(normalized_iter)
+            curve.y.append(value)
+
+    def after_train_epoch(self, runner):
+        # Iteration counter is increased right after the last iteration in the epoch,
+        # temporarily decrease it back.
+        runner._iter -= 1
+        super().after_train_epoch(runner)
+        runner._iter += 1
 
 
 @HOOKS.register_module()

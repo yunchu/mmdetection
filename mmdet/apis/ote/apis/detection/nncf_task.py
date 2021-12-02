@@ -24,11 +24,12 @@ from ote_sdk.configuration import cfg_helper
 from ote_sdk.configuration.helper.utils import ids_to_strings
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.model import (
-    ModelStatus,
     ModelEntity,
     ModelFormat,
-    OptimizationMethod,
+    ModelOptimizationType,
     ModelPrecision,
+    ModelStatus,
+    OptimizationMethod,
 )
 from ote_sdk.entities.optimization_parameters import default_progress_callback, OptimizationParameters
 from ote_sdk.entities.subset import Subset
@@ -67,6 +68,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
         self._nncf_preset = "nncf_quantization"
         check_nncf_is_enabled()
         super().__init__(task_environment)
+        self._optimization_type = ModelOptimizationType.NNCF
 
     def _set_attributes_by_hyperparams(self):
         quantization = self._hyperparams.nncf_optimization.enable_quantization
@@ -229,7 +231,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
         output_model.model_status = ModelStatus.SUCCESS
         output_model.model_format = ModelFormat.BASE_FRAMEWORK
-        output_model.optimization_type = OptimizationType.NNCF
+        output_model.optimization_type = self._optimization_type
         output_model.optimization_methods = self._optimization_methods
         output_model.precision = self._precision
 

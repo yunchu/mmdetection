@@ -397,12 +397,22 @@ class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
     @pytest.fixture
     def data_collector_fx(self, request) -> DataCollector:
         setup = deepcopy(request.node.callspec.params)
-        setup["environment_name"] = os.environ.get("TT_ENVIRONMENT_NAME", "no-env")
-        setup["test_type"] = os.environ.get("TT_TEST_TYPE", "no-test-type")
-        setup["scenario"] = "api"
-        setup["test"] = request.node.name
-        setup["subject"] = "custom-object-detection"
-        setup["project"] = "ote"
+        setup['environment_name'] = os.environ.get('TT_ENVIRONMENT_NAME', 'no-env')
+        setup['test_type'] = os.environ.get('TT_TEST_TYPE', 'no-test-type') # TODO: get from e2e test type
+        setup['scenario'] = 'api' # TODO: get from e2e test type
+        setup['test'] = request.node.name
+        setup['subject'] = 'custom-object-detection'
+        setup['project'] = 'ote'
+        if 'test_parameters' in setup:
+            assert isinstance(setup['test_parameters'], dict)
+            if 'dataset_name' not in setup:
+                setup['dataset_name'] = setup['test_parameters'].get('dataset_name')
+            if 'model_name' not in setup:
+                setup['model_name'] = setup['test_parameters'].get('model_name')
+            if 'test_stage' not in setup:
+                setup['test_stage'] = setup['test_parameters'].get('test_stage')
+            if 'usecase' not in setup:
+                setup['usecase'] = setup['test_parameters'].get('usecase')
         logger.info(f'creating DataCollector: setup=\n{pformat(setup, width=140)}')
         data_collector = DataCollector(name='TestOTEIntegration',
                                        setup=setup)

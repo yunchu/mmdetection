@@ -6,8 +6,9 @@ import numpy as np
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
 from ote_sdk.entities.dataset_item import DatasetItemEntity
 from ote_sdk.entities.datasets import DatasetEntity
+from ote_sdk.entities.id import ID
 from ote_sdk.entities.image import Image
-from ote_sdk.entities.label import LabelEntity
+from ote_sdk.entities.label import Domain, LabelEntity
 from ote_sdk.entities.scored_label import ScoredLabel
 from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.subset import Subset
@@ -233,7 +234,7 @@ def find_label_by_name(labels, name):
     if len(matching_labels) == 1:
         return matching_labels[0]
     elif len(matching_labels) == 0:
-        label = LabelEntity(name=name, domain="detection", id=len(labels))
+        label = LabelEntity(name=name, domain=Domain.DETECTION, id=ID(len(labels)))
         labels.append(label)
         return label
     else:
@@ -300,7 +301,7 @@ def load_dataset_items_coco_format(
 
 def get_sizes_from_dataset_entity(dataset: DatasetEntity, target_wh: list):
     """
-    Function to get sizes of instances in DatasetEntity and to resize it to the target size. 
+    Function to get sizes of instances in DatasetEntity and to resize it to the target size.
 
     :param dataset: DatasetEntity in which to get statistics
     :param target_wh: target width and height of the dataset

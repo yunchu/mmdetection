@@ -57,18 +57,25 @@ from mmdet.integration.nncf.utils import is_nncf_enabled
 DEFAULT_TEMPLATE_DIR = osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS')
 
 class ModelTemplate(unittest.TestCase):
+    def check_capabilities(self, template):
+        self.assertTrue(template.computes_representations())
+        self.assertFalse(template.computes_uncertainty_score())
+        self.assertEqual(len(template.capabilities), 1)
 
     @e2e_pytest_api
     def test_reading_gen3_ssd(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_SSD', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_SSD', 'template.yaml'))
+        self.check_capabilities(template)
 
     @e2e_pytest_api
     def test_reading_gen3_atss(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_mobilenetV2_ATSS', 'template.yaml'))
+        self.check_capabilities(template)
 
     @e2e_pytest_api
     def test_reading_gen3_vfnet(self):
-        parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template.yaml'))
+        self.check_capabilities(template)
 
 
 @e2e_pytest_api
@@ -409,9 +416,8 @@ class API(unittest.TestCase):
         # Test that output model is valid.
         self.assertEqual(output_model.model_status, ModelStatus.SUCCESS)
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
-        if 'anchors' not in modelinfo.keys():
-            self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'labels', 'confidence_threshold', 'VERSION'])
-        self.assertTrue('ellipse' in modelinfo['labels'])
+        modelinfo.pop('anchors', None)
+        self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'label_schema', 'confidence_threshold', 'VERSION'])
 
         # Run inference.
         validation_performance = self.eval(task, output_model, val_dataset)

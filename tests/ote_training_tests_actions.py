@@ -129,12 +129,13 @@ class OTETestTrainingAction(BaseOTETestAction):
 
         score_name, score_value = self._get_training_performance_as_score_name_value()
         logger.info(f'performance={self.output_model.performance}')
-        data_collector.log_final_metric('training_accuracy/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
 
-        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
-        for k, v in hyperparams_dict.items():
-            logger.debug(f'Try to run update_metadata:\nk={k}\nv={pformat(v, width=140)}\n')
-            data_collector.update_metadata(k, v)
+#        hyperparams_dict = convert_hyperparams_to_dict(self.copy_hyperparams)
+#        for k, v in hyperparams_dict.items():
+#            logger.debug(f'Try to run update_metadata:\nk={k}\nv={pformat(v, width=140)}\n')
+#            data_collector.update_metadata(k, v)
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -178,7 +179,8 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of trained model')
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, task, trained_model)
-        data_collector.log_final_metric('evaluation_accuracy/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info(f'End evaluation of trained model, results: {score_name}: {score_value}')
         return score_name, score_value
 
@@ -202,7 +204,7 @@ class OTETestTrainingEvaluationAction(BaseOTETestAction):
         }
         return results
 
-def run_export(environment, dataset, task, action_name):
+def run_export(environment, dataset, task, action_name, expected_optimization_type):
     logger.debug(f'For action "{action_name}": Copy environment for evaluation exported model')
 
     environment_for_export = deepcopy(environment)
@@ -219,7 +221,7 @@ def run_export(environment, dataset, task, action_name):
             f'In action "{action_name}": Export to OpenVINO was not successful'
     assert exported_model.model_format == ModelFormat.OPENVINO, \
             f'In action "{action_name}": Wrong model format after export'
-    assert exported_model.optimization_type == ModelOptimizationType.MO, \
+    assert exported_model.optimization_type == expected_optimization_type, \
             f'In action "{action_name}": Wrong optimization type'
 
     logger.debug(f'For action "{action_name}": Set exported model into environment for export')
@@ -233,7 +235,8 @@ class OTETestExportAction(BaseOTETestAction):
     def _run_ote_export(self, data_collector,
                         environment, dataset, task):
         self.environment_for_export, self.exported_model = \
-                run_export(environment, dataset, task, action_name=self.name)
+                run_export(environment, dataset, task, action_name=self.name,
+                           expected_optimization_type=ModelOptimizationType.MO)
 
     def __call__(self, data_collector: DataCollector,
                  results_prev_stages: Optional[OrderedDict]=None):
@@ -274,7 +277,8 @@ class OTETestExportEvaluationAction(BaseOTETestAction):
         self.openvino_task = create_openvino_task(model_template, environment_for_export)
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, exported_model)
-        data_collector.log_final_metric('evaluation_accuracy_exported/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of exported model')
         return score_name, score_value
 
@@ -325,7 +329,7 @@ class OTETestPotAction(BaseOTETestAction):
             OptimizationParameters())
         assert self.optimized_model_pot.model_status == ModelStatus.SUCCESS, 'POT optimization was not successful'
         assert self.optimized_model_pot.model_format == ModelFormat.OPENVINO, 'Wrong model format after pot'
-        assert self.optimized_model_pot.optimization_type == OptimizationType.POT, 'Wrong optimization type'
+        assert self.optimized_model_pot.optimization_type == ModelOptimizationType.POT, 'Wrong optimization type'
         logger.info('POT optimization is finished')
 
     def __call__(self, data_collector: DataCollector,
@@ -360,7 +364,8 @@ class OTETestPotEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of pot model')
         validation_dataset_pot = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset_pot, openvino_task_pot, optimized_model_pot)
-        data_collector.log_final_metric('evaluation_accuracy_pot/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of pot model')
         return score_name, score_value
 
@@ -420,7 +425,7 @@ class OTETestNNCFAction(BaseOTETestAction):
                                 self.nncf_model,
                                 OptimizationParameters())
         assert self.nncf_model.model_status == ModelStatus.SUCCESS, 'NNCF optimization was not successful'
-        assert self.nncf_model.optimization_type == OptimizationType.NNCF, 'Wrong optimization type'
+        assert self.nncf_model.optimization_type == ModelOptimizationType.NNCF, 'Wrong optimization type'
         assert self.nncf_model.model_format == ModelFormat.BASE_FRAMEWORK, 'Wrong model format'
         logger.info('NNCF optimization is finished')
 
@@ -459,7 +464,8 @@ class OTETestNNCFEvaluationAction(BaseOTETestAction):
         logger.info('Begin evaluation of nncf model')
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, nncf_task, nncf_model)
-        data_collector.log_final_metric('evaluation_accuracy_nncf/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of nncf model')
         return score_name, score_value
 
@@ -494,7 +500,8 @@ class OTETestNNCFExportAction(BaseOTETestAction):
                              nncf_environment, dataset, nncf_task):
         logger.info('Begin export of nncf model')
         self.environment_nncf_export, self.nncf_exported_model = \
-                run_export(nncf_environment, dataset, nncf_task, action_name=self.name)
+                run_export(nncf_environment, dataset, nncf_task, action_name=self.name,
+                           expected_optimization_type=ModelOptimizationType.NNCF)
         logger.info('End export of nncf model')
 
     def __call__(self, data_collector: DataCollector,
@@ -529,7 +536,8 @@ class OTETestNNCFExportEvaluationAction(BaseOTETestAction):
         self.openvino_task = create_openvino_task(model_template, nncf_environment_for_export)
         validation_dataset = dataset.get_subset(self.subset)
         score_name, score_value = run_evaluation(validation_dataset, self.openvino_task, nncf_exported_model)
-        data_collector.log_final_metric('evaluation_accuracy_nncf_exported/' + score_name, score_value)
+        data_collector.log_final_metric('metric_name', self.name + '/' + score_name)
+        data_collector.log_final_metric('metric_value', score_value)
         logger.info('End evaluation of NNCF exported model')
         return score_name, score_value
 
