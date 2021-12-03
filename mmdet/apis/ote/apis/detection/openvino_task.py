@@ -50,6 +50,7 @@ from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
 from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
 import ote_sdk.usecases.exportable_code.demo as demo
+from ote_sdk.usecases.tasks.interfaces.deployment_interface import IDeploymentTask
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
@@ -60,6 +61,7 @@ from openvino.model_zoo.model_api.adapters import create_core, OpenvinoAdapter
 from .configuration import OTEDetectionConfig
 from mmdet.utils.logger import get_root_logger
 
+from zipfile import ZipFile
 from . import model_wrappers
 
 logger = get_root_logger()
@@ -87,16 +89,13 @@ class OpenVINODetectionInferencer(BaseInferencer):
 
         """
         self.labels = labels
-        try:
-            model_adapter = OpenvinoAdapter(create_core(), model_file, weight_file, device=device, max_num_requests=num_requests)
-            label_names = [label.name for label in self.labels]
-            self.configuration = {**attr.asdict(hparams.inference_parameters.postprocessing,
-                                  filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
-                                  'labels': label_names}
-            self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration)
-            self.model.load()
-        except ValueError as e:
-            print(e)
+        model_adapter = OpenvinoAdapter(create_core(), model_file, weight_file, device=device, max_num_requests=num_requests)
+        label_names = [label.name for label in self.labels]
+        self.configuration = {**attr.asdict(hparams.inference_parameters.postprocessing,
+                              filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
+                              'labels': label_names}
+        self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration)
+        self.model.load()
         self.converter = DetectionBoxToAnnotationConverter(self.labels)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -127,13 +126,13 @@ class OTEOpenVinoDataLoader(DataLoader):
         return len(self.dataset)
 
 
-class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
+class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IOptimizationTask):
     def __init__(self, task_environment: TaskEnvironment):
         logger.info('Loading OpenVINO OTEDetectionTask')
         self.task_environment = task_environment
         self.model = self.task_environment.model
         self.confidence_threshold: float = 0.0
-        self.model_name = task_environment.model_template.name.replace(" ", "_")
+        self.model_name = task_environment.model_template.model_template_id
         self.inferencer = self.load_inferencer()
         logger.info('OpenVINO task initialization completed')
 
@@ -144,11 +143,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         _hparams = self.hparams
-        try:
-            self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
-            _hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
-        except KeyError:
-            self.confidence_threshold = _hparams.inference_parameters.postprocessing.confidence_threshold
+        self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
+        _hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
         return OpenVINODetectionInferencer(_hparams,
                                            labels,
                                            self.model.get_data("openvino.xml"),
@@ -177,7 +173,7 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
         logger.info('OpenVINO metric evaluation completed')
 
     def deploy(self,
-               output_path: str):
+               output_model: ModelEntity) -> None:
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
@@ -190,22 +186,26 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
             copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
             copytree(os.path.join(work_dir, "demo_package"), os.path.join(tempdir, name_of_package))
-            xml_path = os.path.join(tempdir, name_of_package, "model.xml")
-            bin_path = os.path.join(tempdir, name_of_package, "model.bin")
             config_path = os.path.join(tempdir, name_of_package, "config.json")
-            with open(xml_path, "wb") as f:
-                f.write(self.model.get_data("openvino.xml"))
-            with open(bin_path, "wb") as f:
-                f.write(self.model.get_data("openvino.bin"))
             with open(config_path, "w") as f:
                 json.dump(parameters, f)
             # generate model.py
             if (inspect.getmodule(self.inferencer.model) in
-                [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
+               [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
                 copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
             # create wheel package
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
-                            '--dist-dir', output_path, 'clean', '--all'])
+                            '--dist-dir', tempdir, 'clean', '--all'])
+            wheel_file_name = [f for f in os.listdir(tempdir) if f.endswith('.whl')][0]
+            print(wheel_file_name)
+            with ZipFile(os.path.join(tempdir, "openvino.zip"), 'w') as zip:
+                zip.writestr(os.path.join("model", "model.xml"), self.model.get_data("openvino.xml"))
+                zip.writestr(os.path.join("model", "model.bin"), self.model.get_data("openvino.bin"))
+                zip.write(os.path.join(tempdir, "requirements.txt"), os.path.join("python", "requirements.txt"))
+                zip.write(os.path.join(tempdir, name_of_package, "sync.py"), os.path.join("python", "demo.py"))
+                zip.write(os.path.join(tempdir, wheel_file_name), os.path.join("python", wheel_file_name))
+            with open(os.path.join(tempdir, "openvino.zip"), "rb") as file:
+                output_model.set_deployable_model(file.read())
 
     def optimize(self,
                  optimization_type: OptimizationType,

@@ -109,7 +109,6 @@ inference_parameters:
     header: Model class for inference
     options:
       SSD: ssd
-      YOLO: yolo
     type: SELECTABLE
     ui_rules:
       action: DISABLE_EDITING
