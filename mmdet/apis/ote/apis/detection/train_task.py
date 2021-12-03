@@ -19,6 +19,7 @@ from collections import defaultdict
 from glob import glob
 from typing import List, Optional
 
+import numpy as np
 import torch
 from ote_sdk.configuration import cfg_helper
 from ote_sdk.configuration.helper.utils import ids_to_strings
@@ -29,11 +30,12 @@ from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
+from ote_sdk.serialization.label_mapper import LabelSchemaMapper
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.tasks.interfaces.training_interface import ITrainingTask
 
 from mmdet.apis import train_detector
-from mmdet.apis.ote.apis.detection.config_utils import prepare_for_training, set_hyperparams
+from mmdet.apis.ote.apis.detection.config_utils import cluster_anchors, prepare_for_training, set_hyperparams
 from mmdet.apis.ote.apis.detection.inference_task import OTEDetectionInferenceTask
 from mmdet.apis.ote.apis.detection.ote_utils import TrainingProgressCallback
 from mmdet.apis.ote.extension.utils.hooks import OTELoggerHook
@@ -55,7 +57,16 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         # Learning curves.
         for key, curve in learning_curves.items():
-            metric_curve = CurveMetric(xs=curve.x, ys=curve.y, name=key)
+            n, m = len(curve.x), len(curve.y)
+            if n != m:
+                logger.warning(f"Learning curve {key} has inconsistent number of coordinates ({n} vs {m}.")
+                n = min(n, m)
+                curve.x = curve.x[:n]
+                curve.y = curve.y[:n]
+            metric_curve = CurveMetric(
+                xs=np.nan_to_num(curve.x).tolist(),
+                ys=np.nan_to_num(curve.y).tolist(),
+                name=key)
             visualization_info = LineChartInfo(name=key, x_axis_label="Epoch", y_axis_label=key)
             output.append(LineMetricsGroup(metrics=[metric_curve], visualization_info=visualization_info))
 
@@ -78,6 +89,12 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
 
         train_dataset = dataset.get_subset(Subset.TRAINING)
         val_dataset = dataset.get_subset(Subset.VALIDATION)
+
+        # Do clustering for SSD model
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                self._config, self._model = cluster_anchors(self._config, train_dataset, self._model)
+
         config = self._config
 
         # Create a copy of the network.
@@ -170,9 +187,19 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
         hyperparams_str = ids_to_strings(cfg_helper.convert(self._hyperparams, dict, enum_to_str=True))
-        labels = {label.name: label.color.rgb_tuple for label in self._labels}
-        modelinfo = {'model': self._model.state_dict(), 'config': hyperparams_str, 'labels': labels,
-            'confidence_threshold': self.confidence_threshold, 'VERSION': 1}
+        serialized_label_schema = LabelSchemaMapper.forward(self._task_environment.label_schema)
+
+        modelinfo = {'model': self._model.state_dict(),
+                     'config': hyperparams_str,
+                     'label_schema': serialized_label_schema,
+                     'confidence_threshold': self.confidence_threshold,
+                     'VERSION': 1}
+
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                generator = self._model.bbox_head.anchor_generator
+                modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
+
         torch.save(modelinfo, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
         output_model.precision = [ModelPrecision.FP32]

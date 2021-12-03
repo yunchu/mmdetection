@@ -91,6 +91,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         # Set default model attributes.
         self._optimization_methods = []
         self._precision = [ModelPrecision.FP32]
+        self._optimization_type = ModelOptimizationType.MO
 
         # Create and initialize PyTorch model.
         logger.info('Loading the model')
@@ -113,6 +114,10 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             self.confidence_threshold = model_data.get('confidence_threshold', self.confidence_threshold)
+            if model_data.get('anchors'):
+                anchors = model_data['anchors']
+                self._config.model.bbox_head.anchor_generator.heights = anchors['heights']
+                self._config.model.bbox_head.anchor_generator.widths = anchors['widths']
 
             model = self._create_model(self._config, from_scratch=True)
 
@@ -190,7 +195,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
             if fmap is not None:
                 active_score = TensorEntity(name="representation_vector", numpy=fmap)
-                dataset_item.append_metadata_item(active_score)
+                dataset_item.append_metadata_item(active_score, model=self._task_environment.model)
 
 
     def infer(self, dataset: DatasetEntity, inference_parameters: Optional[InferenceParameters] = None) -> DatasetEntity:
@@ -198,6 +203,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         logger.info('Infer the model on the dataset')
         set_hyperparams(self._config, self._hyperparams)
+        # There is no need to have many workers for a couple of images.
+        self._config.data.workers_per_gpu = max(min(self._config.data.workers_per_gpu, len(dataset) - 1), 0)
 
         # If confidence threshold is adaptive then up-to-date value should be stored in the model
         # and should not be changed during inference. Otherwise user-specified value should be taken.
@@ -322,7 +329,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         logger.info('Exporting the model')
         assert export_type == ExportType.OPENVINO
         output_model.model_format = ModelFormat.OPENVINO
-        output_model.optimization_type = ModelOptimizationType.MO
+        output_model.optimization_type = self._optimization_type
         with tempfile.TemporaryDirectory() as tempdir:
             optimized_model_dir = os.path.join(tempdir, 'export')
             logger.info(f'Optimized model will be temporarily saved to "{optimized_model_dir}"')

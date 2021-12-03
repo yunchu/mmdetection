@@ -15,54 +15,46 @@
 import attr
 import inspect
 import json
-import os
-from pathlib import Path
-from shutil import Error, copyfile, copytree
-import sys
-import subprocess
-import tempfile
-from typing import Any, Dict, List, Optional, Tuple, Union
-
 import numpy as np
+import os
+import ote_sdk.usecases.exportable_code.demo as demo
+import subprocess
+import sys
+import tempfile
 from addict import Dict as ADDict
 from compression.api import DataLoader
 from compression.engines.ie_engine import IEEngine
 from compression.graph import load_model, save_model
-from compression.graph.model_utils import compress_model_weights, get_nodes_by_type
+from compression.graph.model_utils import (compress_model_weights,
+                                           get_nodes_by_type)
 from compression.pipeline.initializer import create_pipeline
-from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
+from openvino.model_zoo.model_api.adapters import OpenvinoAdapter, create_core
+from openvino.model_zoo.model_api.models import Model
+from ote_sdk.entities.annotation import AnnotationSceneEntity
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
+from ote_sdk.entities.inference_parameters import (InferenceParameters,
+                                                   default_progress_callback)
 from ote_sdk.entities.label import LabelEntity
-from ote_sdk.entities.model import (
-    ModelStatus,
-    ModelEntity,
-    ModelFormat,
-    OptimizationMethod,
-    ModelPrecision,
-)
+from ote_sdk.entities.model import (ModelEntity, ModelFormat,
+                                    ModelOptimizationType, ModelPrecision,
+                                    ModelStatus, OptimizationMethod)
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
-from ote_sdk.entities.scored_label import ScoredLabel
-from ote_sdk.entities.shapes.rectangle import Rectangle
 from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
 from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
-import ote_sdk.usecases.exportable_code.demo as demo
 from ote_sdk.usecases.tasks.interfaces.deployment_interface import IDeploymentTask
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
-
-from openvino.inference_engine import ExecutableNetwork, IECore, InferRequest
-from openvino.model_zoo.model_api.models import Model
-from openvino.model_zoo.model_api.adapters import create_core, OpenvinoAdapter
-from .configuration import OTEDetectionConfig
-from mmdet.utils.logger import get_root_logger
-
+from shutil import copyfile, copytree
+from typing import Any, Dict, List, Optional, Tuple, Union
 from zipfile import ZipFile
+
+from mmdet.utils.logger import get_root_logger
 from . import model_wrappers
+from .configuration import OTEDetectionConfig
 
 logger = get_root_logger()
 
@@ -277,7 +269,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS
         output_model.model_format = ModelFormat.OPENVINO
-        output_model.optimization_type = OptimizationType.POT
+        output_model.optimization_type = ModelOptimizationType.POT
         output_model.optimization_methods = [OptimizationMethod.QUANTIZATION]
         output_model.precision = [ModelPrecision.INT8]
 

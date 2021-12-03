@@ -18,6 +18,7 @@ model = dict(
         anchor_generator=dict(
             type='SSDAnchorGeneratorClustered',
             strides=(16, 32),
+            reclustering_anchors=True,
             widths=[[
                 38.641007923271076, 92.49516032784699, 271.4234764938237,
                 141.53469410876247
