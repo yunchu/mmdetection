@@ -52,13 +52,6 @@ ROOT_PATH_KEY = '_root_path'
 DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
 
 
-@pytest.fixture
-def templates_root_dir_fx():
-    root = osp.dirname(osp.dirname(osp.realpath(__file__)))
-    root = f'{root}/configs/ote/'
-    logger.debug(f'overloaded templates_root_dir_fx: return {root}')
-    return root
-
 def _make_path_be_abs(some_val, root_path):
     assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
     assert isinstance(root_path, str), f'Wrong type of root_path: {root_path}, type={type(root_path)}'
@@ -110,9 +103,6 @@ def _create_object_detection_dataset_and_labels_schema(dataset_params):
     dataset = DatasetEntity(items=items)
     labels_schema = LabelSchemaEntity.from_labels(labels_list)
     return dataset, labels_schema
-
-
-
 
 
 class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInterface):
