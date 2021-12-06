@@ -170,15 +170,14 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
-        parameters['name_of_model'] = self.model_name
         parameters['type_of_model'] = self.hparams.inference_parameters.class_name.value
         parameters['converter_type'] = 'DETECTION'
         parameters['model_parameters'] = self.inferencer.configuration
-        name_of_package = parameters['name_of_model'].lower()
+        name_of_package = "demo_package"
         with tempfile.TemporaryDirectory() as tempdir:
             copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
             copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
-            copytree(os.path.join(work_dir, "demo_package"), os.path.join(tempdir, name_of_package))
+            copytree(os.path.join(work_dir, name_of_package), os.path.join(tempdir, name_of_package))
             config_path = os.path.join(tempdir, name_of_package, "config.json")
             with open(config_path, "w") as f:
                 json.dump(parameters, f)
@@ -196,10 +195,10 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
                 zip.writestr(os.path.join("model", "model.bin"), self.model.get_data("openvino.bin"))
                 zip.write(os.path.join(tempdir, "requirements.txt"), os.path.join("python", "requirements.txt"))
                 zip.write(os.path.join(work_dir, "README.md"), os.path.join("python", "README.md"))
-                zip.write(os.path.join(tempdir, name_of_package, "sync.py"), os.path.join("python", "demo.py"))
+                zip.write(os.path.join(work_dir, "demo.py"), os.path.join("python", "demo.py"))
                 zip.write(os.path.join(tempdir, wheel_file_name), os.path.join("python", wheel_file_name))
             with open(os.path.join(tempdir, "openvino.zip"), "rb") as file:
-                output_model.set_deployable_model(file.read())
+                output_model.exportable_code = file.read()
 
     def optimize(self,
                  optimization_type: OptimizationType,
