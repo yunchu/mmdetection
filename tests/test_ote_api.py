@@ -167,8 +167,8 @@ class API(unittest.TestCase):
         model_template = parse_model_template(osp.join(template_dir, 'template.yaml'))
         hyper_parameters = create(model_template.hyper_parameters.data)
         hyper_parameters.learning_parameters.num_iters = num_iters
-        hyper_parameters.postprocessing.result_based_confidence_threshold = False
-        hyper_parameters.postprocessing.confidence_threshold = 0.1
+        hyper_parameters.inference_parameters.postprocessing.result_based_confidence_threshold = False
+        hyper_parameters.inference_parameters.postprocessing.confidence_threshold = 0.1
         return hyper_parameters, model_template
 
     @e2e_pytest_api
