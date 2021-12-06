@@ -123,7 +123,7 @@ def template_paths_fx(request):
     the model name is the name of the parent folder of the file.
     """
     root = osp.dirname(osp.dirname(osp.realpath(__file__)))
-    glb = glob.glob(f'{root}/configs/ote/**/template.yaml', recursive=True)
+    glb = glob.glob(f'{root}/configs/ote/**/template*.yaml', recursive=True)
     data = {}
     for p in glb:
         assert osp.isabs(p), f'Error: not absolute path {p}'
