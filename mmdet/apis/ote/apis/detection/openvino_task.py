@@ -136,7 +136,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
     def load_inferencer(self) -> OpenVINODetectionInferencer:
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         _hparams = copy.deepcopy(self.hparams)
-        self.confidence_threshold = np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0]
+        self.confidence_threshold = float(np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0])
         _hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
         return OpenVINODetectionInferencer(_hparams,
                                            labels,
