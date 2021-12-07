@@ -120,7 +120,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             model_data = torch.load(buffer, map_location=torch.device('cpu'))
 
             self.confidence_threshold = model_data.get('confidence_threshold',
-                self._hyperparams.postprocessing.confidence_threshold)
+                self._hyperparams.inference_parameters.postprocessing.confidence_threshold)
             if model_data.get('anchors'):
                 anchors = model_data['anchors']
                 self._config.model.bbox_head.anchor_generator.heights = anchors['heights']
