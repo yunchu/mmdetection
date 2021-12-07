@@ -417,7 +417,7 @@ class API(unittest.TestCase):
         self.assertEqual(output_model.model_status, ModelStatus.SUCCESS)
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
         modelinfo.pop('anchors', None)
-        self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'label_schema', 'confidence_threshold', 'VERSION'])
+        self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'confidence_threshold', 'VERSION'])
 
         # Run inference.
         validation_performance = self.eval(task, output_model, val_dataset)
