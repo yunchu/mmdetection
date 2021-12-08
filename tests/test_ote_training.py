@@ -67,6 +67,9 @@ def _make_path_be_abs(some_val, root_path):
     return some_dict
 
 def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name):
+    if dataset_name not in dataset_definitions:
+        raise ValueError(f'dataset {dataset_name} is absent in dataset_definitions, '
+                         f'dataset_definitions.keys={list(dataset_definitions.keys())}')
     cur_dataset_definition = dataset_definitions[dataset_name]
     training_parameters_fields = {k: v for k, v in cur_dataset_definition.items()
                                   if k in DATASET_PARAMETERS_FIELDS()}
@@ -110,16 +113,15 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
         test_bunches = [
                 dict(
                     model_name=[
-                       'gen3_mobilenetV2_SSD',
-                       'gen3_mobilenetV2_ATSS',
-                       'gen3_resnet50_VFNet',
+                       'Custom_Object_Detection_Gen3_ATSS',
+                       'Custom_Object_Detection_Gen3_SSD',
                     ],
                     dataset_name='dataset1_tiled_shortened_500_A',
                     usecase='precommit',
                 ),
                 dict(
                     model_name=[
-                       'gen3_mobilenetV2_ATSS',
+                       'Custom_Object_Detection_Gen3_ATSS',
                     ],
                     dataset_name='bbcd',
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
@@ -162,6 +164,10 @@ class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
             batch_size = test_parameters['batch_size']
 
             dataset_params = _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name)
+
+            if model_name not in template_paths:
+                raise ValueError(f'Model {model_name} is absent in template_paths, '
+                                 f'template_paths.keys={list(template_paths.keys())}')
             template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
 
             logger.debug('training params factory: Before creating dataset and labels_schema')
