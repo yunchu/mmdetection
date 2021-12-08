@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
+import glob
 import io
 import os.path as osp
 import random
@@ -74,7 +75,7 @@ class ModelTemplate(unittest.TestCase):
 
     @e2e_pytest_api
     def test_reading_gen3_vfnet(self):
-        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template.yaml'))
+        template = parse_model_template(osp.join('configs', 'ote', 'custom-object-detection', 'gen3_resnet50_VFNet', 'template_experimental.yaml'))
         self.check_capabilities(template)
 
 
@@ -164,7 +165,12 @@ class API(unittest.TestCase):
         return environment, dataset
 
     def setup_configurable_parameters(self, template_dir, num_iters=10):
-        model_template = parse_model_template(osp.join(template_dir, 'template.yaml'))
+        glb = glob.glob(f'{template_dir}/template*.yaml')
+        template_path = glb[0] if glb else None
+        if not template_path:
+          raise RuntimeError(f"Template YAML not found: {template_dir}")
+                
+        model_template = parse_model_template(template_path)
         hyper_parameters = create(model_template.hyper_parameters.data)
         hyper_parameters.learning_parameters.num_iters = num_iters
         hyper_parameters.postprocessing.result_based_confidence_threshold = False
