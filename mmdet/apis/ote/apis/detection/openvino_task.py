@@ -46,6 +46,7 @@ from ote_sdk.usecases.exportable_code.inference import BaseOpenVINOInferencer
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
+from ote_sdk.serialization.label_mapper import label_schema_to_bytes
 
 from .configuration import OTEDetectionConfig
 from mmdet.utils.logger import get_root_logger
@@ -299,6 +300,8 @@ class OpenVINODetectionTask(IInferenceTask, IEvaluationTask, IOptimizationTask):
             with open(os.path.join(tempdir, "model.bin"), "rb") as f:
                 output_model.set_data("openvino.bin", f.read())
             output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
+            
+        output_model.set_data("label_schema.json", label_schema_to_bytes(self.task_environment.label_schema))
 
         # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS
