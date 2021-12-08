@@ -42,13 +42,19 @@ from ote_sdk.entities.model import (ModelEntity, ModelFormat,
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.task_environment import TaskEnvironment
+from ote_sdk.serialization.label_mapper import label_schema_to_bytes
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
-from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
-from ote_sdk.usecases.tasks.interfaces.deployment_interface import IDeploymentTask
-from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
-from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
-from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
+from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import \
+    DetectionBoxToAnnotationConverter
+from ote_sdk.usecases.tasks.interfaces.deployment_interface import \
+    IDeploymentTask
+from ote_sdk.usecases.tasks.interfaces.evaluate_interface import \
+    IEvaluationTask
+from ote_sdk.usecases.tasks.interfaces.inference_interface import \
+    IInferenceTask
+from ote_sdk.usecases.tasks.interfaces.optimization_interface import (
+    IOptimizationTask, OptimizationType)
 from shutil import copyfile, copytree
 from typing import Any, Dict, List, Optional, Tuple, Union
 from zipfile import ZipFile
@@ -266,6 +272,8 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
             with open(os.path.join(tempdir, "model.bin"), "rb") as f:
                 output_model.set_data("openvino.bin", f.read())
             output_model.set_data("confidence_threshold", np.array([self.confidence_threshold], dtype=np.float32).tobytes())
+
+        output_model.set_data("label_schema.json", label_schema_to_bytes(self.task_environment.label_schema))
 
         # set model attributes for quantized model
         output_model.model_status = ModelStatus.SUCCESS
