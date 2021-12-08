@@ -45,16 +45,11 @@ from ote_sdk.entities.task_environment import TaskEnvironment
 from ote_sdk.serialization.label_mapper import label_schema_to_bytes
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
-from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import \
-    DetectionBoxToAnnotationConverter
-from ote_sdk.usecases.tasks.interfaces.deployment_interface import \
-    IDeploymentTask
-from ote_sdk.usecases.tasks.interfaces.evaluate_interface import \
-    IEvaluationTask
-from ote_sdk.usecases.tasks.interfaces.inference_interface import \
-    IInferenceTask
-from ote_sdk.usecases.tasks.interfaces.optimization_interface import (
-    IOptimizationTask, OptimizationType)
+from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
+from ote_sdk.usecases.tasks.interfaces.deployment_interface import IDeploymentTask
+from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
+from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
+from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
 from shutil import copyfile, copytree
 from typing import Any, Dict, List, Optional, Tuple, Union
 from zipfile import ZipFile
@@ -173,6 +168,8 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
 
     def deploy(self,
                output_model: ModelEntity) -> None:
+        logger.info('Deploying the model')
+
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
@@ -205,6 +202,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
                 zip.write(os.path.join(tempdir, wheel_file_name), os.path.join("python", wheel_file_name))
             with open(os.path.join(tempdir, "openvino.zip"), "rb") as file:
                 output_model.exportable_code = file.read()
+        logger.info('Deploying completed')
 
     def optimize(self,
                  optimization_type: OptimizationType,
