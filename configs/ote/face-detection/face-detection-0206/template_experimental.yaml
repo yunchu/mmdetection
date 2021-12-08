@@ -1,6 +1,6 @@
 # Description.
-model_template_id: Face_Detection_0206
-name: face-detection-0206
+model_template_id: face-detection-0206
+name: Face Detection 0206
 task_type: DETECTION
 task_family: VISION
 instantiation: "CLASS"
