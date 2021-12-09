@@ -29,10 +29,10 @@ from ote_sdk.entities.subset import Subset
 
 from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco_format
 
-from ote_sdk.algo_backends.test_helpers.e2e_test_system import DataCollector, e2e_pytest_performance
-from ote_sdk.algo_backends.test_helpers.training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
+from ote_sdk.test_suite.e2e_test_system import DataCollector, e2e_pytest_performance
+from ote_sdk.test_suite.training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
                                       REALLIFE_USECASE_CONSTANT)
-from ote_sdk.algo_backends.test_helpers.training_tests_helper import (OTETestHelper,
+from ote_sdk.test_suite.training_tests_helper import (OTETestHelper,
                                        DefaultOTETestCreationParametersInterface,
                                        OTETrainingTestInterface)
 

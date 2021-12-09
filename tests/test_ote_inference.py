@@ -19,7 +19,7 @@ import os
 import os.path as osp
 import torch
 import unittest
-from ote_sdk.algo_backends.test_helpers.e2e_test_system import e2e_pytest_api
+from ote_sdk.test_suite.e2e_test_system import e2e_pytest_api
 from mmcv.parallel import MMDataParallel
 from subprocess import run
 
