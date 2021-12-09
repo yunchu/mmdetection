@@ -26,19 +26,22 @@ from addict import Dict as ADDict
 from compression.api import DataLoader
 from compression.engines.ie_engine import IEEngine
 from compression.graph import load_model, save_model
-from compression.graph.model_utils import (compress_model_weights,
-                                           get_nodes_by_type)
+from compression.graph.model_utils import compress_model_weights, get_nodes_by_type
 from compression.pipeline.initializer import create_pipeline
 from openvino.model_zoo.model_api.adapters import OpenvinoAdapter, create_core
 from openvino.model_zoo.model_api.models import Model
 from ote_sdk.entities.annotation import AnnotationSceneEntity
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.inference_parameters import (InferenceParameters,
-                                                   default_progress_callback)
+from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
 from ote_sdk.entities.label import LabelEntity
-from ote_sdk.entities.model import (ModelEntity, ModelFormat,
-                                    ModelOptimizationType, ModelPrecision,
-                                    ModelStatus, OptimizationMethod)
+from ote_sdk.entities.model import (
+    ModelEntity,
+    ModelFormat,
+    ModelOptimizationType,
+    ModelPrecision,
+    ModelStatus,
+    OptimizationMethod,
+)
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.task_environment import TaskEnvironment
@@ -88,8 +91,7 @@ class OpenVINODetectionInferencer(BaseInferencer):
         self.configuration = {**attr.asdict(hparams.inference_parameters.postprocessing,
                               filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
                               'labels': label_names}
-        self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration)
-        self.model.load()
+        self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration, preload=True)
         self.converter = DetectionBoxToAnnotationConverter(self.labels)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -182,8 +184,8 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
             copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
             copytree(os.path.join(work_dir, name_of_package), os.path.join(tempdir, name_of_package))
             config_path = os.path.join(tempdir, name_of_package, "config.json")
-            with open(config_path, "w") as f:
-                json.dump(parameters, f)
+            with open(config_path, "w", encoding='utf-8') as f:
+                json.dump(parameters, f, ensure_ascii=False, indent=4)
             # generate model.py
             if (inspect.getmodule(self.inferencer.model) in
                [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
@@ -192,7 +194,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
             subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
                             '--dist-dir', tempdir, 'clean', '--all'])
             wheel_file_name = [f for f in os.listdir(tempdir) if f.endswith('.whl')][0]
-            print(wheel_file_name)
+
             with ZipFile(os.path.join(tempdir, "openvino.zip"), 'w') as zip:
                 zip.writestr(os.path.join("model", "model.xml"), self.model.get_data("openvino.xml"))
                 zip.writestr(os.path.join("model", "model.bin"), self.model.get_data("openvino.bin"))
