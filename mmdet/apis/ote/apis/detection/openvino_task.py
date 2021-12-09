@@ -88,10 +88,10 @@ class OpenVINODetectionInferencer(BaseInferencer):
         self.labels = labels
         model_adapter = OpenvinoAdapter(create_core(), model_file, weight_file, device=device, max_num_requests=num_requests)
         label_names = [label.name for label in self.labels]
-        self.configuration = {**attr.asdict(hparams.inference_parameters.postprocessing,
+        self.configuration = {**attr.asdict(hparams.postprocessing,
                               filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
                               'labels': label_names}
-        self.model = Model.create_model(hparams.inference_parameters.class_name.value, model_adapter, self.configuration, preload=True)
+        self.model = Model.create_model('ssd', model_adapter, self.configuration, preload=True)
         self.converter = DetectionBoxToAnnotationConverter(self.labels)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
@@ -140,7 +140,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         labels = self.task_environment.label_schema.get_labels(include_empty=False)
         _hparams = copy.deepcopy(self.hparams)
         self.confidence_threshold = float(np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0])
-        _hparams.inference_parameters.postprocessing.confidence_threshold = self.confidence_threshold
+        _hparams.postprocessing.confidence_threshold = self.confidence_threshold
         return OpenVINODetectionInferencer(_hparams,
                                            labels,
                                            self.model.get_data("openvino.xml"),
@@ -175,7 +175,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         work_dir = os.path.dirname(demo.__file__)
         model_file = inspect.getfile(type(self.inferencer.model))
         parameters = {}
-        parameters['type_of_model'] = self.hparams.inference_parameters.class_name.value
+        parameters['type_of_model'] = 'ssd'
         parameters['converter_type'] = 'DETECTION'
         parameters['model_parameters'] = self.inferencer.configuration
         name_of_package = "demo_package"

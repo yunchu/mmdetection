@@ -25,7 +25,7 @@ from ote_sdk.configuration.elements import (ParameterGroup,
 from ote_sdk.configuration import ConfigurableParameters
 from ote_sdk.configuration.model_lifecycle import ModelLifecycle
 
-from .configuration_enums import POTQuantizationPreset, Models
+from .configuration_enums import POTQuantizationPreset
 
 
 @attrs
@@ -90,38 +90,25 @@ class OTEDetectionConfig(ConfigurableParameters):
         )
 
     @attrs
-    class __InferenceParameters(ParameterGroup):
-        header = string_attribute("Parameters for inference")
+    class __Postprocessing(ParameterGroup):
+        header = string_attribute("Postprocessing")
         description = header
 
-        class_name = selectable(default_value=Models.SSD,
-                                header="Model class for inference",
-                                description="Model classes with defined pre- and postprocessing",
-                                editable=False,
-                                visible_in_ui=True)
+        result_based_confidence_threshold = configurable_boolean(
+            default_value=True,
+            header="Result based confidence threshold",
+            description="Confidence threshold is derived from the results",
+            affects_outcome_of=ModelLifecycle.INFERENCE
+        )
 
-        @attrs
-        class __Postprocessing(ParameterGroup):
-            header = string_attribute("Postprocessing")
-            description = header
-
-            result_based_confidence_threshold = configurable_boolean(
-                default_value=True,
-                header="Result based confidence threshold",
-                description="Confidence threshold is derived from the results",
-                affects_outcome_of=ModelLifecycle.INFERENCE
-            )
-
-            confidence_threshold = configurable_float(
-                default_value=0.35,
-                min_value=0,
-                max_value=1,
-                header="Confidence threshold",
-                description="This threshold only takes effect if the threshold is not set based on the result.",
-                affects_outcome_of=ModelLifecycle.INFERENCE
-            )
-
-        postprocessing = add_parameter_group(__Postprocessing)
+        confidence_threshold = configurable_float(
+            default_value=0.35,
+            min_value=0,
+            max_value=1,
+            header="Confidence threshold",
+            description="This threshold only takes effect if the threshold is not set based on the result.",
+            affects_outcome_of=ModelLifecycle.INFERENCE
+        )
 
     @attrs
     class __NNCFOptimization(ParameterGroup):
@@ -169,6 +156,6 @@ class OTEDetectionConfig(ConfigurableParameters):
                             editable=True, visible_in_ui=True)
 
     learning_parameters = add_parameter_group(__LearningParameters)
-    inference_parameters = add_parameter_group(__InferenceParameters)
+    postprocessing = add_parameter_group(__Postprocessing)
     nncf_optimization = add_parameter_group(__NNCFOptimization)
     pot_parameters = add_parameter_group(__POTParameter)

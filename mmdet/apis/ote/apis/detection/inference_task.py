@@ -87,7 +87,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
         self._config = Config.fromfile(config_file_path)
         patch_config(self._config, self._scratch_space, self._labels, random_seed=42)
         set_hyperparams(self._config, self._hyperparams)
-        self.confidence_threshold: float = self._hyperparams.inference_parameters.postprocessing.confidence_threshold
+        self.confidence_threshold: float = self._hyperparams.postprocessing.confidence_threshold
 
         # Set default model attributes.
         self._optimization_methods = []
@@ -209,8 +209,8 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
 
         # If confidence threshold is adaptive then up-to-date value should be stored in the model
         # and should not be changed during inference. Otherwise user-specified value should be taken.
-        if not self._hyperparams.inference_parameters.postprocessing.result_based_confidence_threshold:
-            self.confidence_threshold = self._hyperparams.inference_parameters.postprocessing.confidence_threshold
+        if not self._hyperparams.postprocessing.result_based_confidence_threshold:
+            self.confidence_threshold = self._hyperparams.postprocessing.confidence_threshold
 
         update_progress_callback = default_progress_callback
         if inference_parameters is not None:

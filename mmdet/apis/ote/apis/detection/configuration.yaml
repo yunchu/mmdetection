@@ -97,67 +97,46 @@ learning_parameters:
     warning: null
   type: PARAMETER_GROUP
   visible_in_ui: true
-inference_parameters:
-  description: Parameters for inference
-  header: Parameters for inference
-  class_name:
+postprocessing:
+  confidence_threshold:
     affects_outcome_of: INFERENCE
-    default_value: ssd
-    description: Model classes with defined pre- and postprocessing
-    editable: false
-    enum_name: Models
-    header: Model class for inference
-    options:
-      SSD: ssd
-    type: SELECTABLE
+    default_value: 0.35
+    description: This threshold only takes effect if the threshold is not set based
+      on the result.
+    editable: true
+    header: Confidence threshold
+    max_value: 1
+    min_value: 0
+    type: FLOAT
     ui_rules:
       action: DISABLE_EDITING
       operator: AND
       rules: []
       type: UI_RULES
-    value: ssd
-    visible_in_ui: True
-    warning: null
-  postprocessing:
-    confidence_threshold:
-      affects_outcome_of: INFERENCE
-      default_value: 0.35
-      description: This threshold only takes effect if the threshold is not set based
-        on the result.
-      editable: true
-      header: Confidence threshold
-      max_value: 1
-      min_value: 0
-      type: FLOAT
-      ui_rules:
-        action: DISABLE_EDITING
-        operator: AND
-        rules: []
-        type: UI_RULES
-      value: 0.35
-      visible_in_ui: true
-      warning: null
-    description: Postprocessing
-    header: Postprocessing
-    result_based_confidence_threshold:
-      affects_outcome_of: INFERENCE
-      default_value: true
-      description: Confidence threshold is derived from the results
-      editable: true
-      header: Result based confidence threshold
-      type: BOOLEAN
-      ui_rules:
-        action: DISABLE_EDITING
-        operator: AND
-        rules: []
-        type: UI_RULES
-      value: true
-      visible_in_ui: true
-      warning: null
-    type: PARAMETER_GROUP
+    value: 0.35
     visible_in_ui: true
+    warning: null
+  description: Postprocessing
+  header: Postprocessing
+  result_based_confidence_threshold:
+    affects_outcome_of: INFERENCE
+    default_value: true
+    description: Confidence threshold is derived from the results
+    editable: true
+    header: Result based confidence threshold
+    type: BOOLEAN
+    ui_rules:
+      action: DISABLE_EDITING
+      operator: AND
+      rules: []
+      type: UI_RULES
+    value: true
+    visible_in_ui: true
+    warning: null
   type: PARAMETER_GROUP
   visible_in_ui: true
+type: CONFIGURABLE_PARAMETERS
+visible_in_ui: true
 pot_parameters:
   description: POT Parameters
   header: POT Parameters
@@ -250,6 +229,4 @@ nncf_optimization:
     visible_in_ui: true
     warning: null
   type: PARAMETER_GROUP
-  visible_in_ui: True
-type: CONFIGURABLE_PARAMETERS
-visible_in_ui: true
+  visible_in_ui: true

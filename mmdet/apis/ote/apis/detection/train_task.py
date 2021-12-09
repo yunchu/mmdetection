@@ -158,7 +158,7 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         )
 
         # Adjust confidence threshold.
-        adaptive_threshold = self._hyperparams.inference_parameters.postprocessing.result_based_confidence_threshold
+        adaptive_threshold = self._hyperparams.postprocessing.result_based_confidence_threshold
         if adaptive_threshold:
             logger.info('Adjusting the confidence threshold')
             metric = MetricsHelper.compute_f_measure(resultset, vary_confidence_threshold=True)

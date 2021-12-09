@@ -169,12 +169,12 @@ class API(unittest.TestCase):
         template_path = glb[0] if glb else None
         if not template_path:
           raise RuntimeError(f"Template YAML not found: {template_dir}")
-                
+
         model_template = parse_model_template(template_path)
         hyper_parameters = create(model_template.hyper_parameters.data)
         hyper_parameters.learning_parameters.num_iters = num_iters
-        hyper_parameters.inference_parameters.postprocessing.result_based_confidence_threshold = False
-        hyper_parameters.inference_parameters.postprocessing.confidence_threshold = 0.1
+        hyper_parameters.postprocessing.result_based_confidence_threshold = False
+        hyper_parameters.postprocessing.confidence_threshold = 0.1
         return hyper_parameters, model_template
 
     @e2e_pytest_api
