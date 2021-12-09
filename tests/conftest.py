@@ -26,7 +26,7 @@ def ote_test_domain_fx():
 @pytest.fixture
 def ote_test_scenario_fx(current_test_parameters_fx):
     assert isinstance(current_test_parameters_fx, dict)
-    if current_test_parameters_fx.get('usecase') == REALLIFE_USECASE_CONSTANT():
+    if current_test_parameters_fx.get('usecase') == REALLIFE_USECASE_CONSTANT:
         return 'performance'
     else:
         return 'integration'

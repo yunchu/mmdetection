@@ -30,11 +30,14 @@ from ote_sdk.entities.subset import Subset
 from mmdet.apis.ote.extension.datasets.data_utils import load_dataset_items_coco_format
 
 from ote_sdk.test_suite.e2e_test_system import DataCollector, e2e_pytest_performance
-from ote_sdk.test_suite.training_tests_common import (KEEP_CONFIG_FIELD_VALUE,
-                                      REALLIFE_USECASE_CONSTANT)
+from ote_sdk.test_suite.training_tests_common import (make_path_be_abs,
+                                                      make_paths_be_abs,
+                                                      KEEP_CONFIG_FIELD_VALUE,
+                                                      REALLIFE_USECASE_CONSTANT,
+                                                      ROOT_PATH_KEY)
 from ote_sdk.test_suite.training_tests_helper import (OTETestHelper,
-                                       DefaultOTETestCreationParametersInterface,
-                                       OTETrainingTestInterface)
+                                                      DefaultOTETestCreationParametersInterface,
+                                                      OTETrainingTestInterface)
 
 
 logger = logging.getLogger(__name__)
@@ -48,23 +51,8 @@ def DATASET_PARAMETERS_FIELDS() -> List[str]:
                      'images_test_dir',
                      ])
 
-ROOT_PATH_KEY = '_root_path'
 DatasetParameters = namedtuple('DatasetParameters', DATASET_PARAMETERS_FIELDS())
 
-
-def _make_path_be_abs(some_val, root_path):
-    assert isinstance(some_val, (str, dict)), f'Wrong type of value: {some_val}, type={type(some_val)}'
-    assert isinstance(root_path, str), f'Wrong type of root_path: {root_path}, type={type(root_path)}'
-
-    # Note that os.path.join(a, b) == b if b is an absolute path
-    if isinstance(some_val, str):
-        return osp.join(root_path, some_val)
-
-    some_dict = some_val
-    assert all(isinstance(v, str) for v in some_dict.values()), f'Wrong input dict {some_dict}'
-    for k in list(some_dict.keys()):
-        some_dict[k] = osp.join(root_path, some_dict[k])
-    return some_dict
 
 def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_name):
     if dataset_name not in dataset_definitions:
@@ -73,7 +61,7 @@ def _get_dataset_params_from_dataset_definitions(dataset_definitions, dataset_na
     cur_dataset_definition = dataset_definitions[dataset_name]
     training_parameters_fields = {k: v for k, v in cur_dataset_definition.items()
                                   if k in DATASET_PARAMETERS_FIELDS()}
-    _make_path_be_abs(training_parameters_fields, dataset_definitions[ROOT_PATH_KEY])
+    make_paths_be_abs(training_parameters_fields, dataset_definitions[ROOT_PATH_KEY])
 
     assert set(DATASET_PARAMETERS_FIELDS()) == set(training_parameters_fields.keys()), \
             f'ERROR: dataset definitions for name={dataset_name} does not contain all required fields'
@@ -124,9 +112,9 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                        'Custom_Object_Detection_Gen3_ATSS',
                     ],
                     dataset_name='bbcd',
-                    num_training_iters=KEEP_CONFIG_FIELD_VALUE(),
-                    batch_size=KEEP_CONFIG_FIELD_VALUE(),
-                    usecase=REALLIFE_USECASE_CONSTANT(),
+                    num_training_iters=KEEP_CONFIG_FIELD_VALUE,
+                    batch_size=KEEP_CONFIG_FIELD_VALUE,
+                    usecase=REALLIFE_USECASE_CONSTANT,
                 ),
         ]
         return deepcopy(test_bunches)
@@ -168,7 +156,7 @@ class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
             if model_name not in template_paths:
                 raise ValueError(f'Model {model_name} is absent in template_paths, '
                                  f'template_paths.keys={list(template_paths.keys())}')
-            template_path = _make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
+            template_path = make_path_be_abs(template_paths[model_name], template_paths[ROOT_PATH_KEY])
 
             logger.debug('training params factory: Before creating dataset and labels_schema')
             dataset, labels_schema = _create_object_detection_dataset_and_labels_schema(dataset_params)
