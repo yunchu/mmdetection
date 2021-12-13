@@ -103,6 +103,21 @@ def nms(boxes, scores, iou_threshold, score_thr=0.0, max_num=-1, offset=0):
     return dets, inds
 
 
+def get_nms_from_type(nms_type: str):
+    """A function to define an NMS operation by NMS type.
+
+    Arguments:
+        nms_type (str): string with nms type (e.g. 'nms').
+
+    Returns:
+        function: NMS function or 'None' if the nms_type is not supported.
+    """
+    nms_op = None
+    if nms_type is 'nms':
+        nms_op = nms
+    return nms_op
+
+
 def batched_nms(boxes, scores, idxs, nms_cfg, class_agnostic=False):
     """Performs non-maximum suppression in a batched fashion.
 
@@ -154,7 +169,7 @@ def batched_nms(boxes, scores, idxs, nms_cfg, class_agnostic=False):
             boxes_for_nms = boxes + offsets[:, None]
 
     nms_type = nms_cfg_.pop('type', 'nms')
-    nms_op = eval(nms_type)
+    nms_op = get_nms_from_type(nms_type)
 
     split_thr = nms_cfg_.pop('split_thr', 10000)
     # Won't split to multiple nms nodes when exporting to onnx
