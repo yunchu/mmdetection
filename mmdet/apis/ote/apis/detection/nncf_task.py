@@ -34,9 +34,10 @@ from ote_sdk.entities.model import (
 from ote_sdk.entities.optimization_parameters import default_progress_callback, OptimizationParameters
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.task_environment import TaskEnvironment
+from ote_sdk.serialization.label_mapper import label_schema_to_bytes
+from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
-from ote_sdk.serialization.label_mapper import label_schema_to_bytes
 
 from mmdet.apis import train_detector
 from mmdet.apis.fake_input import get_fake_input
@@ -102,7 +103,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
         optimization_config = compose_nncf_config(common_nncf_config, [self._nncf_preset])
 
-        max_acc_drop = self._hyperparams.nncf_optimization.maximal_accuracy_degradation
+        max_acc_drop = self._hyperparams.nncf_optimization.maximal_accuracy_degradation / 100
         if "accuracy_aware_training" in optimization_config["nncf_config"]:
             # Update maximal_absolute_accuracy_degradation
             (optimization_config["nncf_config"]["accuracy_aware_training"]
