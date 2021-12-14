@@ -27,7 +27,7 @@ import numpy as np
 import pytest
 import torch
 from bson import ObjectId
-from e2e_test_system import e2e_pytest_api
+from ote_sdk.test_suite.e2e_test_system import e2e_pytest_api
 from ote_sdk.configuration.helper import convert, create
 from ote_sdk.entities.annotation import Annotation, AnnotationSceneEntity, AnnotationSceneKind
 from ote_sdk.entities.dataset_item import DatasetItemEntity
