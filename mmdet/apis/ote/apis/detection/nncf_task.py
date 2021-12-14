@@ -239,6 +239,15 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
         self._is_training = False
 
+    def export(self, export_type: ExportType, output_model: ModelEntity):
+        if self._compression_ctrl is None:
+            super().export(export_type, output_model)
+        else:
+            self._compression_ctrl.prepare_for_export()
+            self._model.disable_dynamic_graph_building()
+            super().export(export_type, output_model)
+            self._model.enable_dynamic_graph_building()
+
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
         hyperparams = self._task_environment.get_hyper_parameters(OTEDetectionConfig)
@@ -256,6 +265,11 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             'confidence_threshold': self.confidence_threshold,
             'VERSION': 1,
         }
+
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                generator = self._model.bbox_head.anchor_generator
+                modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
 
         torch.save(modelinfo, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
