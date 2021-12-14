@@ -33,7 +33,7 @@ from openvino.model_zoo.model_api.models import Model
 from ote_sdk.entities.annotation import AnnotationSceneEntity
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
-from ote_sdk.entities.label import LabelEntity
+from ote_sdk.entities.label_schema import LabelSchemaEntity
 from ote_sdk.entities.model import (
     ModelEntity,
     ModelFormat,
@@ -45,7 +45,7 @@ from ote_sdk.entities.model import (
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.task_environment import TaskEnvironment
-from ote_sdk.serialization.label_mapper import label_schema_to_bytes
+from ote_sdk.serialization.label_mapper import LabelSchemaMapper, label_schema_to_bytes
 from ote_sdk.usecases.evaluation.metrics_helper import MetricsHelper
 from ote_sdk.usecases.exportable_code.inference import BaseInferencer
 from ote_sdk.usecases.exportable_code.prediction_to_annotation_converter import DetectionBoxToAnnotationConverter
@@ -68,7 +68,7 @@ class OpenVINODetectionInferencer(BaseInferencer):
     def __init__(
         self,
         hparams: OTEDetectionConfig,
-        labels: List[LabelEntity],
+        label_schema: LabelSchemaEntity,
         model_file: Union[str, bytes],
         weight_file: Union[str, bytes, None] = None,
         device: str = "CPU",
@@ -78,21 +78,19 @@ class OpenVINODetectionInferencer(BaseInferencer):
         Inferencer implementation for OTEDetection using OpenVINO backend.
 
         :param hparams: Hyper parameters that the model should use.
-        :param labels: List of labels that was used during model training.
+        :param label_schema: LabelSchemaEntity that was used during model training.
         :param model_file: Path OpenVINO IR model definition file.
         :param weight_file: Path OpenVINO IR model weights file.
         :param device: Device to run inference on, such as CPU, GPU or MYRIAD. Defaults to "CPU".
         :param num_requests: Maximum number of requests that the inferencer can make. Defaults to 1.
 
         """
-        self.labels = labels
+
         model_adapter = OpenvinoAdapter(create_core(), model_file, weight_file, device=device, max_num_requests=num_requests)
-        label_names = [label.name for label in self.labels]
         self.configuration = {**attr.asdict(hparams.postprocessing,
-                              filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui']),
-                              'labels': label_names}
+                              filter=lambda attr, value: attr.name not in ['header', 'description', 'type', 'visible_in_ui'])}
         self.model = Model.create_model('ssd', model_adapter, self.configuration, preload=True)
-        self.converter = DetectionBoxToAnnotationConverter(self.labels)
+        self.converter = DetectionBoxToAnnotationConverter(label_schema)
 
     def pre_process(self, image: np.ndarray) -> Tuple[Dict[str, np.ndarray], Dict[str, Any]]:
         return self.model.preprocess(image)
@@ -137,12 +135,11 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         return self.task_environment.get_hyper_parameters(OTEDetectionConfig)
 
     def load_inferencer(self) -> OpenVINODetectionInferencer:
-        labels = self.task_environment.label_schema.get_labels(include_empty=False)
         _hparams = copy.deepcopy(self.hparams)
         self.confidence_threshold = float(np.frombuffer(self.model.get_data("confidence_threshold"), dtype=np.float32)[0])
         _hparams.postprocessing.confidence_threshold = self.confidence_threshold
         return OpenVINODetectionInferencer(_hparams,
-                                           labels,
+                                           self.task_environment.label_schema,
                                            self.model.get_data("openvino.xml"),
                                            self.model.get_data("openvino.bin"))
 
@@ -178,6 +175,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         parameters['type_of_model'] = 'ssd'
         parameters['converter_type'] = 'DETECTION'
         parameters['model_parameters'] = self.inferencer.configuration
+        parameters['model_parameters']['labels'] = LabelSchemaMapper.forward(self.task_environment.label_schema)
         name_of_package = "demo_package"
         with tempfile.TemporaryDirectory() as tempdir:
             copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
