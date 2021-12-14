@@ -14,6 +14,7 @@
 
 import glob
 import io
+import os
 import os.path as osp
 import random
 import time
@@ -222,7 +223,10 @@ class API(unittest.TestCase):
         # stopping process has to happen in less than 35 seconds
         train_future.result()
         self.assertEqual(training_progress_curve[-1], 100)
-        self.assertLess(time.time() - start_time, 100, 'Expected to stop within 100 seconds.')
+        if os.getenv("CUDA_VISIBLE_DEVICES") == "":
+            self.assertLess(time.time() - start_time, 400, 'Expected to stop within 400 seconds.')
+        else:
+            self.assertLess(time.time() - start_time, 100, 'Expected to stop within 100 seconds.')
 
         # Test stopping immediately (as soon as training is started).
         start_time = time.time()
