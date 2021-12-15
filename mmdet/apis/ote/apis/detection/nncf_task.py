@@ -34,9 +34,10 @@ from ote_sdk.entities.model import (
 from ote_sdk.entities.optimization_parameters import default_progress_callback, OptimizationParameters
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.task_environment import TaskEnvironment
+from ote_sdk.serialization.label_mapper import label_schema_to_bytes
+from ote_sdk.usecases.tasks.interfaces.export_interface import ExportType
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import OptimizationType
-from ote_sdk.serialization.label_mapper import label_schema_to_bytes
 
 from mmdet.apis import train_detector
 from mmdet.apis.fake_input import get_fake_input
@@ -102,7 +103,7 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
         optimization_config = compose_nncf_config(common_nncf_config, [self._nncf_preset])
 
-        max_acc_drop = self._hyperparams.nncf_optimization.maximal_accuracy_degradation
+        max_acc_drop = self._hyperparams.nncf_optimization.maximal_accuracy_degradation / 100
         if "accuracy_aware_training" in optimization_config["nncf_config"]:
             # Update maximal_absolute_accuracy_degradation
             (optimization_config["nncf_config"]["accuracy_aware_training"]
@@ -238,6 +239,15 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
 
         self._is_training = False
 
+    def export(self, export_type: ExportType, output_model: ModelEntity):
+        if self._compression_ctrl is None:
+            super().export(export_type, output_model)
+        else:
+            self._compression_ctrl.prepare_for_export()
+            self._model.disable_dynamic_graph_building()
+            super().export(export_type, output_model)
+            self._model.enable_dynamic_graph_building()
+
     def save_model(self, output_model: ModelEntity):
         buffer = io.BytesIO()
         hyperparams = self._task_environment.get_hyper_parameters(OTEDetectionConfig)
@@ -255,6 +265,11 @@ class OTEDetectionNNCFTask(OTEDetectionInferenceTask, IOptimizationTask):
             'confidence_threshold': self.confidence_threshold,
             'VERSION': 1,
         }
+
+        if hasattr(self._config.model, 'bbox_head') and hasattr(self._config.model.bbox_head, 'anchor_generator'):
+            if getattr(self._config.model.bbox_head.anchor_generator, 'reclustering_anchors', False):
+                generator = self._model.bbox_head.anchor_generator
+                modelinfo['anchors'] = {'heights': generator.heights, 'widths': generator.widths}
 
         torch.save(modelinfo, buffer)
         output_model.set_data("weights.pth", buffer.getvalue())
