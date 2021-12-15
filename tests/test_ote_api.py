@@ -236,7 +236,10 @@ class API(unittest.TestCase):
         detection_task.cancel_training()
 
         train_future.result()
-        self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
+        if os.getenv("CUDA_VISIBLE_DEVICES") == "":
+            self.assertLess(time.time() - start_time, 400) 
+        else:
+            self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
 
     @e2e_pytest_api
     def test_training_progress_tracking(self):
