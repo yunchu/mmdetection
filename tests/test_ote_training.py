@@ -170,7 +170,13 @@ class TestOTEReallifeObjectDetection(OTETrainingTestInterface):
                 'batch_size': batch_size,
             }
 
+        def _hpo_params_factory() -> Dict:
+            res = _training_params_factory()
+            res['auto_config'] = (test_parameters['usecase'] == "reallife")
+            return res
+
         params_factories_for_test_actions = {
+            'hpo': _hpo_params_factory,
             'training': _training_params_factory
         }
         logger.debug('params_factories_for_test_actions_fx: end')
