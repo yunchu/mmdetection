@@ -20,6 +20,7 @@ from mmcv.utils import get_logger
 from ote_sdk.configuration.helper import create
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters
+from ote_sdk.entities.label import Domain
 from ote_sdk.entities.label_schema import LabelSchemaEntity
 from ote_sdk.entities.model import ModelEntity, ModelStatus
 from ote_sdk.entities.model_template import parse_model_template
@@ -65,7 +66,7 @@ def load_test_dataset():
         gen_image((640, 480), 0.5, 0.5, 1.0, 1.0),
     ]
     labels = [
-        LabelEntity(name='rect', domain="detection", id=0)
+        LabelEntity(name='rect', domain=Domain.DETECTION, id=0)
     ]
 
     def get_image(i, subset):
