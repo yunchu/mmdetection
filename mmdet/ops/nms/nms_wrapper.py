@@ -113,7 +113,7 @@ def get_nms_from_type(nms_type: str):
         function: NMS function or 'None' if the nms_type is not supported.
     """
     nms_op = None
-    if nms_type is 'nms':
+    if nms_type == 'nms':
         nms_op = nms
     return nms_op
 
