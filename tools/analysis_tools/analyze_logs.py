@@ -163,6 +163,19 @@ def load_json_logs(json_logs):
     return log_dicts
 
 
+def is_task_exist(task_name: str) -> bool:
+    """Checking for the existence of the implementation for the task.
+
+    Arguments:
+        task_name (str): string with task type ('cal_train_time', 'plot_curve').
+
+    Returns:
+        bool: True if 'task_name' is supported. Otherwise, False.
+    """
+    supported_tasks = ['cal_train_time', 'plot_curve']
+    return task_name in supported_tasks
+
+
 def main():
     args = parse_args()
 
@@ -172,7 +185,11 @@ def main():
 
     log_dicts = load_json_logs(json_logs)
 
-    eval(args.task)(log_dicts, args)
+    task_name = args.task
+    if is_task_exist(task_name):
+        eval(task_name)(log_dicts, args)
+    else:
+        raise RuntimeError(f'No function found for task {task_name}.')
 
 
 if __name__ == '__main__':

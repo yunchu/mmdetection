@@ -4,8 +4,8 @@ from mmdet.ops.nms.nms_wrapper import get_nms_from_type
 
 def test_get_nms_op_for_unsupported_type():
     nms_type = 'definitely_not_nms_type'
-    nms_op = get_nms_from_type(nms_type)
-    assert nms_op is None, 'Received not \'None\' from unsupported type.'
+    with pytest.raises(RuntimeError):
+        get_nms_from_type(nms_type)
 
 
 @pytest.mark.parametrize('supported_type', ['nms'])

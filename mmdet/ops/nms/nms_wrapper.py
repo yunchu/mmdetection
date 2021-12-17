@@ -110,11 +110,14 @@ def get_nms_from_type(nms_type: str):
         nms_type (str): string with nms type (e.g. 'nms').
 
     Returns:
-        function: NMS function or 'None' if the nms_type is not supported.
+        function: NMS function or RuntimeError if the nms_type is not supported.
     """
     nms_op = None
     if nms_type == 'nms':
         nms_op = nms
+
+    if nms_op is None:
+        raise RuntimeError(f'No function found for nms type {nms_type}.')
     return nms_op
 
 
