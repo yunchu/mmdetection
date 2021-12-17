@@ -24,7 +24,7 @@
         'metrics.accuracy.f-measure':
                 'target_value': 0.78
                 'max_diff_if_less_threshold': 0.005
-                'max_diff_if_greater_threshold': 0.015
+                'max_diff_if_greater_threshold': 0.03
 'ACTION-export_evaluation,model-Custom_Object_Detection_Gen3_SSD,dataset-bbcd,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
                 'base': 'training_evaluation.metrics.accuracy.f-measure'
@@ -46,7 +46,7 @@
         'metrics.accuracy.f-measure':
                 'target_value': 0.82
                 'max_diff_if_less_threshold': 0.005
-                'max_diff_if_greater_threshold': 0.015
+                'max_diff_if_greater_threshold': 0.03
 'ACTION-export_evaluation,model-Custom_Object_Detection_Gen3_ATSS,dataset-weed-coco,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
                 'base': 'training_evaluation.metrics.accuracy.f-measure'
@@ -66,9 +66,9 @@
 
 'ACTION-training_evaluation,model-Custom_Object_Detection_Gen3_SSD,dataset-weed-coco,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
-                'target_value': 0.60
+                'target_value': 0.69
                 'max_diff_if_less_threshold': 0.005
-                'max_diff_if_greater_threshold': 0.015
+                'max_diff_if_greater_threshold': 0.03
 'ACTION-export_evaluation,model-Custom_Object_Detection_Gen3_SSD,dataset-weed-coco,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
                 'base': 'training_evaluation.metrics.accuracy.f-measure'
