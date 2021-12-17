@@ -112,7 +112,7 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                        'Custom_Object_Detection_Gen3_ATSS',
                        'Custom_Object_Detection_Gen3_SSD',
                     ],
-                    dataset_name=['bbcd', 'dice'],
+                    dataset_name=['bbcd', 'aerial'],
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE,
                     batch_size=KEEP_CONFIG_FIELD_VALUE,
                     usecase=REALLIFE_USECASE_CONSTANT,
