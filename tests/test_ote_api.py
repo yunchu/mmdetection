@@ -224,9 +224,10 @@ class API(unittest.TestCase):
         train_future.result()
         self.assertEqual(training_progress_curve[-1], 100)
         if os.getenv("CUDA_VISIBLE_DEVICES") == "":
-            self.assertLess(time.time() - start_time, 400, 'Expected to stop within 400 seconds.')
+            stop_timeout = 400
         else:
-            self.assertLess(time.time() - start_time, 100, 'Expected to stop within 100 seconds.')
+            stop_timeout = 100
+        self.assertLess(time.time() - start_time, stop_timeout, f'Expected to stop within {stop_timeout} seconds.')
 
         # Test stopping immediately (as soon as training is started).
         start_time = time.time()
@@ -237,9 +238,11 @@ class API(unittest.TestCase):
 
         train_future.result()
         if os.getenv("CUDA_VISIBLE_DEVICES") == "":
-            self.assertLess(time.time() - start_time, 400) 
+            stop_process_timeout = 400
         else:
-            self.assertLess(time.time() - start_time, 25)  # stopping process has to happen in less than 25 seconds
+            stop_process_timeout = 25
+        self.assertLess(time.time() - start_time, stop_process_timeout, f'Expected to stop within {stop_process_timeout} seconds.')
+
 
     @e2e_pytest_api
     def test_training_progress_tracking(self):
