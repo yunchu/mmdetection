@@ -112,7 +112,7 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                        'Custom_Object_Detection_Gen3_ATSS',
                        'Custom_Object_Detection_Gen3_SSD',
                     ],
-                    dataset_name=['bbcd', 'vitens'],
+                    dataset_name=['bbcd', 'diopsis'],
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE,
                     batch_size=KEEP_CONFIG_FIELD_VALUE,
                     usecase=REALLIFE_USECASE_CONSTANT,
