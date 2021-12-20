@@ -19,6 +19,7 @@ import os
 import os.path as osp
 import torch
 import unittest
+import pytest
 from ote_sdk.test_suite.e2e_test_system import e2e_pytest_api
 from mmcv.parallel import MMDataParallel
 from subprocess import run
@@ -98,6 +99,7 @@ class TestInference(unittest.TestCase):
             f'annotations/instances_val2017_short_to_{cls.shorten_to}.json')
         cls.shorten_annotation(cls.src_anno, cls.dst_anno, cls.shorten_to)
 
+    @pytest.mark.bugs("CVS-74364 - [OTE] mmdetection test_ote_inference.py::TestInference::test_inference faild when running on cpu")
     @e2e_pytest_api
     def test_inference(self):
         for cfg, device in itertools.product(MODEL_CONFIGS, DEVICES):
