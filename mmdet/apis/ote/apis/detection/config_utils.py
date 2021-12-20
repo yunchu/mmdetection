@@ -99,8 +99,7 @@ def patch_config(config: Config, work_dir: str, labels: List[LabelEntity], rando
     config.checkpoint_config.max_keep_ckpts = 5
     config.checkpoint_config.interval = config.evaluation.get('interval', 1)
 
-    label_names = [lab.name for lab in labels]
-    set_data_classes(config, label_names)
+    set_data_classes(config, labels)
 
     config.gpu_ids = range(1)
     config.work_dir = work_dir
@@ -178,11 +177,15 @@ def config_to_string(config: Config) -> str:
     config_copy = copy.deepcopy(config)
     # Clean config up by removing dataset as this causes the pretty text parsing to fail.
     config_copy.data.test.ote_dataset = None
+    config_copy.data.test.labels = None
     config_copy.data.val.ote_dataset = None
+    config_copy.data.val.labels = None
     if 'ote_dataset' in config_copy.data.train:
         config_copy.data.train.ote_dataset = None
+        config_copy.data.train.labels = None
     else:
         config_copy.data.train.dataset.ote_dataset = None
+        config_copy.data.train.dataset.labels = None
     return Config(config_copy).pretty_text
 
 
@@ -218,22 +221,22 @@ def prepare_work_dir(config: Config) -> str:
         config.runner.meta = ConfigDict()
     config.runner.meta.exp_name = f"train_round_{len(checkpoint_dirs)}"
     # Save training config for debugging. It is saved in the checkpoint dir for this training round.
-    save_config_to_file(config)
+    # save_config_to_file(config)
     return train_round_checkpoint_dir
 
 
-def set_data_classes(config: Config, label_names: List[str]):
+def set_data_classes(config: Config, labels: List[LabelEntity]):
     # Save labels in data configs.
     for subset in ('train', 'val', 'test'):
         cfg = config.data[subset]
         if cfg.type == 'RepeatDataset':
-            cfg.dataset.classes = label_names
+            cfg.dataset.labels = labels
         else:
-            cfg.classes = label_names
-        config.data[subset].classes = label_names
+            cfg.labels = labels
+        config.data[subset].labels = labels
 
     # Set proper number of classes in model's detection heads.
-    num_classes = len(label_names)
+    num_classes = len(labels)
     if 'roi_head' in config.model:
         if isinstance(config.model.roi_head.bbox_head, List):
             for head in config.model.roi_head.bbox_head:
@@ -267,6 +270,7 @@ def patch_datasets(config: Config):
             cfg = cfg.dataset
         cfg.type = 'OTEDataset'
         cfg.ote_dataset = None
+        cfg.labels = None
         remove_from_config(cfg, 'ann_file')
         remove_from_config(cfg, 'img_prefix')
         for pipeline_step in cfg.pipeline:

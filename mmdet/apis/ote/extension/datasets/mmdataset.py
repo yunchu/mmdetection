@@ -18,20 +18,21 @@ from typing import List
 import numpy as np
 from ote_sdk.entities.dataset_item import DatasetItemEntity
 from ote_sdk.entities.datasets import DatasetEntity
-from ote_sdk.entities.shapes.rectangle import Rectangle
+from ote_sdk.entities.label import Domain, LabelEntity
+from ote_sdk.utils.shape_factory import ShapeFactory
 
 from mmdet.datasets.builder import DATASETS
 from mmdet.datasets.custom import CustomDataset
 from mmdet.datasets.pipelines import Compose
 
 
-def get_annotation_mmdet_format(dataset_item: DatasetItemEntity, label_list: List[str]) -> dict:
+def get_annotation_mmdet_format(dataset_item: DatasetItemEntity, labels: List[LabelEntity]) -> dict:
     """
     Function to convert a OTE annotation to mmdetection format. This is used both in the OTEDataset class defined in
     this file as in the custom pipeline element 'LoadAnnotationFromOTEDataset'
 
     :param dataset_item: DatasetItem for which to get annotations
-    :param label_list: List of label names in the project
+    :param labels: List of labels that are used in the task
     :return dict: annotation information dict in mmdet format
     """
     width, height = dataset_item.width, dataset_item.height
@@ -40,30 +41,32 @@ def get_annotation_mmdet_format(dataset_item: DatasetItemEntity, label_list: Lis
     gt_bboxes = []
     gt_labels = []
 
-    for ann in dataset_item.get_annotations():
-        box = ann.shape
-        if not isinstance(box, Rectangle):
-            continue
+    label_idx = {label.id: i for i, label in enumerate(labels)}
 
-        gt_bboxes.append([box.x1 * width, box.y1 * height, box.x2 * width, box.y2 * height])
+    for annotation in dataset_item.get_annotations(labels=labels, include_empty=False):
 
-        if ann.get_labels():
-            # Label is not empty, add it to the gt labels
-            label = ann.get_labels()[0]
-            class_name = label.name
-            gt_labels.append(label_list.index(class_name))
-            is_empty_label = False
-        else:
-            is_empty_label = True
+        box = ShapeFactory.shape_as_rectangle(annotation.shape)
 
-    if not ((len(gt_bboxes) == 1) and is_empty_label):
+        class_indices = [
+            label_idx[label.id]
+            for label in annotation.get_labels(include_empty=False)
+            if label.domain == Domain.DETECTION
+        ]
+
+        n = len(class_indices)
+        gt_bboxes.extend([[box.x1 * width, box.y1 * height, box.x2 * width, box.y2 * height] for _ in range(n)])
+        gt_labels.extend(class_indices)
+
+    if len(gt_bboxes) > 0:
         ann_info = dict(
             bboxes=np.array(gt_bboxes, dtype=np.float32).reshape(-1, 4),
-            labels=np.array(gt_labels, dtype=int)
+            labels=np.array(gt_labels, dtype=int),
         )
     else:
-        ann_info = dict(bboxes=np.array([0, 0, 0, 0], dtype=np.float32).reshape(-1, 4),
-                        labels=np.array([-1], dtype=int))
+        ann_info = dict(
+            bboxes=np.array([0, 0, 0, 0], dtype=np.float32).reshape(-1, 4),
+            labels=np.array([-1], dtype=int),
+        )
     return ann_info
 
 
@@ -88,9 +91,9 @@ class OTEDataset(CustomDataset):
         forwards data access operations to ote_dataset and converts the dataset items to the view
         convenient for mmdetection.
         """
-        def __init__(self, ote_dataset, classes):
+        def __init__(self, ote_dataset, labels):
             self.ote_dataset = ote_dataset
-            self.CLASSES = classes
+            self.labels = labels
 
         def __len__(self):
             return len(self.ote_dataset)
@@ -108,14 +111,15 @@ class OTEDataset(CustomDataset):
             height, width = item.height, item.width
 
             data_info = dict(dataset_item=item, width=width, height=height, index=index,
-                             ann_info=dict(label_list=self.CLASSES))
+                             ann_info=dict(label_list=self.labels))
 
             return data_info
 
-    def __init__(self, ote_dataset: DatasetEntity, pipeline, classes=None, test_mode: bool = False):
+    def __init__(self, ote_dataset: DatasetEntity, labels: List[LabelEntity], pipeline, test_mode: bool = False):
         self.ote_dataset = ote_dataset
+        self.labels = labels
+        self.CLASSES = list(label.name for label in labels)
         self.test_mode = test_mode
-        self.CLASSES = self.get_classes(classes)
 
         # Instead of using list data_infos as in CustomDataset, this implementation of dataset
         # uses a proxy class with overriden __len__ and __getitem__; this proxy class
@@ -125,7 +129,7 @@ class OTEDataset(CustomDataset):
         # even if we need only checking aspect ratio of the image; due to it
         # this implementation of dataset does not uses such tricks as skipping images with wrong aspect ratios or
         # small image size, since otherwise reading the whole dataset during initialization will be required.
-        self.data_infos = OTEDataset._DataInfoProxy(ote_dataset, self.CLASSES)
+        self.data_infos = OTEDataset._DataInfoProxy(ote_dataset, labels)
 
         self.proposals = None  # Attribute expected by mmdet but not used for OTE datasets
 
@@ -189,8 +193,5 @@ class OTEDataset(CustomDataset):
         :return ann_info: dict that contains the coordinates of the bboxes and their corresponding labels
         """
         dataset_item = self.ote_dataset[idx]
-        label_list = self.CLASSES
-        if label_list is None:
-            # For RepeatDataset wrapper.
-            label_list = self.dataset.CLASSES
-        return get_annotation_mmdet_format(dataset_item, label_list)
+        labels = self.labels
+        return get_annotation_mmdet_format(dataset_item, labels)

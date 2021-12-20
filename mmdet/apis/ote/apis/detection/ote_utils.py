@@ -21,7 +21,7 @@ from typing import Callable, Union
 import numpy as np
 import yaml
 from ote_sdk.entities.color import Color
-from ote_sdk.entities.label import LabelEntity
+from ote_sdk.entities.label import Domain, LabelEntity
 from ote_sdk.entities.label_schema import LabelGroup, LabelGroupType, LabelSchemaEntity
 from ote_sdk.entities.train_parameters import UpdateProgressCallback
 from ote_sdk.usecases.reporting.time_monitor_callback import TimeMonitorCallback
@@ -69,7 +69,7 @@ class ColorPalette:
 
 
 def generate_label_schema(label_names):
-    label_domain = "detection"
+    label_domain = Domain.DETECTION
     colors = ColorPalette(len(label_names)) if len(label_names) > 0 else []
     not_empty_labels = [LabelEntity(name=name, color=colors[i], domain=label_domain, id=i) for i, name in
                         enumerate(label_names)]
