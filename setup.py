@@ -1,20 +1,20 @@
 #!/usr/bin/env python
 import os
+from os.path import join
 from setuptools import find_packages, setup
 
 import torch
 from torch.utils.cpp_extension import (BuildExtension, CppExtension,
                                        CUDAExtension)
 
+root = os.path.dirname(os.path.realpath(__file__))
 
 def readme():
-    with open('README.md', encoding='utf-8') as f:
+    with open(join(root, 'README.md'), encoding='utf-8') as f:
         content = f.read()
     return content
 
-
-version_file = 'mmdet/version.py'
-
+version_file = join(root, 'mmdet/version.py')
 
 def get_version():
     with open(version_file, 'r') as f:
@@ -64,7 +64,7 @@ def parse_requirements(fname='requirements.txt', with_version=True):
     import sys
     from os.path import exists
     import re
-    require_fpath = fname
+    require_fpath = join(root, fname)
 
     def parse_line(line):
         """Parse information from a line in a requirements text file."""
