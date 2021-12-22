@@ -1,4 +1,4 @@
-# OTEDetection
+# MMDetection
 
 ![](https://img.shields.io/badge/python-3.6%2B-green)
 ![](https://img.shields.io/badge/pytorch-1.7.1%2B-orange)

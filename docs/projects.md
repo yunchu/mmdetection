@@ -9,7 +9,7 @@ Pull requests are also welcomed.
 Some projects extend the boundary of MMDetection for deployment or other research fields.
 They reveal the potential of what MMDetection can do. We list several of them as below.
 
-- [OTEDetection](https://github.com/opencv/mmdetection): OpenVINO training extensions for object detection.
+- [OTEDetection](https://github.com/openvinotoolkit/mmdetection): OpenVINO training extensions for object detection.
 - [MMDetection3d](https://github.com/open-mmlab/mmdetection3d): OpenMMLab's next-generation platform for general 3D object detection.
 
 ## Projects of papers

@@ -129,7 +129,7 @@ if __name__ == '__main__':
     setup(
         name='mmdet',
         version=get_version(),
-        description='OpenVINO Training Extensions Object Detection toolbox',
+        description='MMDetection Object Detection toolbox',
         long_description=readme(),
         long_description_content_type='text/markdown',
         author='OpenMMLab, Intel',

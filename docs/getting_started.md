@@ -1,6 +1,6 @@
 # Getting Started
 
-This page provides basic tutorials about the usage of OTEDetection.
+This page provides basic tutorials about the usage of MMDetection.
 For installation instructions, please see [install.md](install.md).
 
 # Table of contents
@@ -280,7 +280,7 @@ Difference between `resume-from` and `load-from`:
 
 ### Train with multiple machines
 
-If you run OTEDetection on a cluster managed with [slurm](https://slurm.schedmd.com/), you can use the script `slurm_train.sh`. (This script also supports single machine training.)
+If you run MMDetection on a cluster managed with [slurm](https://slurm.schedmd.com/), you can use the script `slurm_train.sh`. (This script also supports single machine training.)
 
 ```shell
 [GPUS=${GPUS}] ./tools/slurm_train.sh ${PARTITION} ${JOB_NAME} ${CONFIG_FILE} ${WORK_DIR}
