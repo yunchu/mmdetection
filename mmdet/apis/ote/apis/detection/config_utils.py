@@ -111,6 +111,11 @@ def set_hyperparams(config: Config, hyperparams: OTEDetectionConfig):
     config.lr_config.warmup_iters = int(hyperparams.learning_parameters.learning_rate_warmup_iters)
     config.data.samples_per_gpu = int(hyperparams.learning_parameters.batch_size)
     config.data.workers_per_gpu = int(hyperparams.learning_parameters.num_workers)
+    if 'custom_hooks' in config:
+        for h in config.custom_hooks:
+            if h['type'] == 'EarlyStoppingHook':
+                h.patience = int(hyperparams.learning_parameters.patience)
+                h.iteration_patience = int(hyperparams.learning_parameters.iteration_patience)
     total_iterations = int(hyperparams.learning_parameters.num_iters)
     if is_epoch_based_runner(config.runner):
         config.runner.max_epochs = total_iterations

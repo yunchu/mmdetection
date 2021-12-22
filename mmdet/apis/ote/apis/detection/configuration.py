@@ -78,6 +78,24 @@ class OTEDetectionConfig(ConfigurableParameters):
             affects_outcome_of=ModelLifecycle.TRAINING
         )
 
+        patience = configurable_integer(
+            default_value=5,
+            min_value=0,
+            max_value=100,
+            header="Early Stopping Patience",
+            description="",
+            affects_outcome_of=ModelLifecycle.TRAINING
+        )
+
+        iteration_patience = configurable_integer(
+            default_value=1000,
+            min_value=0,
+            max_value=5000,
+            header="Early Stopping Iteration Patience",
+            description="",
+            affects_outcome_of=ModelLifecycle.TRAINING
+        )
+
         num_workers = configurable_integer(
             default_value=4,
             min_value=0,

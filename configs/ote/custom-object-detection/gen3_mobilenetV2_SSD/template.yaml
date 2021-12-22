@@ -34,6 +34,10 @@ hyper_parameters:
         default_value: 200
       num_iters:
         default_value: 300
+      patience:
+        default_value: 10
+      iteration_patience:
+        default_value: 500
     nncf_optimization:
       enable_quantization:
         default_value: true

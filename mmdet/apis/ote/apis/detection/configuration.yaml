@@ -76,6 +76,42 @@ learning_parameters:
     value: 1
     visible_in_ui: true
     warning: null
+  patience:
+    affects_outcome_of: TRAINING
+    default_value: 5
+    description: Increasing this value will speed up training convergence but might
+      make it unstable.
+    editable: true
+    header: Early Stopping Patience
+    max_value: 100
+    min_value: 0
+    type: INTEGER
+    ui_rules:
+      action: DISABLE_EDITING
+      operator: AND
+      rules: []
+      type: UI_RULES
+    value: 5
+    visible_in_ui: true
+    warning: null
+  iteration_patience:
+    affects_outcome_of: TRAINING
+    default_value: 1000
+    description: Increasing this value will speed up training convergence but might
+      make it unstable.
+    editable: true
+    header: Early Stopping Iteration Patience
+    max_value: 5000
+    min_value: 0
+    type: INTEGER
+    ui_rules:
+      action: DISABLE_EDITING
+      operator: AND
+      rules: []
+      type: UI_RULES
+    value: 1000
+    visible_in_ui: true
+    warning: null
   num_workers:
     affects_outcome_of: NONE
     default_value: 4
