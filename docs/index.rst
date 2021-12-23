@@ -1,4 +1,4 @@
-Welcome to OTEDetection's documentation!
+Welcome to MMDetection's documentation!
 =======================================
 
 .. toctree::

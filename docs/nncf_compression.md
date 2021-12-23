@@ -2,14 +2,14 @@
 
 ## General description
 
-OTEDetection allows making compression of the models by
+MMDetection allows making compression of the models by
 [NNCF (Neural Network Compression Framework)](https://github.com/openvinotoolkit/nncf/).
 
-The work of OTEDetection is validated with [**NNCF 2.0.0**](https://github.com/openvinotoolkit/nncf/tree/release_v200).
+The work of MMDetection is validated with [**NNCF 2.0.0**](https://github.com/openvinotoolkit/nncf/tree/release_v200).
 Please, use this version of NNCF in case of any issues.
 
 NNCF supports multiple compression algorithms but at the moment the following algorithms can be
-used in OTEDetection:
+used in MMDetection:
 * [int8 quantization](https://github.com/openvinotoolkit/nncf/blob/develop/docs/compression_algorithms/Quantization.md)
 * [filter pruning](https://github.com/openvinotoolkit/nncf/blob/develop/docs/compression_algorithms/Pruning.md)
 
@@ -26,19 +26,19 @@ The result of such fine-tuning is a compressed model that may be exported to Ope
 
 ## Installation of NNCF requirements
 
-Please, note that OTEDetection does not require NNCF framework to be installed for
+Please, note that MMDetection does not require NNCF framework to be installed for
 usual training (without compression).
 
 If you want to compress models using NNCF, you can install NNCF together with
 all the packages required for NNCF by the command
 `pip install -r requirements/nncf_compression.txt`.
 
-## Integration of NNCF into OTEDetection
+## Integration of NNCF into MMDetection
 
-Integration of OTEDetection with NNCF framework is made in a transparent way:
+Integration of MMDetection with NNCF framework is made in a transparent way:
 
 * If NNCF parameters are not set in the config file, the NNCF framework is not used and the
-  OTEDetection will work "in a normal way", no matter if NNCF is installed or is not.
+  MMDetection will work "in a normal way", no matter if NNCF is installed or is not.
 
 * If the config file of a model contains a parameter `nncf_config`, and the parameter is a non-empty dict,
   NNCF will be used for the model compression:  
@@ -77,7 +77,7 @@ Also you can see parameters of different NNCF compression algorithms in the
 
 You can see the examples of the config files in the folder [configs/nncf_compression](../configs/nncf_compression).
 
-## Typical pipeline of NNCF compression with OTEDetection. How to start/resume NNCF compression.
+## Typical pipeline of NNCF compression with MMDetection. How to start/resume NNCF compression.
 
 Typically, the pipeline of compression with NNCF looks as follows:
 
@@ -133,7 +133,7 @@ possible, so `nncf_compress_postprocessing=True` is our primary choice, whereas
 When we manage to enable NNCF compression for sufficiently many models,
 we will keep one choice only.
 
-## Code of integration NNCF into OTEDetection
+## Code of integration NNCF into MMDetection
 
-The code connecting NNCF framework with OTEDetection is placed in the folder
+The code connecting NNCF framework with MMDetection is placed in the folder
 [mmdet/integration/nncf/](../mmdet/integration/nncf/).
