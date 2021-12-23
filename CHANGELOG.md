@@ -2,7 +2,7 @@
 
 All notable changes to this project will be documented in this file.
 
-This project is based on MMDetection project by OpenMMLab
+This project is based on MMDetection project by OpenMMLab.
 
 With respect to it we made the following changes.
 
@@ -12,7 +12,8 @@ With respect to it we made the following changes.
 * OTE SDK Task interface implementation
 * OpenVINO export including alternative export for SSD models
 * Models, datasets, metrics for text detection and recognition
-* Model compression posibility by NNCF and config examples
+* Backbones from pytorchcv and EfficientDet architecture
+* Model compression possibility by NNCF and config examples
 * Configuration files for
   * custom object detection
   * face detection
@@ -21,7 +22,6 @@ With respect to it we made the following changes.
   * person-vehicle-bike detection
   * vehicle detection
 * Extra augmentstions and transforms, ReduceOnPlateau LR scheduler, early stopping hook
-* Backbones from pytorchcv and EfficientDet architecture
 * Extra tool scripts for
   * COCO dataset visualization and filtration
   * clustering anchor boxes for SSD anchor generator
