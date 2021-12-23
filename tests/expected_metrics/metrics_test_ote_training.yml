@@ -40,7 +40,7 @@
 'ACTION-nncf_export_evaluation,model-Custom_Object_Detection_Gen3_SSD,dataset-bbcd,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
                 'base': 'training_evaluation.metrics.accuracy.f-measure'
-                'max_diff': 0.01
+                'max_diff': 0.017
 
 'ACTION-training_evaluation,model-Custom_Object_Detection_Gen3_ATSS,dataset-weed-coco,num_iters-KEEP_CONFIG_FIELD_VALUE,batch-KEEP_CONFIG_FIELD_VALUE,usecase-reallife':
         'metrics.accuracy.f-measure':
