@@ -1,3 +1,9 @@
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 from .darknet import Darknet
 from .detectors_resnet import DetectoRS_ResNet
 from .detectors_resnext import DetectoRS_ResNeXt
