@@ -8,6 +8,9 @@
 # Copyright (C) 2020-2021 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
+# Is based on
+# * https://github.com/open-mmlab/mmcv/blob/master/mmcv/ops/nms.py
+
 import numpy as np
 import sys
 import torch

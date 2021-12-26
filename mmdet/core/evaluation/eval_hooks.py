@@ -4,6 +4,10 @@
 # Copyright (C) 2020-2021 Intel Corporation
 # SPDX-License-Identifier: Apache-2.0
 #
+
+# Is based on
+# * https://github.com/open-mmlab/mmcv/blob/master/mmcv/runner/hooks/evaluation.py
+
 import os
 import os.path as osp
 import torch.distributed as dist
