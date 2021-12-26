@@ -1,3 +1,6 @@
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import pytest
 from mmdet.ops.nms.nms_wrapper import get_nms_from_type
 

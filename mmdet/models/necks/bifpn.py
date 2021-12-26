@@ -1,3 +1,10 @@
+# Copyright (C) 2020 Ross Wightman
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # Based off of github.com/rwightman/efficientdet-pytorch
 
 import itertools

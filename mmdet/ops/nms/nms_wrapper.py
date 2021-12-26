@@ -1,3 +1,15 @@
+# Copyright (C) 2016 Soumith Chintala
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+# Is based on
+# * https://github.com/open-mmlab/mmcv/blob/master/mmcv/ops/nms.py
+
 import numpy as np
 import sys
 import torch

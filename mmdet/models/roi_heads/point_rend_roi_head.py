@@ -1,3 +1,13 @@
+# Copyright (C) 2020 Facebook
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
+
 # Modified from https://github.com/facebookresearch/detectron2/tree/master/projects/PointRend  # noqa
 
 import torch

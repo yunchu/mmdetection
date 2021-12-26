@@ -1,4 +1,12 @@
-# Copyright (c) Open-MMLab. All rights reserved.
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2016-2021 Facebook, Inc
+# SPDX-License-Identifier: BSD-3-Clause
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import torch
 from mmcv.parallel.data_container import DataContainer
 from mmcv.parallel import MMDataParallel
