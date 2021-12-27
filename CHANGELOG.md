@@ -2,11 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
-This project is based on MMDetection project by OpenMMLab.
+This project is based on [MMDetection project by OpenMMLab](https://github.com/open-mmlab/mmdetection).
 
 With respect to it we made the following changes.
 
-## \[Unreleased\]
+## \[2021-12-27\]
 ### Added
 
 * OTE SDK Task interface implementation
