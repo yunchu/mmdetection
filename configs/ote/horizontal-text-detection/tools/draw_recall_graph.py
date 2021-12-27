@@ -19,7 +19,7 @@
 
 import argparse
 from os.path import exists
-import subprocess
+import subprocess  # nosec
 
 import mmcv
 

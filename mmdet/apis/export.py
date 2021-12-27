@@ -14,7 +14,7 @@
 
 import os.path as osp
 from packaging import version
-from subprocess import DEVNULL, CalledProcessError, run
+from subprocess import DEVNULL, CalledProcessError, run  # nosec
 
 import mmcv
 import onnx

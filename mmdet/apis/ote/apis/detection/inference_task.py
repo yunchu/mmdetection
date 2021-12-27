@@ -18,7 +18,7 @@ import os
 import shutil
 import tempfile
 import warnings
-from subprocess import run
+from subprocess import run  # nosec
 from typing import List, Optional, Tuple
 
 import numpy as np

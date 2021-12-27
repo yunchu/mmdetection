@@ -21,7 +21,7 @@ import torch
 import unittest
 from ote_sdk.test_suite.e2e_test_system import e2e_pytest_api
 from mmcv.parallel import MMDataParallel
-from subprocess import run
+from subprocess import run  # nosec
 
 from mmdet.apis import init_detector, single_gpu_test
 from mmdet.datasets import build_dataloader, build_dataset

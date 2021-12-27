@@ -18,7 +18,7 @@ import os.path as osp
 import sys
 import unittest
 from shutil import copy2 as copy
-from subprocess import run, CalledProcessError, PIPE
+from subprocess import run, CalledProcessError, PIPE  # nosec
 
 from mmcv import Config
 

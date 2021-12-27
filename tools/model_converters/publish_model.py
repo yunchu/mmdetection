@@ -1,5 +1,5 @@
 import argparse
-import subprocess
+import subprocess  # nosec
 
 import torch
 

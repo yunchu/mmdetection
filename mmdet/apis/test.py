@@ -5,7 +5,7 @@
 # SPDX-License-Identifier: Apache-2.0
 #
 import os.path as osp
-import pickle
+import pickle  # nosec
 import shutil
 import tempfile
 import time

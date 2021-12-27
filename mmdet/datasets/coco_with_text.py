@@ -8,7 +8,7 @@ import logging
 import numpy as np
 import os
 import string
-import subprocess
+import subprocess  # nosec
 import tempfile
 from mmcv.utils import print_log
 from pycocotools.cocoeval import COCOeval
