@@ -110,11 +110,9 @@ class TrainingProgressCallback(TimeMonitorCallback):
         score = None
         if hasattr(self.update_progress_callback, 'metric') and isinstance(logs, dict):
             score = logs.get(self.update_progress_callback.metric, None)
-            if isinstance(score, int):
-                score = float(score)
         # Workaround for NNCF trainer, which uses callback of a different type.
         if score is not None:
-            self.update_progress_callback(self.get_progress(), score=score)
+            self.update_progress_callback(self.get_progress(), score=float(score))
         else:
             self.update_progress_callback(int(self.get_progress()))
 
