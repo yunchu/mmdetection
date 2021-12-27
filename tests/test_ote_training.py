@@ -116,7 +116,11 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                         'bbcd',
                         'weed-coco',
                         'pcd',
-                        'aerial'
+                        'aerial',
+                        'dice',
+                        'fish',
+                        'vitens',
+                        'diopsis',
                     ],
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE,
                     batch_size=KEEP_CONFIG_FIELD_VALUE,
