@@ -106,22 +106,17 @@ class TrainingProgressCallback(TimeMonitorCallback):
 
     def on_epoch_end(self, epoch, logs=None):
         self.past_epoch_duration.append(time.time() - self.start_epoch_time)
-        self.__calculate_average_epoch()
+        self._calculate_average_epoch()
         score = None
         if hasattr(self.update_progress_callback, 'metric') and isinstance(logs, dict):
             score = logs.get(self.update_progress_callback.metric, None)
+            if isinstance(score, int):
+                score = float(score)
         # Workaround for NNCF trainer, which uses callback of a different type.
         if score is not None:
             self.update_progress_callback(self.get_progress(), score=score)
         else:
             self.update_progress_callback(int(self.get_progress()))
-
-    def __calculate_average_epoch(self):
-        if len(self.past_epoch_duration) > self.epoch_history:
-            del self.past_epoch_duration[0]
-        self.average_epoch = sum(self.past_epoch_duration) / len(
-            self.past_epoch_duration
-        )
 
 
 class InferenceProgressCallback(TimeMonitorCallback):
