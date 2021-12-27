@@ -12,7 +12,7 @@ some instructions
 import argparse
 import json
 import os
-import subprocess
+import subprocess  # nosec
 
 import mmcv
 import torch
