@@ -115,7 +115,8 @@ class ObjectDetectionTrainingTestParameters(DefaultOTETestCreationParametersInte
                     dataset_name=[
                         'bbcd',
                         'weed-coco',
-                        'pcd'
+                        'pcd',
+                        'aerial'
                     ],
                     num_training_iters=KEEP_CONFIG_FIELD_VALUE,
                     batch_size=KEEP_CONFIG_FIELD_VALUE,
