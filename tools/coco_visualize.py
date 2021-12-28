@@ -46,7 +46,7 @@ def generate_distinct_colors(n):
     candidates_num = 100
     hsv_colors = [(1.0, 1.0, 1.0)]
     for i in range(1, n):
-        colors_candidates = [(random.random(), random.uniform(0.8, 1.0), random.uniform(0.5, 1.0)) 
+        colors_candidates = [(random.random(), random.uniform(0.8, 1.0), random.uniform(0.5, 1.0))   # nosec  # noqa
                              for _ in range(candidates_num)]
         min_distances = [min_distance(hsv_colors, c) for c in colors_candidates]
         arg_max = np.argmax(min_distances)
