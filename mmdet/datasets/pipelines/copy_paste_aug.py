@@ -181,7 +181,7 @@ class CopyPaste:
             results['copy_paste'] = self.rotate(results['copy_paste'])
         # Get random objects from the image
         objects_num = results['copy_paste']['gt_labels'].shape[0]
-        random_num = random.randint(0, objects_num)
+        random_num = random.randint(0, objects_num)  # nosec
         all_nums = list(range(objects_num))
         objects_inds = random.sample(all_nums, random_num) if not self.copy_all else all_nums
         # If list of randomly selected objects is empty do nothing
