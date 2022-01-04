@@ -3,7 +3,7 @@ import glob
 import json
 import os.path as osp
 import shutil
-import subprocess
+import subprocess  # nosec
 
 import mmcv
 import torch

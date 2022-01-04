@@ -1,3 +1,6 @@
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import collections
 import copy
 import editdistance
@@ -5,7 +8,7 @@ import logging
 import numpy as np
 import os
 import string
-import subprocess
+import subprocess  # nosec
 import tempfile
 from mmcv.utils import print_log
 from pycocotools.cocoeval import COCOeval

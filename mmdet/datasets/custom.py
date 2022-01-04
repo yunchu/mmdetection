@@ -1,3 +1,9 @@
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import os.path as osp
 import warnings
 from collections import OrderedDict
@@ -224,9 +230,9 @@ class CustomDataset(Dataset):
         self.pre_pipeline(results)
 
         if self.copy_paste_aug_used:
-            copy_paste_idx = randrange(len(self))
+            copy_paste_idx = randrange(len(self))  # nosec
             while copy_paste_idx == idx:
-                copy_paste_idx = randrange(len(self))
+                copy_paste_idx = randrange(len(self))  # nosec
             copy_paste_img_info = self.data_infos[copy_paste_idx]
             copy_paste_ann_info = self.get_ann_info(copy_paste_idx)
             results['copy_paste'] = dict(img_info=copy_paste_img_info, ann_info=copy_paste_ann_info)

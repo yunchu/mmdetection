@@ -14,7 +14,7 @@
 
 import os.path as osp
 from packaging import version
-from subprocess import DEVNULL, CalledProcessError, run
+from subprocess import DEVNULL, CalledProcessError, run  # nosec
 
 import mmcv
 import onnx
@@ -127,7 +127,7 @@ def add_node_names(export_name):
 def _get_mo_cmd():
     for mo_cmd in ('mo', 'mo.py'):
         try:
-            run(f'{mo_cmd} -h', stdout=DEVNULL, stderr=DEVNULL, shell=True, check=True)
+            run([mo_cmd, '-h'], stdout=DEVNULL, stderr=DEVNULL, check=True)
             return mo_cmd
         except CalledProcessError:
             pass
@@ -155,37 +155,40 @@ def export_to_openvino(cfg, onnx_model_path, output_dir_path, input_shape=None,
 
     mean_values = normalize['mean']
     scale_values = normalize['std']
-    command_line = f'{mo_cmd} --input_model="{onnx_model_path}" ' \
-                   f'--mean_values="{mean_values}" ' \
-                   f'--scale_values="{scale_values}" ' \
-                   f'--output_dir="{output_dir_path}" ' \
-                   f'--output="{output_names}" ' \
-                   f'--data_type {precision}'
+    command_line = [mo_cmd,
+                    f'--input_model={onnx_model_path}',
+                    f'--mean_values={mean_values}',
+                    f'--scale_values={scale_values}',
+                    f'--output_dir={output_dir_path}',
+                    f'--output={output_names}',
+                    f'--data_type={precision}']
 
     assert input_format.lower() in ['bgr', 'rgb']
 
     if input_shape is not None:
-        command_line += f' --input_shape="{input_shape}"'
+        command_line.append(f'--input_shape={input_shape}')
     if normalize['to_rgb'] and input_format.lower() == 'bgr' or \
             not normalize['to_rgb'] and input_format.lower() == 'rgb':
-        command_line += ' --reverse_input_channels'
+        command_line.append('--reverse_input_channels')
 
-    print(command_line)
+    print(' '.join(command_line))
 
-    run(command_line, shell=True, check=True)
+    run(command_line, check=True)
 
     if with_text:
         onnx_model_path_tr_encoder = onnx_model_path.replace('.onnx', '_text_recognition_head_encoder.onnx')
-        command_line = f'{mo_cmd} --input_model="{onnx_model_path_tr_encoder}" ' \
-                       f'--output_dir="{output_dir_path}"'
-        print(command_line)
-        run(command_line, shell=True, check=True)
+        command_line = [mo_cmd,
+                        f'--input_model={onnx_model_path_tr_encoder}',
+                        f'--output_dir={output_dir_path}']
+        print(' '.join(command_line))
+        run(command_line, check=True)
 
         onnx_model_path_tr_decoder = onnx_model_path.replace('.onnx', '_text_recognition_head_decoder.onnx')
-        command_line = f'{mo_cmd} --input_model="{onnx_model_path_tr_decoder}" ' \
-                       f'--output_dir="{output_dir_path}"'
-        print(command_line)
-        run(command_line, shell=True, check=True)
+        command_line = [mo_cmd,
+                        f'--input_model={onnx_model_path_tr_decoder}',
+                        f'--output_dir={output_dir_path}']
+        print(' '.join(command_line))
+        run(command_line, check=True)
 
 
 def optimize_onnx_graph(onnx_model_path):

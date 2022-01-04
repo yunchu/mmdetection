@@ -1,4 +1,4 @@
-# Copyright (C) 2020 Intel Corporation
+# Copyright (C) 2020-2021 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -18,7 +18,7 @@ import os.path as osp
 import sys
 import unittest
 from shutil import copy2 as copy
-from subprocess import run, CalledProcessError, PIPE
+from subprocess import run, CalledProcessError, PIPE  # nosec
 
 from mmcv import Config
 

@@ -1,3 +1,9 @@
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 # Configuration file for the Sphinx documentation builder.
 #
 # This file only contains a selection of the most common options. For a full
@@ -11,14 +17,14 @@
 # documentation root, use os.path.abspath to make it absolute, like shown here.
 #
 import os
-import subprocess
+import subprocess  # nosec
 import sys
 
 sys.path.insert(0, os.path.abspath('..'))
 
 # -- Project information -----------------------------------------------------
 
-project = 'Object Detection OpenVINO Training Extensions'
+project = 'MMDetection'
 copyright = '2018-2020, OpenMMLab; 2019-2021, Intel'
 author = 'MMDetection Authors, Intel'
 version_file = '../mmdet/version.py'

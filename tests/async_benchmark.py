@@ -39,7 +39,7 @@ async def main():
                '/mask_rcnn/mask_rcnn_r50_fpn_1x_coco'
                '/mask_rcnn_r50_fpn_1x_coco_20200205-d4b0c5d6.pth')
         print(f'Downloading {url} ...')
-        local_filename, _ = urllib.request.urlretrieve(url)
+        local_filename, _ = urllib.request.urlretrieve(url)  # nosec
         os.makedirs(os.path.dirname(checkpoint_file), exist_ok=True)
         shutil.move(local_filename, checkpoint_file)
         print(f'Saved as {checkpoint_file}')

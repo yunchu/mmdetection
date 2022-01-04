@@ -1,4 +1,4 @@
-OTE Detection Third Party Programs File
+MMDetection Third Party Programs File
 
 This file contains the list of third party software ("third party programs")
 contained in the Intel software and their required notices and/or license
@@ -106,3 +106,33 @@ SOFTWARE.
 
 6. sigmoid_focal_loss
    Copyright (c) Facebook, Inc. and its affiliates. All Rights Reserved.
+
+-------------------------------------------------------------
+
+7. EvalHook, DistEvalHook, EpochRunnerWithCancel, IterBasedRunnerWithCancel
+   Copyright (c) 2018-2021 OpenMMLab
+   SPDX-License-Identifier: Apache-2.0
+
+-------------------------------------------------------------
+
+8.  ActLayer, SeparableConv2d, BiFPNNode, BiFPNBlock, BiFPN
+    Copyright (C) 2020 Ross Wightman
+    SPDX-License-Identifier: Apache-2.0
+
+-------------------------------------------------------------
+
+9. PointRendRoIHead
+   Copyright (C) 2020 Facebook
+   SPDX-License-Identifier: Apache-2.0
+
+-------------------------------------------------------------
+
+10. batched_nms
+    Copyright (C) 2016 Soumith Chintala
+    SPDX-License-Identifier: BSD-3-Clause
+
+-------------------------------------------------------------
+
+11. scatter_cpu, scatter_kwargs
+    Copyright (C) 2016-2021 Facebook, Inc
+    SPDX-License-Identifier: BSD-3-Clause

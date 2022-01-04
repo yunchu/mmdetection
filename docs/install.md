@@ -11,7 +11,7 @@ Make sure that all of the listed below system-level requirements are installed:
 - GCC 5+
 - [Intel® Distribution of OpenVINO™ Toolkit](https://software.intel.com/en-us/openvino-toolkit) 2021.4
 
-### Install OTEDetection
+### Install MMDetection
 
 a. Create a conda virtual environment and activate it.
 
@@ -46,7 +46,7 @@ conda install pytorch=1.3.1 cudatoolkit=9.2 torchvision=0.4.2 -c pytorch
 If you build PyTorch from source instead of installing the prebuilt pacakge,
 you can use more CUDA versions such as 9.0.
 
-c. Clone OTEDetection repository.
+c. Clone MMDetection repository.
 
 ```shell
 git clone https://github.com/opencv/mmdetection.git
@@ -82,7 +82,7 @@ It is recommended that you run step d each time you pull some updates from githu
     find . -name "*.so" | xargs rm
     ```
 
-2. Following the above instructions, OTEDetection is installed in `dev` mode, any local modifications made to the code will take effect without the need to reinstall it (unless you submit some commits and want to update the version number).
+2. Following the above instructions, MMDetection is installed in `dev` mode, any local modifications made to the code will take effect without the need to reinstall it (unless you submit some commits and want to update the version number).
 
 3. If you would like to use `opencv-python-headless` instead of `opencv-python`,
 you can install it before installing MMCV.
@@ -112,18 +112,18 @@ Note: We set `use_torchvision=True` on-the-fly in CPU mode for `RoIPool` and `Ro
 We provide a [Dockerfile](https://github.com/opencv/mmdetection/blob/ote/docker/Dockerfile) to build an image.
 
 ```shell
-docker build -t otedetection docker/
+docker build -t mmdetection docker/
 ```
 
 Run it with
 
 ```shell
-docker run --gpus all --shm-size=8g -it -v {DATA_DIR}:/mmdetection/data otedetection
+docker run --gpus all --shm-size=8g -it -v {DATA_DIR}:/mmdetection/data mmdetection
 ```
 
 ### A from-scratch setup script
 
-Here is a full script for setting up OTEDetection with conda.
+Here is a full script for setting up MMDetection with conda.
 
 ```shell
 conda create -n ote-det python=3.7 -y
@@ -138,7 +138,7 @@ pip install "git+https://github.com/open-mmlab/cocoapi.git#subdirectory=pycocoto
 pip install -v -e .
 ```
 
-### Using multiple OTEDetection versions
+### Using multiple MMDetection versions
 
 The train and test scripts already modify the `PYTHONPATH` to ensure the script use the MMDetection in the current directory.
 

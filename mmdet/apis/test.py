@@ -1,5 +1,11 @@
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import os.path as osp
-import pickle
+import pickle  # nosec
 import shutil
 import tempfile
 import time
@@ -180,7 +186,7 @@ def collect_results_gpu(result_part, size):
         part_list = []
         for recv, shape in zip(part_recv_list, shape_list):
             part_list.append(
-                pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))
+                pickle.loads(recv[:shape[0]].cpu().numpy().tobytes()))  # nosec
         # sort the results
         ordered_results = []
         for res in zip(*part_list):

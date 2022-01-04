@@ -1,5 +1,11 @@
+# Copyright (C) 2018-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 import os.path as osp
-import xml.etree.ElementTree as ET
+import defusedxml.ElementTree as ET
 
 import mmcv
 import numpy as np

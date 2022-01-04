@@ -1,4 +1,11 @@
 # Copyright (c) 2019 Western Digital Corporation or its affiliates.
+#
+# Copyright (C) 2019-2021 OpenMMLab
+# SPDX-License-Identifier: Apache-2.0
+#
+# Copyright (C) 2020-2021 Intel Corporation
+# SPDX-License-Identifier: Apache-2.0
+#
 
 import warnings
 

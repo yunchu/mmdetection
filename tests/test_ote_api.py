@@ -20,7 +20,7 @@ import time
 import unittest
 import warnings
 from concurrent.futures import ThreadPoolExecutor
-from subprocess import run
+from subprocess import run  # nosec
 from typing import Optional
 
 import numpy as np

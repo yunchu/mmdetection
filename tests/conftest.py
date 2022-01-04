@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions
 # and limitations under the License.
 
+
+import pytest
+
 from ote_sdk.test_suite.pytest_insertions import *
 from ote_sdk.test_suite.training_tests_common import REALLIFE_USECASE_CONSTANT
 

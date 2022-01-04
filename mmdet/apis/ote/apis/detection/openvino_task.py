@@ -19,7 +19,7 @@ import json
 import numpy as np
 import os
 import ote_sdk.usecases.exportable_code.demo as demo
-import subprocess
+import subprocess  # nosec
 import sys
 import tempfile
 from addict import Dict as ADDict

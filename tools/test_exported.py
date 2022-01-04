@@ -1,4 +1,4 @@
-# Copyright (C) 2021 Intel Corporation
+# Copyright (C) 2020-2021 Intel Corporation
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -163,6 +163,11 @@ def main(args):
     prog_bar = mmcv.ProgressBar(len(dataset))
     for i, data in enumerate(data_loader):
         im_data = data['img'][0].data[0].cpu().numpy()
+        if len(im_data.shape) == 3:
+            im_data = np.expand_dims(im_data, axis=0)
+        elif len(im_data.shape) != 4:
+            raise ValueError(f'Image of unsupported shape: {im_data.shape}')
+
         try:
             result = model(im_data)
             result = postprocess(
