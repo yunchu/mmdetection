@@ -29,7 +29,7 @@ from mmcv.utils import Config
 from ote_sdk.entities.annotation import Annotation
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.inference_parameters import InferenceParameters, default_progress_callback
-from ote_sdk.entities.model import ModelEntity, ModelFormat, ModelOptimizationType, ModelPrecision, ModelStatus
+from ote_sdk.entities.model import ModelEntity, ModelFormat, ModelOptimizationType, ModelPrecision
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.scored_label import ScoredLabel
 from ote_sdk.entities.shapes.rectangle import Rectangle
@@ -262,7 +262,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 feature_vector = torch.nn.functional.adaptive_avg_pool2d(feature_map, (1, 1))
                 assert feature_vector.size(0) == 1
             feature_vectors.append(feature_vector.view(-1).detach().cpu().numpy())
-            
+
         def dummy_dump_features_hook(mod, inp, out):
             feature_vectors.append(None)
 
@@ -356,9 +356,7 @@ class OTEDetectionInferenceTask(IInferenceTask, IExportTask, IEvaluationTask, IU
                 output_model.set_data('confidence_threshold', np.array([self.confidence_threshold], dtype=np.float32).tobytes())
                 output_model.precision = self._precision
                 output_model.optimization_methods = self._optimization_methods
-                output_model.model_status = ModelStatus.SUCCESS
             except Exception as ex:
-                output_model.model_status = ModelStatus.FAILED
                 raise RuntimeError('Optimization was unsuccessful.') from ex
         output_model.set_data("label_schema.json", label_schema_to_bytes(self._task_environment.label_schema))
         logger.info('Exporting completed')
