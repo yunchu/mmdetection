@@ -26,7 +26,7 @@ from ote_sdk.configuration.helper.utils import ids_to_strings
 from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.metrics import (BarChartInfo, BarMetricsGroup, CurveMetric, LineChartInfo, LineMetricsGroup, MetricsGroup,
                                       ScoreMetric, VisualizationType)
-from ote_sdk.entities.model import ModelEntity, ModelPrecision, ModelStatus
+from ote_sdk.entities.model import ModelEntity, ModelPrecision
 from ote_sdk.entities.resultset import ResultSetEntity
 from ote_sdk.entities.subset import Subset
 from ote_sdk.entities.train_parameters import TrainParameters, default_progress_callback
@@ -178,7 +178,6 @@ class OTEDetectionTrainingTask(OTEDetectionInferenceTask, ITrainingTask):
         # Save resulting model.
         self.save_model(output_model)
         output_model.performance = performance
-        output_model.model_status = ModelStatus.SUCCESS
 
         self._is_training = False
         logger.info('Training the model [done]')

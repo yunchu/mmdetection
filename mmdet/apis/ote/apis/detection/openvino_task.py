@@ -39,7 +39,6 @@ from ote_sdk.entities.model import (
     ModelFormat,
     ModelOptimizationType,
     ModelPrecision,
-    ModelStatus,
     OptimizationMethod,
 )
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
@@ -233,9 +232,7 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
             model = load_model(model_config)
 
             if get_nodes_by_type(model, ['FakeQuantize']):
-                logger.warning("Model is already optimized by POT")
-                output_model.model_status = ModelStatus.FAILED
-                return
+                raise RuntimeError("Model is already optimized by POT")
 
         engine_config = ADDict({
             'device': 'CPU'
@@ -275,7 +272,6 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         output_model.set_data("label_schema.json", label_schema_to_bytes(self.task_environment.label_schema))
 
         # set model attributes for quantized model
-        output_model.model_status = ModelStatus.SUCCESS
         output_model.model_format = ModelFormat.OPENVINO
         output_model.optimization_type = ModelOptimizationType.POT
         output_model.optimization_methods = [OptimizationMethod.QUANTIZATION]
