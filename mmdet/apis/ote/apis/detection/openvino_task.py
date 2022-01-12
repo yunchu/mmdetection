@@ -53,14 +53,14 @@ from ote_sdk.usecases.tasks.interfaces.deployment_interface import IDeploymentTa
 from ote_sdk.usecases.tasks.interfaces.evaluate_interface import IEvaluationTask
 from ote_sdk.usecases.tasks.interfaces.inference_interface import IInferenceTask
 from ote_sdk.usecases.tasks.interfaces.optimization_interface import IOptimizationTask, OptimizationType
-from shutil import copyfile, copytree
+from shutil import copyfile
 from typing import Any, Dict, List, Optional, Tuple, Union
 from zipfile import ZipFile
 
 from mmdet.utils.logger import get_root_logger
-from . import model_wrappers
 from .configuration import OTEDetectionConfig
 
+from . import model_wrappers
 logger = get_root_logger()
 
 
@@ -126,7 +126,6 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         self.task_environment = task_environment
         self.model = self.task_environment.model
         self.confidence_threshold: float = 0.0
-        self.model_name = task_environment.model_template.model_template_id
         self.inferencer = self.load_inferencer()
         logger.info('OpenVINO task initialization completed')
 
@@ -176,30 +175,21 @@ class OpenVINODetectionTask(IDeploymentTask, IInferenceTask, IEvaluationTask, IO
         parameters['converter_type'] = 'DETECTION'
         parameters['model_parameters'] = self.inferencer.configuration
         parameters['model_parameters']['labels'] = LabelSchemaMapper.forward(self.task_environment.label_schema)
-        name_of_package = "demo_package"
-        with tempfile.TemporaryDirectory() as tempdir:
-            copyfile(os.path.join(work_dir, "setup.py"), os.path.join(tempdir, "setup.py"))
-            copyfile(os.path.join(work_dir, "requirements.txt"), os.path.join(tempdir, "requirements.txt"))
-            copytree(os.path.join(work_dir, name_of_package), os.path.join(tempdir, name_of_package))
-            config_path = os.path.join(tempdir, name_of_package, "config.json")
-            with open(config_path, "w", encoding='utf-8') as f:
-                json.dump(parameters, f, ensure_ascii=False, indent=4)
-            # generate model.py
-            if (inspect.getmodule(self.inferencer.model) in
-               [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
-                copyfile(model_file, os.path.join(tempdir, name_of_package, "model.py"))
-            # create wheel package
-            subprocess.run([sys.executable, os.path.join(tempdir, "setup.py"), 'bdist_wheel',
-                            '--dist-dir', tempdir, 'clean', '--all'])
-            wheel_file_name = [f for f in os.listdir(tempdir) if f.endswith('.whl')][0]
 
+        with tempfile.TemporaryDirectory() as tempdir:
             with ZipFile(os.path.join(tempdir, "openvino.zip"), 'w') as zip:
+                # model files
                 zip.writestr(os.path.join("model", "model.xml"), self.model.get_data("openvino.xml"))
                 zip.writestr(os.path.join("model", "model.bin"), self.model.get_data("openvino.bin"))
-                zip.write(os.path.join(tempdir, "requirements.txt"), os.path.join("python", "requirements.txt"))
+                zip.writestr(os.path.join("model", "config.json"), json.dumps(parameters, ensure_ascii=False, indent=4))
+
+                # python files
+                if (inspect.getmodule(self.inferencer.model) in
+                   [module[1] for module in inspect.getmembers(model_wrappers, inspect.ismodule)]):
+                    zip.write(model_file, os.path.join("python", "model.py"))
+                zip.write(os.path.join(work_dir, "requirements.txt"), os.path.join("python", "requirements.txt"))
                 zip.write(os.path.join(work_dir, "README.md"), os.path.join("python", "README.md"))
                 zip.write(os.path.join(work_dir, "demo.py"), os.path.join("python", "demo.py"))
-                zip.write(os.path.join(tempdir, wheel_file_name), os.path.join("python", wheel_file_name))
             with open(os.path.join(tempdir, "openvino.zip"), "rb") as file:
                 output_model.exportable_code = file.read()
         logger.info('Deploying completed')
