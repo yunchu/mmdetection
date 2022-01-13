@@ -109,6 +109,8 @@ def patch_config(config: Config, work_dir: str, labels: List[LabelEntity], rando
 def set_hyperparams(config: Config, hyperparams: OTEDetectionConfig):
     config.optimizer.lr = float(hyperparams.learning_parameters.learning_rate)
     config.lr_config.warmup_iters = int(hyperparams.learning_parameters.learning_rate_warmup_iters)
+    if config.lr_config.warmup_iters == 0:
+        config.lr_config.warmup = None
     config.data.samples_per_gpu = int(hyperparams.learning_parameters.batch_size)
     config.data.workers_per_gpu = int(hyperparams.learning_parameters.num_workers)
     total_iterations = int(hyperparams.learning_parameters.num_iters)
