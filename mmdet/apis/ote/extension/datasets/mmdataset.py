@@ -64,8 +64,8 @@ def get_annotation_mmdet_format(dataset_item: DatasetItemEntity, labels: List[La
         )
     else:
         ann_info = dict(
-            bboxes=np.array([0, 0, 0, 0], dtype=np.float32).reshape(-1, 4),
-            labels=np.array([-1], dtype=int),
+            bboxes=np.zeros((0, 4), dtype=np.float32),
+            labels=np.array([], dtype=int),
         )
     return ann_info
 

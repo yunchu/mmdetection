@@ -35,8 +35,7 @@ from ote_sdk.entities.datasets import DatasetEntity
 from ote_sdk.entities.image import Image
 from ote_sdk.entities.inference_parameters import InferenceParameters
 from ote_sdk.entities.metrics import Performance
-from ote_sdk.entities.model import (ModelEntity, ModelFormat, ModelOptimizationType, ModelPrecision, ModelStatus,
-                                    OptimizationMethod)
+from ote_sdk.entities.model import ModelEntity, ModelFormat, ModelOptimizationType, ModelPrecision, OptimizationMethod
 from ote_sdk.entities.model_template import TargetDevice, parse_model_template
 from ote_sdk.entities.optimization_parameters import OptimizationParameters
 from ote_sdk.entities.resultset import ResultSetEntity
@@ -201,7 +200,6 @@ class API(unittest.TestCase):
         output_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY
         )
 
         training_progress_curve = []
@@ -253,7 +251,6 @@ class API(unittest.TestCase):
         output_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY
         )
         task.train(dataset, output_model, train_parameters)
 
@@ -276,7 +273,6 @@ class API(unittest.TestCase):
         original_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY
         )
         task.train(dataset, original_model, TrainParameters)
 
@@ -303,7 +299,6 @@ class API(unittest.TestCase):
         nncf_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY
         )
 
         nncf_task.optimize(OptimizationType.NNCF, dataset, nncf_model, optimization_parameters)
@@ -349,7 +344,6 @@ class API(unittest.TestCase):
         trained_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY
         )
         train_task.train(dataset, trained_model, TrainParameters)
         performance_after_train = self.eval(train_task, trained_model, val_dataset)
@@ -367,7 +361,6 @@ class API(unittest.TestCase):
         exported_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY,
             _id=ObjectId())
         inference_task.export(ExportType.OPENVINO, exported_model)
 
@@ -415,12 +408,10 @@ class API(unittest.TestCase):
         output_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY,
             _id=ObjectId())
         task.train(dataset, output_model)
 
         # Test that output model is valid.
-        self.assertEqual(output_model.model_status, ModelStatus.SUCCESS)
         modelinfo = torch.load(io.BytesIO(output_model.get_data("weights.pth")))
         modelinfo.pop('anchors', None)
         self.assertEqual(list(modelinfo.keys()), ['model', 'config', 'confidence_threshold', 'VERSION'])
@@ -436,16 +427,13 @@ class API(unittest.TestCase):
         new_model = ModelEntity(
             dataset,
             detection_environment.get_model_configuration(),
-            model_status=ModelStatus.NOT_READY,
             _id=ObjectId())
         task._hyperparams.learning_parameters.num_iters = 1
         task.train(dataset, new_model)
-        self.assertEqual(new_model.model_status, ModelStatus.SUCCESS)
         self.assertNotEqual(first_model, new_model)
         self.assertNotEqual(first_model.get_data("weights.pth"), new_model.get_data("weights.pth"))
 
-        # Make the new model fail.
-        new_model.model_status = ModelStatus.NOT_IMPROVED
+        # Reload task with the first model.
         detection_environment.model = first_model
         task = OTEDetectionTrainingTask(detection_environment)
         self.assertEqual(task._task_environment.model.id, first_model.id)
@@ -462,10 +450,8 @@ class API(unittest.TestCase):
             exported_model = ModelEntity(
                 dataset,
                 detection_environment.get_model_configuration(),
-                model_status=ModelStatus.NOT_READY,
                 _id=ObjectId())
             task.export(ExportType.OPENVINO, exported_model)
-            self.assertEqual(exported_model.model_status, ModelStatus.SUCCESS)
             self.assertEqual(exported_model.model_format, ModelFormat.OPENVINO)
             self.assertEqual(exported_model.optimization_type, ModelOptimizationType.MO)
 
@@ -490,14 +476,7 @@ class API(unittest.TestCase):
             optimized_model = ModelEntity(
                 dataset,
                 detection_environment.get_model_configuration(),
-                optimization_type=ModelOptimizationType.POT,
-                optimization_methods=OptimizationMethod.QUANTIZATION,
-                optimization_objectives={},
-                precision=[ModelPrecision.INT8],
-                target_device=TargetDevice.CPU,
-                performance_improvement={},
-                model_size_reduction=1.,
-                model_status=ModelStatus.NOT_READY)
+            )
             ov_task.optimize(OptimizationType.POT, dataset, optimized_model, OptimizationParameters())
             pot_performance = self.eval(ov_task, optimized_model, val_dataset)
             print(f'Performance of optimized model: {pot_performance.score.value:.4f}')
@@ -510,14 +489,7 @@ class API(unittest.TestCase):
                 nncf_model = ModelEntity(
                     dataset,
                     detection_environment.get_model_configuration(),
-                    optimization_type=ModelOptimizationType.NNCF,
-                    optimization_methods=OptimizationMethod.QUANTIZATION,
-                    optimization_objectives={},
-                    precision=[ModelPrecision.INT8],
-                    target_device=TargetDevice.CPU,
-                    performance_improvement={},
-                    model_size_reduction=1.,
-                    model_status=ModelStatus.NOT_READY)
+                )
                 nncf_model.set_data('weights.pth', output_model.get_data("weights.pth"))
 
                 detection_environment.model = nncf_model
